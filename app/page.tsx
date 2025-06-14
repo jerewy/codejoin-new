@@ -34,16 +34,16 @@ export default function LandingPage() {
             </div>
           </div>
           <nav className="hidden md:flex items-center gap-6">
-            <Link href="#features" className="text-sm font-medium hover:underline underline-offset-4">
+            <Link href="#features" className="text-sm font-medium hover:underline underline-offset-4 scroll-smooth">
               Features
             </Link>
-            <Link href="#how-it-works" className="text-sm font-medium hover:underline underline-offset-4">
+            <Link href="#how-it-works" className="text-sm font-medium hover:underline underline-offset-4 scroll-smooth">
               How It Works
             </Link>
-            <Link href="#pricing" className="text-sm font-medium hover:underline underline-offset-4">
+            <Link href="#pricing" className="text-sm font-medium hover:underline underline-offset-4 scroll-smooth">
               Pricing
             </Link>
-            <Link href="#testimonials" className="text-sm font-medium hover:underline underline-offset-4">
+            <Link href="#testimonials" className="text-sm font-medium hover:underline underline-offset-4 scroll-smooth">
               Testimonials
             </Link>
           </nav>

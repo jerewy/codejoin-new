@@ -50,6 +50,9 @@
 }
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
   * {
     @apply border-border;
   }
@@ -71,3 +74,4 @@
 .animate-blink {
   animation: blink 1s infinite;
 }
+
