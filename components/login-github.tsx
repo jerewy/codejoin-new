@@ -1,12 +1,12 @@
 "use client";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
-import { Mail } from "lucide-react";
+import { Github } from "lucide-react";
 
-export const LoginGoogle = () => {
+export const LoginGithub = () => {
   const handleLogin = async () => {
     await supabase.auth.signInWithOAuth({
-      provider: "google",
+      provider: "github",
       options: {
         redirectTo: "http://localhost:3000/dashboard",
       },
@@ -15,8 +15,8 @@ export const LoginGoogle = () => {
 
   return (
     <Button onClick={handleLogin} variant="outline" className="w-full">
-      <Mail className="mr-2 h-4 w-4" />
-      Google
+      <Github className="mr-2 h-4 w-4" />
+      GitHub
     </Button>
   );
 };

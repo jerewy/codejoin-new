@@ -1,12 +1,17 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Plus,
   Search,
@@ -22,15 +27,38 @@ import {
   GitBranch,
   Calendar,
   Activity,
-} from "lucide-react"
-import Link from "next/link"
-import ProjectCard from "@/components/project-card"
-import RecentActivity from "@/components/recent-activity"
-import QuickStats from "@/components/quick-stats"
+} from "lucide-react";
+import Link from "next/link";
+import ProjectCard from "@/components/project-card";
+import RecentActivity from "@/components/recent-activity";
+import QuickStats from "@/components/quick-stats";
+import Image from "next/image";
+import dynamic from "next/dynamic";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
+import NavLinks from "@/components/nav-links";
+
+const UserDropdown = dynamic(() => import("@/components/user-dropdown"), {
+  ssr: false,
+});
 
 export default function DashboardPage() {
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedFilter, setSelectedFilter] = useState("all")
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedFilter, setSelectedFilter] = useState("all");
+  const isLoggedIn = useAuthStatus();
+  if (!isLoggedIn) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">
+            Please log in to access the dashboard
+          </h1>
+          <Link href="/login">
+            <Button>Log In</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const projects = [
     {
@@ -105,7 +133,7 @@ export default function DashboardPage() {
       thumbnail: "/placeholder.svg?height=120&width=200",
       tags: ["Markdown", "Documentation"],
     },
-  ]
+  ];
 
   const recentActivity = [
     {
@@ -140,15 +168,16 @@ export default function DashboardPage() {
       time: "2 hours ago",
       avatar: "/placeholder.svg?height=32&width=32",
     },
-  ]
+  ];
 
   const filteredProjects = projects.filter((project) => {
     const matchesSearch =
       project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      project.description.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesFilter = selectedFilter === "all" || project.status === selectedFilter
-    return matchesSearch && matchesFilter
-  })
+      project.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesFilter =
+      selectedFilter === "all" || project.status === selectedFilter;
+    return matchesSearch && matchesFilter;
+  });
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -169,43 +198,29 @@ export default function DashboardPage() {
                   d="M8 6C8 4.89543 8.89543 4 10 4H22C23.1046 4 24 4.89543 24 6V26C24 27.1046 23.1046 28 22 28H10C8.89543 28 8 27.1046 8 26V6Z"
                   fill="#FF5722"
                 />
-                <path d="M14 10L18 14M18 10L14 14" stroke="#0D47A1" strokeWidth="2" strokeLinecap="round" />
-                <path d="M14 18L18 22M18 18L14 22" stroke="#0D47A1" strokeWidth="2" strokeLinecap="round" />
+                <path
+                  d="M14 10L18 14M18 10L14 14"
+                  stroke="#0D47A1"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M14 18L18 22M18 18L14 22"
+                  stroke="#0D47A1"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
               </svg>
               <span className="text-xl font-bold text-primary">CodeJoin</span>
             </div>
           </div>
-          <nav className="hidden md:flex items-center gap-6">
-            <Link href="/dashboard" className="text-sm font-medium text-primary">
-              Dashboard
-            </Link>
-            <Link href="/templates" className="text-sm font-medium hover:underline underline-offset-4">
-              Templates
-            </Link>
-            <Link href="/teams" className="text-sm font-medium hover:underline underline-offset-4">
-              Teams
-            </Link>
-            <Link href="/settings" className="text-sm font-medium hover:underline underline-offset-4">
-              Settings
-            </Link>
-          </nav>
+          <NavLinks />
           <div className="flex items-center gap-4">
             <Button>
               <Plus className="h-4 w-4 mr-2" />
               New Project
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon">
-                  <img src="/placeholder.svg?height=32&width=32" alt="Profile" className="h-6 w-6 rounded-full" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem>Profile</DropdownMenuItem>
-                <DropdownMenuItem>Settings</DropdownMenuItem>
-                <DropdownMenuItem>Logout</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <UserDropdown />
           </div>
         </div>
       </header>
@@ -215,8 +230,10 @@ export default function DashboardPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Welcome back, John!</h1>
           <p className="text-muted-foreground">
-            You have {projects.filter((p) => p.status === "active").length} active projects and{" "}
-            {projects.filter((p) => p.collaborators > 1).length} collaborative projects.
+            You have {projects.filter((p) => p.status === "active").length}{" "}
+            active projects and{" "}
+            {projects.filter((p) => p.collaborators > 1).length} collaborative
+            projects.
           </p>
         </div>
 
@@ -247,10 +264,24 @@ export default function DashboardPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
-                    <DropdownMenuItem onClick={() => setSelectedFilter("all")}>All Projects</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSelectedFilter("active")}>Active</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSelectedFilter("completed")}>Completed</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSelectedFilter("archived")}>Archived</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSelectedFilter("all")}>
+                      All Projects
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setSelectedFilter("active")}
+                    >
+                      Active
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setSelectedFilter("completed")}
+                    >
+                      Completed
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setSelectedFilter("archived")}
+                    >
+                      Archived
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -283,11 +314,19 @@ export default function DashboardPage() {
                           />
                           <div>
                             <h3 className="font-semibold">{project.name}</h3>
-                            <p className="text-sm text-muted-foreground">{project.description}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {project.description}
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
-                          <Badge variant={project.status === "active" ? "default" : "secondary"}>
+                          <Badge
+                            variant={
+                              project.status === "active"
+                                ? "default"
+                                : "secondary"
+                            }
+                          >
                             {project.status}
                           </Badge>
                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -384,7 +423,9 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium text-sm">E-commerce Website</p>
-                    <p className="text-xs text-muted-foreground">Client review</p>
+                    <p className="text-xs text-muted-foreground">
+                      Client review
+                    </p>
                   </div>
                   <Badge variant="destructive" className="text-xs">
                     2 days
@@ -393,7 +434,9 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium text-sm">Task Management App</p>
-                    <p className="text-xs text-muted-foreground">Beta release</p>
+                    <p className="text-xs text-muted-foreground">
+                      Beta release
+                    </p>
                   </div>
                   <Badge variant="secondary" className="text-xs">
                     1 week
@@ -405,5 +448,5 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

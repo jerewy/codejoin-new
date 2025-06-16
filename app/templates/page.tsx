@@ -1,17 +1,53 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Search, Filter, Download, Code, Palette, Smartphone, Globe, Database, Zap } from "lucide-react"
-import TemplateCard from "@/components/template-card"
-import TemplatePreview from "@/components/template-preview"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Search,
+  Filter,
+  Download,
+  Code,
+  Palette,
+  Smartphone,
+  Globe,
+  Database,
+  Zap,
+} from "lucide-react";
+import TemplateCard from "@/components/template-card";
+import TemplatePreview from "@/components/template-preview";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
+import NavLinks from "@/components/nav-links";
 
 export default function TemplatesPage() {
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("all")
-  const [selectedTemplate, setSelectedTemplate] = useState<any>(null)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+  const isLoggedIn = useAuthStatus();
+  if (!isLoggedIn) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-muted">
+        <Card className="max-w-md w-full p-6">
+          <CardHeader>
+            <CardTitle className="text-center text-2xl font-semibold">
+              Please Log In
+            </CardTitle>
+            <p className="text-center text-sm text-muted-foreground mt-2">
+              You need to be logged in to access the templates.
+            </p>
+          </CardHeader>
+          <CardContent className="flex justify-center">
+            <Button asChild>
+              <a href="/login" className="w-full">
+                Log In
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const categories = [
     { id: "all", name: "All Templates", icon: Globe },
@@ -22,7 +58,7 @@ export default function TemplatesPage() {
     { id: "mobile", name: "Mobile", icon: Smartphone },
     { id: "backend", name: "Backend", icon: Database },
     { id: "ai", name: "AI/ML", icon: Zap },
-  ]
+  ];
 
   const templates = [
     {
@@ -103,18 +139,21 @@ export default function TemplatesPage() {
       thumbnail: "/placeholder.svg?height=200&width=300",
       featured: false,
     },
-  ]
+  ];
 
   const filteredTemplates = templates.filter((template) => {
     const matchesSearch =
       template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       template.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      template.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-    const matchesCategory = selectedCategory === "all" || template.category === selectedCategory
-    return matchesSearch && matchesCategory
-  })
+      template.tags.some((tag) =>
+        tag.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    const matchesCategory =
+      selectedCategory === "all" || template.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
 
-  const featuredTemplates = templates.filter((t) => t.featured)
+  const featuredTemplates = templates.filter((t) => t.featured);
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -125,6 +164,7 @@ export default function TemplatesPage() {
             <Code className="h-6 w-6 text-primary" />
             <h1 className="text-xl font-bold">Templates</h1>
           </div>
+          <NavLinks />
           <div className="flex items-center gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -149,7 +189,12 @@ export default function TemplatesPage() {
           <h2 className="text-2xl font-bold mb-4">Featured Templates</h2>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {featuredTemplates.map((template) => (
-              <TemplateCard key={template.id} template={template} onPreview={setSelectedTemplate} featured={true} />
+              <TemplateCard
+                key={template.id}
+                template={template}
+                onPreview={setSelectedTemplate}
+                featured={true}
+              />
             ))}
           </div>
         </section>
@@ -165,7 +210,9 @@ export default function TemplatesPage() {
                 {categories.map((category) => (
                   <Button
                     key={category.id}
-                    variant={selectedCategory === category.id ? "default" : "ghost"}
+                    variant={
+                      selectedCategory === category.id ? "default" : "ghost"
+                    }
                     className="w-full justify-start"
                     onClick={() => setSelectedCategory(category.id)}
                   >
@@ -183,10 +230,15 @@ export default function TemplatesPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium mb-2 block">Difficulty</label>
+                  <label className="text-sm font-medium mb-2 block">
+                    Difficulty
+                  </label>
                   <div className="space-y-2">
                     {["Beginner", "Intermediate", "Advanced"].map((level) => (
-                      <label key={level} className="flex items-center space-x-2">
+                      <label
+                        key={level}
+                        className="flex items-center space-x-2"
+                      >
                         <input type="checkbox" className="rounded" />
                         <span className="text-sm">{level}</span>
                       </label>
@@ -194,10 +246,15 @@ export default function TemplatesPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium mb-2 block">Rating</label>
+                  <label className="text-sm font-medium mb-2 block">
+                    Rating
+                  </label>
                   <div className="space-y-2">
                     {["4+ Stars", "3+ Stars", "2+ Stars"].map((rating) => (
-                      <label key={rating} className="flex items-center space-x-2">
+                      <label
+                        key={rating}
+                        className="flex items-center space-x-2"
+                      >
                         <input type="checkbox" className="rounded" />
                         <span className="text-sm">{rating}</span>
                       </label>
@@ -212,10 +269,14 @@ export default function TemplatesPage() {
           <div className="lg:col-span-3">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold">
-                {selectedCategory === "all" ? "All Templates" : categories.find((c) => c.id === selectedCategory)?.name}
+                {selectedCategory === "all"
+                  ? "All Templates"
+                  : categories.find((c) => c.id === selectedCategory)?.name}
               </h2>
               <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">{filteredTemplates.length} templates</span>
+                <span className="text-sm text-muted-foreground">
+                  {filteredTemplates.length} templates
+                </span>
                 <Button variant="outline" size="sm">
                   <Filter className="h-4 w-4 mr-2" />
                   Sort by
@@ -225,7 +286,11 @@ export default function TemplatesPage() {
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {filteredTemplates.map((template) => (
-                <TemplateCard key={template.id} template={template} onPreview={setSelectedTemplate} />
+                <TemplateCard
+                  key={template.id}
+                  template={template}
+                  onPreview={setSelectedTemplate}
+                />
               ))}
             </div>
           </div>
@@ -233,7 +298,12 @@ export default function TemplatesPage() {
       </div>
 
       {/* Template Preview Modal */}
-      {selectedTemplate && <TemplatePreview template={selectedTemplate} onClose={() => setSelectedTemplate(null)} />}
+      {selectedTemplate && (
+        <TemplatePreview
+          template={selectedTemplate}
+          onClose={() => setSelectedTemplate(null)}
+        />
+      )}
     </div>
-  )
+  );
 }

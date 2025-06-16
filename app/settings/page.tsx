@@ -1,15 +1,27 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Switch } from "@/components/ui/switch"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   User,
   Settings,
@@ -24,17 +36,19 @@ import {
   Monitor,
   Zap,
   Globe,
-} from "lucide-react"
-import { useTheme } from "next-themes"
+} from "lucide-react";
+import { useTheme } from "next-themes";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
+import NavLinks from "@/components/nav-links";
 
 export default function SettingsPage() {
-  const { theme, setTheme } = useTheme()
+  const { theme, setTheme } = useTheme();
   const [notifications, setNotifications] = useState({
     email: true,
     push: false,
     collaboration: true,
     updates: true,
-  })
+  });
 
   const [profile, setProfile] = useState({
     name: "John Doe",
@@ -42,17 +56,38 @@ export default function SettingsPage() {
     bio: "Full-stack developer passionate about collaborative coding",
     location: "San Francisco, CA",
     website: "https://johndoe.dev",
-  })
+  });
+
+  const isLoggedIn = useAuthStatus();
+  if (!isLoggedIn) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-muted">
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold mb-4">Access Denied</h1>
+          <p className="text-muted-foreground mb-6">
+            You must be logged in to access settings.
+          </p>
+          <Button asChild>
+            <a href="/login">Log In</a>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-background/95 backdrop-blur">
-        <div className="container flex h-16 items-center">
+        <div className="container flex h-16 items-center justify-between">
+          {/* Left side: Icon + Title */}
           <div className="flex items-center gap-2">
             <Settings className="h-6 w-6 text-primary" />
             <h1 className="text-xl font-bold">Settings</h1>
           </div>
+
+          {/* Right side: Navigation */}
+          <NavLinks />
         </div>
       </header>
 
@@ -90,7 +125,9 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Profile Information</CardTitle>
-                <CardDescription>Update your personal information and public profile.</CardDescription>
+                <CardDescription>
+                  Update your personal information and public profile.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-4">
@@ -101,7 +138,9 @@ export default function SettingsPage() {
                     <Button variant="outline" size="sm">
                       Change Avatar
                     </Button>
-                    <p className="text-sm text-muted-foreground mt-1">JPG, PNG or GIF. Max size 2MB.</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      JPG, PNG or GIF. Max size 2MB.
+                    </p>
                   </div>
                 </div>
 
@@ -111,7 +150,9 @@ export default function SettingsPage() {
                     <Input
                       id="name"
                       value={profile.name}
-                      onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                      onChange={(e) =>
+                        setProfile({ ...profile, name: e.target.value })
+                      }
                     />
                   </div>
                   <div className="space-y-2">
@@ -120,7 +161,9 @@ export default function SettingsPage() {
                       id="email"
                       type="email"
                       value={profile.email}
-                      onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                      onChange={(e) =>
+                        setProfile({ ...profile, email: e.target.value })
+                      }
                     />
                   </div>
                   <div className="space-y-2">
@@ -128,7 +171,9 @@ export default function SettingsPage() {
                     <Input
                       id="location"
                       value={profile.location}
-                      onChange={(e) => setProfile({ ...profile, location: e.target.value })}
+                      onChange={(e) =>
+                        setProfile({ ...profile, location: e.target.value })
+                      }
                     />
                   </div>
                   <div className="space-y-2">
@@ -136,7 +181,9 @@ export default function SettingsPage() {
                     <Input
                       id="website"
                       value={profile.website}
-                      onChange={(e) => setProfile({ ...profile, website: e.target.value })}
+                      onChange={(e) =>
+                        setProfile({ ...profile, website: e.target.value })
+                      }
                     />
                   </div>
                 </div>
@@ -146,7 +193,9 @@ export default function SettingsPage() {
                   <Textarea
                     id="bio"
                     value={profile.bio}
-                    onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
+                    onChange={(e) =>
+                      setProfile({ ...profile, bio: e.target.value })
+                    }
                     placeholder="Tell us about yourself..."
                   />
                 </div>
@@ -161,12 +210,16 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Theme</CardTitle>
-                <CardDescription>Choose your preferred theme for the interface.</CardDescription>
+                <CardDescription>
+                  Choose your preferred theme for the interface.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-3">
                   <div
-                    className={`border rounded-lg p-4 cursor-pointer ${theme === "light" ? "border-primary" : ""}`}
+                    className={`border rounded-lg p-4 cursor-pointer ${
+                      theme === "light" ? "border-primary" : ""
+                    }`}
                     onClick={() => setTheme("light")}
                   >
                     <div className="flex items-center gap-2 mb-2">
@@ -176,7 +229,9 @@ export default function SettingsPage() {
                     <div className="w-full h-20 bg-white border rounded"></div>
                   </div>
                   <div
-                    className={`border rounded-lg p-4 cursor-pointer ${theme === "dark" ? "border-primary" : ""}`}
+                    className={`border rounded-lg p-4 cursor-pointer ${
+                      theme === "dark" ? "border-primary" : ""
+                    }`}
                     onClick={() => setTheme("dark")}
                   >
                     <div className="flex items-center gap-2 mb-2">
@@ -186,7 +241,9 @@ export default function SettingsPage() {
                     <div className="w-full h-20 bg-zinc-900 border rounded"></div>
                   </div>
                   <div
-                    className={`border rounded-lg p-4 cursor-pointer ${theme === "system" ? "border-primary" : ""}`}
+                    className={`border rounded-lg p-4 cursor-pointer ${
+                      theme === "system" ? "border-primary" : ""
+                    }`}
                     onClick={() => setTheme("system")}
                   >
                     <div className="flex items-center gap-2 mb-2">
@@ -202,7 +259,9 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Editor Preferences</CardTitle>
-                <CardDescription>Customize your coding environment.</CardDescription>
+                <CardDescription>
+                  Customize your coding environment.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
@@ -239,21 +298,27 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <Label>Line Numbers</Label>
-                      <p className="text-sm text-muted-foreground">Show line numbers in the editor</p>
+                      <p className="text-sm text-muted-foreground">
+                        Show line numbers in the editor
+                      </p>
                     </div>
                     <Switch defaultChecked />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
                       <Label>Word Wrap</Label>
-                      <p className="text-sm text-muted-foreground">Wrap long lines</p>
+                      <p className="text-sm text-muted-foreground">
+                        Wrap long lines
+                      </p>
                     </div>
                     <Switch />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
                       <Label>Auto Save</Label>
-                      <p className="text-sm text-muted-foreground">Automatically save changes</p>
+                      <p className="text-sm text-muted-foreground">
+                        Automatically save changes
+                      </p>
                     </div>
                     <Switch defaultChecked />
                   </div>
@@ -267,48 +332,69 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Notification Preferences</CardTitle>
-                <CardDescription>Choose how you want to be notified about activity.</CardDescription>
+                <CardDescription>
+                  Choose how you want to be notified about activity.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <Label>Email Notifications</Label>
-                      <p className="text-sm text-muted-foreground">Receive notifications via email</p>
+                      <p className="text-sm text-muted-foreground">
+                        Receive notifications via email
+                      </p>
                     </div>
                     <Switch
                       checked={notifications.email}
-                      onCheckedChange={(checked) => setNotifications({ ...notifications, email: checked })}
+                      onCheckedChange={(checked) =>
+                        setNotifications({ ...notifications, email: checked })
+                      }
                     />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
                       <Label>Push Notifications</Label>
-                      <p className="text-sm text-muted-foreground">Receive browser push notifications</p>
+                      <p className="text-sm text-muted-foreground">
+                        Receive browser push notifications
+                      </p>
                     </div>
                     <Switch
                       checked={notifications.push}
-                      onCheckedChange={(checked) => setNotifications({ ...notifications, push: checked })}
+                      onCheckedChange={(checked) =>
+                        setNotifications({ ...notifications, push: checked })
+                      }
                     />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
                       <Label>Collaboration Updates</Label>
-                      <p className="text-sm text-muted-foreground">When someone joins or edits your projects</p>
+                      <p className="text-sm text-muted-foreground">
+                        When someone joins or edits your projects
+                      </p>
                     </div>
                     <Switch
                       checked={notifications.collaboration}
-                      onCheckedChange={(checked) => setNotifications({ ...notifications, collaboration: checked })}
+                      onCheckedChange={(checked) =>
+                        setNotifications({
+                          ...notifications,
+                          collaboration: checked,
+                        })
+                      }
                     />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
                       <Label>Product Updates</Label>
-                      <p className="text-sm text-muted-foreground">News about new features and updates</p>
+                      <p className="text-sm text-muted-foreground">
+                        News about new features and updates
+                      </p>
                     </div>
                     <Switch
                       checked={notifications.updates}
-                      onCheckedChange={(checked) => setNotifications({ ...notifications, updates: checked })}
+                      onCheckedChange={(checked) =>
+                        setNotifications({ ...notifications, updates: checked })
+                      }
                     />
                   </div>
                 </div>
@@ -321,13 +407,18 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Password & Authentication</CardTitle>
-                <CardDescription>Manage your account security settings.</CardDescription>
+                <CardDescription>
+                  Manage your account security settings.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-4">
                   <div>
                     <Label>Current Password</Label>
-                    <Input type="password" placeholder="Enter current password" />
+                    <Input
+                      type="password"
+                      placeholder="Enter current password"
+                    />
                   </div>
                   <div>
                     <Label>New Password</Label>
@@ -345,13 +436,17 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Two-Factor Authentication</CardTitle>
-                <CardDescription>Add an extra layer of security to your account.</CardDescription>
+                <CardDescription>
+                  Add an extra layer of security to your account.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">Two-Factor Authentication</p>
-                    <p className="text-sm text-muted-foreground">Secure your account with 2FA</p>
+                    <p className="text-sm text-muted-foreground">
+                      Secure your account with 2FA
+                    </p>
                   </div>
                   <Button variant="outline">Enable 2FA</Button>
                 </div>
@@ -361,13 +456,17 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>API Keys</CardTitle>
-                <CardDescription>Manage your API keys for integrations.</CardDescription>
+                <CardDescription>
+                  Manage your API keys for integrations.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between p-3 border rounded">
                   <div>
                     <p className="font-medium">Personal Access Token</p>
-                    <p className="text-sm text-muted-foreground">Created on Dec 15, 2024</p>
+                    <p className="text-sm text-muted-foreground">
+                      Created on Dec 15, 2024
+                    </p>
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm">
@@ -391,7 +490,9 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Current Plan</CardTitle>
-                <CardDescription>Manage your subscription and billing information.</CardDescription>
+                <CardDescription>
+                  Manage your subscription and billing information.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between p-4 border rounded-lg">
@@ -400,7 +501,9 @@ export default function SettingsPage() {
                       <h3 className="font-semibold">Pro Plan</h3>
                       <Badge>Current</Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground">$12/month • Renews on Jan 15, 2025</p>
+                    <p className="text-sm text-muted-foreground">
+                      $12/month • Renews on Jan 15, 2025
+                    </p>
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline">Change Plan</Button>
@@ -413,7 +516,9 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Payment Method</CardTitle>
-                <CardDescription>Update your payment information.</CardDescription>
+                <CardDescription>
+                  Update your payment information.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between p-3 border rounded">
@@ -423,7 +528,9 @@ export default function SettingsPage() {
                     </div>
                     <div>
                       <p className="font-medium">•••• •••• •••• 4242</p>
-                      <p className="text-sm text-muted-foreground">Expires 12/26</p>
+                      <p className="text-sm text-muted-foreground">
+                        Expires 12/26
+                      </p>
                     </div>
                   </div>
                   <Button variant="outline" size="sm">
@@ -440,7 +547,9 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Connected Accounts</CardTitle>
-                <CardDescription>Connect your accounts to sync data and enable features.</CardDescription>
+                <CardDescription>
+                  Connect your accounts to sync data and enable features.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between p-3 border rounded">
@@ -448,7 +557,9 @@ export default function SettingsPage() {
                     <Github className="h-6 w-6" />
                     <div>
                       <p className="font-medium">GitHub</p>
-                      <p className="text-sm text-muted-foreground">Connected as @johndoe</p>
+                      <p className="text-sm text-muted-foreground">
+                        Connected as @johndoe
+                      </p>
                     </div>
                   </div>
                   <Button variant="outline" size="sm">
@@ -461,7 +572,9 @@ export default function SettingsPage() {
                     <Globe className="h-6 w-6" />
                     <div>
                       <p className="font-medium">Vercel</p>
-                      <p className="text-sm text-muted-foreground">Not connected</p>
+                      <p className="text-sm text-muted-foreground">
+                        Not connected
+                      </p>
                     </div>
                   </div>
                   <Button variant="outline" size="sm">
@@ -487,20 +600,26 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>AI Settings</CardTitle>
-                <CardDescription>Configure AI features and preferences.</CardDescription>
+                <CardDescription>
+                  Configure AI features and preferences.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <Label>AI Code Suggestions</Label>
-                    <p className="text-sm text-muted-foreground">Enable AI-powered code completion</p>
+                    <p className="text-sm text-muted-foreground">
+                      Enable AI-powered code completion
+                    </p>
                   </div>
                   <Switch defaultChecked />
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
                     <Label>Voice Assistant</Label>
-                    <p className="text-sm text-muted-foreground">Enable voice interactions with AI</p>
+                    <p className="text-sm text-muted-foreground">
+                      Enable voice interactions with AI
+                    </p>
                   </div>
                   <Switch defaultChecked />
                 </div>
@@ -523,5 +642,5 @@ export default function SettingsPage() {
         </Tabs>
       </div>
     </div>
-  )
+  );
 }

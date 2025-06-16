@@ -1,8 +1,8 @@
 import type React from "react";
 import Link from "next/link";
-import LoginCard from "./login-card";
+import SignupCard from "./signup-card";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/50 p-4">
       <div className="w-full max-w-md">
@@ -35,17 +35,17 @@ export default function LoginPage() {
             </svg>
             <span className="text-2xl font-bold text-primary">CodeJoin</span>
           </Link>
-          <h1 className="text-2xl font-bold">Welcome back</h1>
+          <h1 className="text-2xl font-bold">Create your account</h1>
           <p className="text-muted-foreground">
-            Sign in to your account to continue
+            Join thousands of developers coding together
           </p>
         </div>
 
-        <LoginCard />
+        <SignupCard />
 
         {/* Footer */}
         <p className="text-center text-xs text-muted-foreground mt-8">
-          By signing in, you agree to our{" "}
+          By creating an account, you agree to our{" "}
           <Link href="/terms" className="hover:underline">
             Terms of Service
           </Link>{" "}

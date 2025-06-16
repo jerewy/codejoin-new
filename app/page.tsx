@@ -1,11 +1,12 @@
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { ArrowRight, Code, Users, Zap, Video, Github } from "lucide-react"
-import FeatureCard from "@/components/feature-card"
-import CodeDemo from "@/components/code-demo"
-import Testimonial from "@/components/testimonial"
-import PricingCard from "@/components/pricing-card"
-import { Badge } from "@/components/ui/badge"
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { ArrowRight, Code, Users, Zap, Video, Github } from "lucide-react";
+import FeatureCard from "@/components/feature-card";
+import CodeDemo from "@/components/code-demo";
+import Testimonial from "@/components/testimonial";
+import PricingCard from "@/components/pricing-card";
+import { Badge } from "@/components/ui/badge";
+import AuthButtons from "@/components/auth-buttons";
 
 export default function LandingPage() {
   return (
@@ -27,33 +28,50 @@ export default function LandingPage() {
                   d="M8 6C8 4.89543 8.89543 4 10 4H22C23.1046 4 24 4.89543 24 6V26C24 27.1046 23.1046 28 22 28H10C8.89543 28 8 27.1046 8 26V6Z"
                   fill="#FF5722"
                 />
-                <path d="M14 10L18 14M18 10L14 14" stroke="#0D47A1" strokeWidth="2" strokeLinecap="round" />
-                <path d="M14 18L18 22M18 18L14 22" stroke="#0D47A1" strokeWidth="2" strokeLinecap="round" />
+                <path
+                  d="M14 10L18 14M18 10L14 14"
+                  stroke="#0D47A1"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M14 18L18 22M18 18L14 22"
+                  stroke="#0D47A1"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
               </svg>
               <span className="text-xl font-bold text-primary">CodeJoin</span>
             </div>
           </div>
           <nav className="hidden md:flex items-center gap-6">
-            <Link href="#features" className="text-sm font-medium hover:underline underline-offset-4 scroll-smooth">
+            <Link
+              href="#features"
+              className="text-sm font-medium hover:underline underline-offset-4 scroll-smooth"
+            >
               Features
             </Link>
-            <Link href="#how-it-works" className="text-sm font-medium hover:underline underline-offset-4 scroll-smooth">
+            <Link
+              href="#how-it-works"
+              className="text-sm font-medium hover:underline underline-offset-4 scroll-smooth"
+            >
               How It Works
             </Link>
-            <Link href="#pricing" className="text-sm font-medium hover:underline underline-offset-4 scroll-smooth">
+            <Link
+              href="#pricing"
+              className="text-sm font-medium hover:underline underline-offset-4 scroll-smooth"
+            >
               Pricing
             </Link>
-            <Link href="#testimonials" className="text-sm font-medium hover:underline underline-offset-4 scroll-smooth">
+            <Link
+              href="#testimonials"
+              className="text-sm font-medium hover:underline underline-offset-4 scroll-smooth"
+            >
               Testimonials
             </Link>
           </nav>
           <div className="flex items-center gap-4">
-            <Link href="/login">
-              <Button variant="outline">Log In</Button>
-            </Link>
-            <Link href="/signup">
-              <Button>Sign Up Free</Button>
-            </Link>
+            <AuthButtons />
           </div>
         </div>
       </header>
@@ -65,19 +83,23 @@ export default function LandingPage() {
             <div className="grid gap-6 lg:grid-cols-[1fr_400px] lg:gap-12 xl:grid-cols-[1fr_600px]">
               <div className="flex flex-col justify-center space-y-4">
                 <div className="space-y-2">
-                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                  <Badge
+                    variant="outline"
+                    className="bg-primary/10 text-primary border-primary/20"
+                  >
                     Now in Public Beta
                   </Badge>
                   <h1 className="text-3xl font-bold tracking-tighter sm:text-5xl xl:text-6xl/none">
                     Code Together in Real-Time
                   </h1>
                   <p className="max-w-[600px] text-muted-foreground md:text-xl">
-                    CodeJoin is a collaborative coding platform that lets developers code together, preview results
-                    instantly, and get AI-powered suggestions.
+                    CodeJoin is a collaborative coding platform that lets
+                    developers code together, preview results instantly, and get
+                    AI-powered suggestions.
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 min-[400px]:flex-row">
-                  <Link href="/signup">
+                  <Link href="/dashboard">
                     <Button size="lg" className="gap-1.5">
                       Start Coding <ArrowRight className="h-4 w-4" />
                     </Button>
@@ -105,12 +127,15 @@ export default function LandingPage() {
           <div className="container px-4 md:px-6">
             <div className="flex flex-col items-center justify-center space-y-4 text-center">
               <div className="space-y-2">
-                <div className="inline-block rounded-lg bg-muted px-3 py-1 text-sm">Key Features</div>
+                <div className="inline-block rounded-lg bg-muted px-3 py-1 text-sm">
+                  Key Features
+                </div>
                 <h2 className="text-3xl font-bold tracking-tighter md:text-4xl">
                   Everything You Need to Code Collaboratively
                 </h2>
                 <p className="max-w-[900px] text-muted-foreground md:text-xl/relaxed lg:text-base/relaxed xl:text-xl/relaxed">
-                  CodeJoin combines the best tools for real-time collaboration, live previews, and AI assistance.
+                  CodeJoin combines the best tools for real-time collaboration,
+                  live previews, and AI assistance.
                 </p>
               </div>
             </div>
@@ -154,10 +179,15 @@ export default function LandingPage() {
           <div className="container px-4 md:px-6">
             <div className="flex flex-col items-center justify-center space-y-4 text-center">
               <div className="space-y-2">
-                <div className="inline-block rounded-lg bg-muted px-3 py-1 text-sm">How It Works</div>
-                <h2 className="text-3xl font-bold tracking-tighter md:text-4xl">Start Collaborating in Minutes</h2>
+                <div className="inline-block rounded-lg bg-muted px-3 py-1 text-sm">
+                  How It Works
+                </div>
+                <h2 className="text-3xl font-bold tracking-tighter md:text-4xl">
+                  Start Collaborating in Minutes
+                </h2>
                 <p className="max-w-[900px] text-muted-foreground md:text-xl/relaxed lg:text-base/relaxed xl:text-xl/relaxed">
-                  Our platform is designed to be intuitive and easy to use, so you can focus on coding.
+                  Our platform is designed to be intuitive and easy to use, so
+                  you can focus on coding.
                 </p>
               </div>
             </div>
@@ -186,7 +216,8 @@ export default function LandingPage() {
                 </div>
                 <h3 className="text-xl font-bold">Code & Preview</h3>
                 <p className="text-center text-muted-foreground">
-                  Write code together and see changes in real-time with live preview.
+                  Write code together and see changes in real-time with live
+                  preview.
                 </p>
               </div>
             </div>
@@ -198,8 +229,12 @@ export default function LandingPage() {
           <div className="container px-4 md:px-6">
             <div className="flex flex-col items-center justify-center space-y-4 text-center">
               <div className="space-y-2">
-                <div className="inline-block rounded-lg bg-muted px-3 py-1 text-sm">Pricing</div>
-                <h2 className="text-3xl font-bold tracking-tighter md:text-4xl">Simple, Transparent Pricing</h2>
+                <div className="inline-block rounded-lg bg-muted px-3 py-1 text-sm">
+                  Pricing
+                </div>
+                <h2 className="text-3xl font-bold tracking-tighter md:text-4xl">
+                  Simple, Transparent Pricing
+                </h2>
                 <p className="max-w-[900px] text-muted-foreground md:text-xl/relaxed lg:text-base/relaxed xl:text-xl/relaxed">
                   Choose the plan that's right for you or your team.
                 </p>
@@ -261,8 +296,12 @@ export default function LandingPage() {
           <div className="container px-4 md:px-6">
             <div className="flex flex-col items-center justify-center space-y-4 text-center">
               <div className="space-y-2">
-                <div className="inline-block rounded-lg bg-muted px-3 py-1 text-sm">Testimonials</div>
-                <h2 className="text-3xl font-bold tracking-tighter md:text-4xl">Loved by Developers</h2>
+                <div className="inline-block rounded-lg bg-muted px-3 py-1 text-sm">
+                  Testimonials
+                </div>
+                <h2 className="text-3xl font-bold tracking-tighter md:text-4xl">
+                  Loved by Developers
+                </h2>
                 <p className="max-w-[900px] text-muted-foreground md:text-xl/relaxed lg:text-base/relaxed xl:text-xl/relaxed">
                   See what our users have to say about CodeJoin.
                 </p>
@@ -293,9 +332,12 @@ export default function LandingPage() {
           <div className="container px-4 md:px-6">
             <div className="flex flex-col items-center justify-center space-y-4 text-center">
               <div className="space-y-2">
-                <h2 className="text-3xl font-bold tracking-tighter md:text-4xl">Ready to Start Coding Together?</h2>
+                <h2 className="text-3xl font-bold tracking-tighter md:text-4xl">
+                  Ready to Start Coding Together?
+                </h2>
                 <p className="max-w-[600px] text-muted-foreground md:text-xl/relaxed">
-                  Join thousands of developers who are already using CodeJoin to collaborate more effectively.
+                  Join thousands of developers who are already using CodeJoin to
+                  collaborate more effectively.
                 </p>
               </div>
               <div className="flex flex-col gap-2 min-[400px]:flex-row">
@@ -322,18 +364,27 @@ export default function LandingPage() {
             © 2025 CodeJoin. All rights reserved.
           </p>
           <div className="flex items-center gap-4">
-            <Link href="/terms" className="text-sm text-muted-foreground hover:underline underline-offset-4">
+            <Link
+              href="/terms"
+              className="text-sm text-muted-foreground hover:underline underline-offset-4"
+            >
               Terms
             </Link>
-            <Link href="/privacy" className="text-sm text-muted-foreground hover:underline underline-offset-4">
+            <Link
+              href="/privacy"
+              className="text-sm text-muted-foreground hover:underline underline-offset-4"
+            >
               Privacy
             </Link>
-            <Link href="/contact" className="text-sm text-muted-foreground hover:underline underline-offset-4">
+            <Link
+              href="/contact"
+              className="text-sm text-muted-foreground hover:underline underline-offset-4"
+            >
               Contact
             </Link>
           </div>
         </div>
       </footer>
     </div>
-  )
+  );
 }
