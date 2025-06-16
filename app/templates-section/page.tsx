@@ -17,37 +17,13 @@ import {
 } from "lucide-react";
 import TemplateCard from "@/components/template-card";
 import TemplatePreview from "@/components/template-preview";
-import { useAuthStatus } from "@/hooks/useAuthStatus";
 import NavLinks from "@/components/nav-links";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 
 export default function TemplatesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
-  const isLoggedIn = useAuthStatus();
-  if (!isLoggedIn) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-muted">
-        <Card className="max-w-md w-full p-6">
-          <CardHeader>
-            <CardTitle className="text-center text-2xl font-semibold">
-              Please Log In
-            </CardTitle>
-            <p className="text-center text-sm text-muted-foreground mt-2">
-              You need to be logged in to access the templates.
-            </p>
-          </CardHeader>
-          <CardContent className="flex justify-center">
-            <Button asChild>
-              <a href="/login" className="w-full">
-                Log In
-              </a>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   const categories = [
     { id: "all", name: "All Templates", icon: Globe },
@@ -161,10 +137,10 @@ export default function TemplatesPage() {
       <header className="border-b bg-background/95 backdrop-blur">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-2">
+            <SidebarTrigger />
             <Code className="h-6 w-6 text-primary" />
             <h1 className="text-xl font-bold">Templates</h1>
           </div>
-          <NavLinks />
           <div className="flex items-center gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />

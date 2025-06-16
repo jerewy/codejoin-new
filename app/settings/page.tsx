@@ -38,8 +38,8 @@ import {
   Globe,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useAuthStatus } from "@/hooks/useAuthStatus";
 import NavLinks from "@/components/nav-links";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -58,23 +58,6 @@ export default function SettingsPage() {
     website: "https://johndoe.dev",
   });
 
-  const isLoggedIn = useAuthStatus();
-  if (!isLoggedIn) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-muted">
-        <div className="text-center">
-          <h1 className="text-2xl font-semibold mb-4">Access Denied</h1>
-          <p className="text-muted-foreground mb-6">
-            You must be logged in to access settings.
-          </p>
-          <Button asChild>
-            <a href="/login">Log In</a>
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col min-h-screen bg-background">
       {/* Header */}
@@ -82,12 +65,10 @@ export default function SettingsPage() {
         <div className="container flex h-16 items-center justify-between">
           {/* Left side: Icon + Title */}
           <div className="flex items-center gap-2">
+            <SidebarTrigger />
             <Settings className="h-6 w-6 text-primary" />
             <h1 className="text-xl font-bold">Settings</h1>
           </div>
-
-          {/* Right side: Navigation */}
-          <NavLinks />
         </div>
       </header>
 

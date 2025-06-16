@@ -34,8 +34,7 @@ import RecentActivity from "@/components/recent-activity";
 import QuickStats from "@/components/quick-stats";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { useAuthStatus } from "@/hooks/useAuthStatus";
-import NavLinks from "@/components/nav-links";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 
 const UserDropdown = dynamic(() => import("@/components/user-dropdown"), {
   ssr: false,
@@ -44,21 +43,6 @@ const UserDropdown = dynamic(() => import("@/components/user-dropdown"), {
 export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
-  const isLoggedIn = useAuthStatus();
-  if (!isLoggedIn) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">
-            Please log in to access the dashboard
-          </h1>
-          <Link href="/login">
-            <Button>Log In</Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
 
   const projects = [
     {
@@ -185,6 +169,7 @@ export default function DashboardPage() {
       <header className="border-b bg-background/95 backdrop-blur">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-2">
+            <SidebarTrigger />
             <div className="flex items-center">
               <svg
                 width="32"
@@ -214,7 +199,6 @@ export default function DashboardPage() {
               <span className="text-xl font-bold text-primary">CodeJoin</span>
             </div>
           </div>
-          <NavLinks />
           <div className="flex items-center gap-4">
             <Button>
               <Plus className="h-4 w-4 mr-2" />
