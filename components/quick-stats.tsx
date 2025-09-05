@@ -1,28 +1,64 @@
-"use client"
+"use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Folder, Users, Clock, Star } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Folder, Users, Clock, Star, Code } from "lucide-react";
 
 interface QuickStatsProps {
   projects: Array<{
-    status: string
-    collaborators: number
-    isStarred: boolean
-  }>
+    status: string | null; // Allow for null status
+    collaborators: number;
+    isStarred: boolean | null; // Allow for null
+    language: string | null; // Add language
+    created_at: string; // Add creation date
+  }>;
 }
 
 export default function QuickStats({ projects }: QuickStatsProps) {
-  const totalProjects = projects.length
-  const activeProjects = projects.filter((p) => p.status === "active").length
-  const totalCollaborators = projects.reduce((sum, p) => sum + p.collaborators, 0)
-  const starredProjects = projects.filter((p) => p.isStarred).length
+  const totalProjects = projects.length;
+  const activeProjects = projects.filter((p) => p.status === "active").length;
+  const totalCollaborators = projects.reduce(
+    (sum, p) => sum + (p.collaborators ?? 0),
+    0
+  );
+  const starredProjects = projects.filter((p) => p.isStarred).length;
+
+  const getMostFrequentLanguage = () => {
+    if (projects.length === 0) return "N/A";
+    const languageCounts = projects.reduce((acc, p) => {
+      if (p.language) {
+        acc[p.language] = (acc[p.language] || 0) + 1;
+      }
+      return acc;
+    }, {} as Record<string, number>);
+
+    const topLanguage = Object.keys(languageCounts).reduce(
+      (a, b) => (languageCounts[a] > languageCounts[b] ? a : b),
+      "None"
+    );
+    return topLanguage;
+  };
+
+  const mostFrequentLanguage = getMostFrequentLanguage();
+  // New stat calculation
+  const completedProjects = projects.filter(
+    (p) => p.status === "completed"
+  ).length;
+  // ...
+  const projectsThisMonth = projects.filter((p) => {
+    const projectDate = new Date(p.created_at);
+    const now = new Date();
+    return (
+      projectDate.getMonth() === now.getMonth() &&
+      projectDate.getFullYear() === now.getFullYear()
+    );
+  }).length;
 
   const stats = [
     {
       title: "Total Projects",
       value: totalProjects,
       icon: Folder,
-      description: `${activeProjects} active`,
+      description: `${activeProjects} active projects`,
     },
     {
       title: "Collaborators",
@@ -31,18 +67,19 @@ export default function QuickStats({ projects }: QuickStatsProps) {
       description: "Across all projects",
     },
     {
-      title: "Hours This Week",
-      value: "24.5",
-      icon: Clock,
-      description: "+12% from last week",
+      // REPLACED "Hours This Week"
+      title: "Top Language",
+      value: mostFrequentLanguage, // Use the new calculation
+      icon: Code, // You might need to import this icon from lucide-react
+      description: "Most frequently used",
     },
     {
-      title: "Starred Projects",
+      title: "Starred",
       value: starredProjects,
       icon: Star,
-      description: "Quick access",
+      description: `${completedProjects} projects completed`,
     },
-  ]
+  ];
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
@@ -59,5 +96,5 @@ export default function QuickStats({ projects }: QuickStatsProps) {
         </Card>
       ))}
     </div>
-  )
+  );
 }

@@ -1,25 +1,35 @@
-"use client"
+"use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { MoreHorizontal, Users, Clock, Star, Eye, Share2, Settings, Trash2 } from "lucide-react"
-import Link from "next/link"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  MoreHorizontal,
+  Users,
+  Clock,
+  Star,
+  Eye,
+  Share2,
+  Settings,
+  Trash2,
+} from "lucide-react";
+import Link from "next/link";
+import { Project } from "@/lib/types";
 
 interface ProjectCardProps {
-  project: {
-    id: string
-    name: string
-    description: string
-    type: string
-    collaborators: number
-    lastModified: string
-    status: string
-    isStarred: boolean
-    thumbnail: string
-    tags: string[]
-  }
+  project: Project;
 }
 
 export default function ProjectCard({ project }: ProjectCardProps) {
@@ -29,11 +39,17 @@ export default function ProjectCard({ project }: ProjectCardProps) {
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2">
             <CardTitle className="text-lg">{project.name}</CardTitle>
-            {project.isStarred && <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />}
+            {project.isStarred && (
+              <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+            )}
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="opacity-0 group-hover:opacity-100"
+              >
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -57,7 +73,9 @@ export default function ProjectCard({ project }: ProjectCardProps) {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <CardDescription className="line-clamp-2">{project.description}</CardDescription>
+        <CardDescription className="line-clamp-2">
+          {project.description}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="aspect-video bg-muted rounded-lg mb-4 overflow-hidden">
@@ -69,7 +87,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
         </div>
 
         <div className="flex flex-wrap gap-1 mb-3">
-          {project.tags.map((tag) => (
+          {project.tags?.map((tag) => (
             <Badge key={tag} variant="secondary" className="text-xs">
               {tag}
             </Badge>
@@ -84,10 +102,14 @@ export default function ProjectCard({ project }: ProjectCardProps) {
             </div>
             <div className="flex items-center gap-1">
               <Clock className="h-4 w-4" />
-              {project.lastModified}
+              {new Date(project.updated_at).toLocaleDateString()}
             </div>
           </div>
-          <Badge variant={project.status === "active" ? "default" : "secondary"}>{project.status}</Badge>
+          <Badge
+            variant={project.status === "active" ? "default" : "secondary"}
+          >
+            {project.status}
+          </Badge>
         </div>
 
         <Link href={`/project/${project.id}`}>
@@ -95,5 +117,5 @@ export default function ProjectCard({ project }: ProjectCardProps) {
         </Link>
       </CardContent>
     </Card>
-  )
+  );
 }

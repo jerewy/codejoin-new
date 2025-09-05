@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +26,7 @@ import {
   Eye,
   GitBranch,
   Calendar,
-  Activity as ActivityIcon,
+  Activity,
 } from "lucide-react";
 import Link from "next/link";
 import ProjectCard from "@/components/project-card";
@@ -35,8 +35,6 @@ import QuickStats from "@/components/quick-stats";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { supabase } from "@/lib/supabaseClient";
-import { Project, Activity } from "@/lib/types";
 
 const UserDropdown = dynamic(() => import("@/components/user-dropdown"), {
   ssr: false,
@@ -46,103 +44,120 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
 
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
-  const [userName, setUserName] = useState<string>("");
+  const projects = [
+    {
+      id: "1",
+      name: "E-commerce Website",
+      description: "Modern React-based online store with payment integration",
+      type: "React",
+      collaborators: 3,
+      lastModified: "2 hours ago",
+      status: "active",
+      isStarred: true,
+      thumbnail: "/placeholder.svg?height=120&width=200",
+      tags: ["React", "TypeScript", "Stripe"],
+    },
+    {
+      id: "2",
+      name: "Portfolio Site",
+      description: "Personal portfolio website with animations",
+      type: "HTML/CSS/JS",
+      collaborators: 1,
+      lastModified: "1 day ago",
+      status: "completed",
+      isStarred: false,
+      thumbnail: "/placeholder.svg?height=120&width=200",
+      tags: ["HTML", "CSS", "JavaScript"],
+    },
+    {
+      id: "3",
+      name: "Task Management App",
+      description: "Collaborative task management with real-time updates",
+      type: "Vue.js",
+      collaborators: 5,
+      lastModified: "3 days ago",
+      status: "active",
+      isStarred: true,
+      thumbnail: "/placeholder.svg?height=120&width=200",
+      tags: ["Vue.js", "Node.js", "MongoDB"],
+    },
+    {
+      id: "4",
+      name: "Weather Dashboard",
+      description: "Real-time weather data visualization",
+      type: "Python",
+      collaborators: 2,
+      lastModified: "1 week ago",
+      status: "archived",
+      isStarred: false,
+      thumbnail: "/placeholder.svg?height=120&width=200",
+      tags: ["Python", "Flask", "API"],
+    },
+    {
+      id: "5",
+      name: "Mobile Game",
+      description: "2D puzzle game built with JavaScript",
+      type: "JavaScript",
+      collaborators: 4,
+      lastModified: "2 weeks ago",
+      status: "active",
+      isStarred: false,
+      thumbnail: "/placeholder.svg?height=120&width=200",
+      tags: ["JavaScript", "Canvas", "Game"],
+    },
+    {
+      id: "6",
+      name: "API Documentation",
+      description: "Interactive API documentation site",
+      type: "Markdown",
+      collaborators: 2,
+      lastModified: "3 weeks ago",
+      status: "completed",
+      isStarred: true,
+      thumbnail: "/placeholder.svg?height=120&width=200",
+      tags: ["Markdown", "Documentation"],
+    },
+  ];
 
-  useEffect(() => {
-    async function getDashboardData() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
-        if (user) {
-          const [profileResponse, projectsResponse, activityResponse] =
-            await Promise.all([
-              // Query 1: Fetch user profile
-              supabase
-                .from("profiles")
-                .select("full_name")
-                .eq("id", user.id)
-                .single(),
-
-              // Query 2: Fetch projects
-              supabase.rpc("get_projects_for_user"),
-
-              // Query 3: Fetch recent activities
-              supabase
-                .from("activities")
-                .select(
-                  `
-                id,
-                created_at,
-                activity_type,
-                metadata,
-                profiles ( full_name, user_avatar ),
-                projects ( name )
-              `
-                )
-                .order("created_at", { ascending: false })
-                .limit(5),
-            ]);
-
-          console.log("Projects data from backend:", projectsResponse.data);
-          console.log("Activity data from backend:", activityResponse.data);
-
-          // Handle profile data
-          if (profileResponse.error) throw profileResponse.error;
-          if (profileResponse.data) {
-            setUserName(profileResponse.data.full_name || "User");
-          }
-
-          // Handle projects data
-          if (projectsResponse.error) throw projectsResponse.error;
-          if (projectsResponse.data) {
-            setProjects(projectsResponse.data);
-          }
-
-          // Handle and format activities data
-          if (activityResponse.error) throw activityResponse.error;
-          if (activityResponse.data) {
-            const formattedActivities = activityResponse.data.map(
-              (activity) => ({
-                id: activity.id,
-                description: `${
-                  activity.profiles?.full_name || "Unknown user"
-                } performed action '${activity.activity_type}' on project ${
-                  activity.projects?.name || "Unknown project"
-                }`,
-                timestamp: activity.created_at,
-                user_name: activity.profiles?.full_name || "Unknown user",
-                user_avatar:
-                  activity.profiles?.user_avatar || "/default-avatar.png",
-              })
-            );
-            setRecentActivity(formattedActivities);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching dashboard data:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    getDashboardData();
-  }, []);
-
-  if (loading) {
-    return <div>Loading your dashboard...</div>;
-  }
+  const recentActivity = [
+    {
+      id: 1,
+      user: "Sarah Chen",
+      action: "edited",
+      target: "E-commerce Website",
+      time: "2 minutes ago",
+      avatar: "/placeholder.svg?height=32&width=32",
+    },
+    {
+      id: 2,
+      user: "Mike Rodriguez",
+      action: "commented on",
+      target: "Task Management App",
+      time: "15 minutes ago",
+      avatar: "/placeholder.svg?height=32&width=32",
+    },
+    {
+      id: 3,
+      user: "Alex Kim",
+      action: "joined",
+      target: "Portfolio Site",
+      time: "1 hour ago",
+      avatar: "/placeholder.svg?height=32&width=32",
+    },
+    {
+      id: 4,
+      user: "You",
+      action: "created",
+      target: "Weather Dashboard",
+      time: "2 hours ago",
+      avatar: "/placeholder.svg?height=32&width=32",
+    },
+  ];
 
   const filteredProjects = projects.filter((project) => {
     const matchesSearch =
       project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (project.description?.toLowerCase() || "").includes(
-        searchQuery.toLowerCase()
-      );
+      project.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter =
       selectedFilter === "all" || project.status === selectedFilter;
     return matchesSearch && matchesFilter;
@@ -197,7 +212,7 @@ export default function DashboardPage() {
       <div className="flex-1 container py-6">
         {/* Welcome Section */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Welcome back, {userName}!</h1>
+          <h1 className="text-3xl font-bold mb-2">Welcome back, John!</h1>
           <p className="text-muted-foreground">
             You have {projects.filter((p) => p.status === "active").length}{" "}
             active projects and{" "}
@@ -304,7 +319,7 @@ export default function DashboardPage() {
                           </div>
                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
                             <Clock className="h-4 w-4" />
-                            {new Date(project.updated_at).toLocaleDateString()}
+                            {project.lastModified}
                           </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -346,7 +361,7 @@ export default function DashboardPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <ActivityIcon className="h-5 w-5" />
+                  <Activity className="h-5 w-5" />
                   Recent Activity
                 </CardTitle>
               </CardHeader>
