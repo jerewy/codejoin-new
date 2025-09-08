@@ -294,29 +294,34 @@ export default function NewProjectPage() {
                             ? "default"
                             : "outline"
                         }
-                        className="h-auto p-4 flex flex-col items-start gap-3"
+                        // 👇 1. Remove flexbox properties from the button
+                        className="h-auto p-0"
                         onClick={() => setSelectedTemplate(template.id)}
                       >
-                        <div
-                          className={`p-2 rounded-md ${template.color} text-white`}
-                        >
-                          <Icon className="h-6 w-6" />
-                        </div>
-                        <div className="text-left">
-                          <div className="font-medium">{template.name}</div>
-                          <div className="text-xs text-muted-foreground mb-2">
-                            {template.description}
+                        {/* 👇 2. Add a new div to handle the layout */}
+                        <div className="p-4 flex flex-col items-start gap-3 w-full">
+                          <div
+                            className={`p-2 rounded-md ${template.color} text-white`}
+                          >
+                            <Icon className="h-6 w-6" />
                           </div>
-                          <div className="flex flex-wrap gap-1">
-                            {template.tags.map((tag) => (
-                              <Badge
-                                key={tag}
-                                variant="secondary"
-                                className="text-xs"
-                              >
-                                {tag}
-                              </Badge>
-                            ))}
+
+                          <div className="text-left w-full">
+                            <div className="font-medium">{template.name}</div>
+                            <div className="text-xs text-muted-foreground mb-2 line-clamp-2 min-h-[2.5rem]">
+                              {template.description}
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {template.tags.map((tag) => (
+                                <Badge
+                                  key={tag}
+                                  variant="secondary"
+                                  className="text-xs"
+                                >
+                                  {tag}
+                                </Badge>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       </Button>

@@ -186,10 +186,12 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              New Project
-            </Button>
+            <Link href="./new-project">
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                New Project
+              </Button>
+            </Link>
             <UserDropdown />
           </div>
         </div>
@@ -362,10 +364,12 @@ export default function DashboardPage() {
                 <CardTitle>Quick Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Button className="w-full justify-start" variant="outline">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create New Project
-                </Button>
+                <Link href={"./new-project"}>
+                  <Button className="w-full justify-start" variant="outline">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create New Project
+                  </Button>
+                </Link>
                 <Button className="w-full justify-start" variant="outline">
                   <Users className="h-4 w-4 mr-2" />
                   Invite Team Member
