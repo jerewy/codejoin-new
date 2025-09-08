@@ -94,6 +94,7 @@ export default function DashboardPage() {
           // Handle profile data
           if (profileResponse.error) throw profileResponse.error;
           if (profileResponse.data) {
+            console.log(profileResponse.data);
             setUserName(profileResponse.data.full_name || "User");
           }
 
@@ -107,7 +108,7 @@ export default function DashboardPage() {
           if (activityResponse.error) throw activityResponse.error;
           if (activityResponse.data) {
             const formattedActivities = activityResponse.data.map(
-              (activity) => ({
+              (activity: any) => ({
                 id: activity.id,
                 description: `${
                   activity.profiles?.full_name || "Unknown user"

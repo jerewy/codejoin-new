@@ -13,6 +13,20 @@ export type Project = {
   collaborators: number; // Number of collaborators
 };
 
+export type RawActivity = {
+  id: string;
+  created_at: string;
+  activity_type: string;
+  metadata: any;
+  profile: {
+    full_name: string | null;
+    user_avatar: string | null;
+  } | null;
+  project: {
+    name: string | null;
+  } | null;
+};
+
 export type Activity = {
   id: string;
   description: string;
