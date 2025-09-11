@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 
 const projectTemplates = [
   {
@@ -121,11 +122,69 @@ export default function NewProjectPage() {
   const handleCreateProject = async () => {
     setIsLoading(true);
 
-    // Simulate project creation
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    try {
+      // 1. Get the current authenticated user's ID
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    // Redirect to the new project
-    router.push(`/project/new-project-${Date.now()}`);
+      if (!user) {
+        throw new Error("You must be logged in to create a project.");
+      }
+
+      // 2. Insert the new project into the 'projects' table
+      const { data: newProject, error: projectError } = await supabase
+        .from("projects")
+        .insert({
+          user_id: user.id,
+          name: projectName,
+          description: description,
+          tags: tags,
+          language: selectedTemplate, // Assuming template ID matches language
+          // You can add other fields like 'isStarred' or 'status' here
+        })
+        .select() // Ask Supabase to return the newly created row
+        .single(); // Expect only one row to be returned
+
+      if (projectError) {
+        throw projectError; // If there was an error, stop the process
+      }
+
+      // 3. Create a default root folder in 'project_nodes' for the new project
+      const { error: nodeError } = await supabase.from("project_nodes").insert({
+        project_id: newProject.id, // Use the ID from the newly created project
+        name: "root",
+        type: "folder",
+        parent_id: null, // The root folder has no parent
+      });
+
+      if (nodeError) {
+        // Note: In a real app, you might want to delete the project created in step 2
+        // if this step fails, to avoid orphaned data.
+        throw nodeError;
+      }
+
+      // 4. Redirect to the new project page on success
+      router.push(`/project/${newProject.id}`);
+    } catch (error: unknown) {
+      // Always log the full error for debugging purposes
+      console.error("Error creating project:", error);
+
+      let errorMessage = "An unexpected error occurred. Please try again.";
+
+      // Check if it's an Error instance
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      // You could add more specific checks for Supabase errors if needed
+      // else if (isSupabaseError(error)) { ... }
+
+      // Show a user-friendly error message (replace with your toast library)
+      alert(errorMessage); // Example: toast.error(errorMessage);
+    } finally {
+      // 5. This will run whether the process succeeds or fails
+      setIsLoading(false);
+    }
   };
 
   const handleImportFromGithub = async () => {
@@ -147,7 +206,6 @@ export default function NewProjectPage() {
             <Link href="/dashboard">
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Dashboard
               </Button>
             </Link>
             <Separator orientation="vertical" className="h-6" />
@@ -206,7 +264,7 @@ export default function NewProjectPage() {
                     </div>
                   </div>
                 </Button>
-                <Button
+                {/* <Button
                   variant={importMethod === "github" ? "default" : "outline"}
                   className="h-auto p-4 flex flex-col items-center gap-2"
                   onClick={() => setImportMethod("github")}
@@ -218,7 +276,7 @@ export default function NewProjectPage() {
                       Import an existing repository
                     </div>
                   </div>
-                </Button>
+                </Button> */}
                 <Button
                   variant={importMethod === "blank" ? "default" : "outline"}
                   className="h-auto p-4 flex flex-col items-center gap-2"

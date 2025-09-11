@@ -36,7 +36,7 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/lib/supabaseClient";
-import { Project, Activity } from "@/lib/types";
+import { Project, Activity, RawActivity } from "@/lib/types";
 
 const UserDropdown = dynamic(() => import("@/components/user-dropdown"), {
   ssr: false,
@@ -108,18 +108,31 @@ export default function DashboardPage() {
           if (activityResponse.error) throw activityResponse.error;
           if (activityResponse.data) {
             const formattedActivities = activityResponse.data.map(
-              (activity: any) => ({
-                id: activity.id,
-                description: `${
-                  activity.profiles?.full_name || "Unknown user"
-                } performed action '${activity.activity_type}' on project ${
-                  activity.projects?.name || "Unknown project"
-                }`,
-                timestamp: activity.created_at,
-                user_name: activity.profiles?.full_name || "Unknown user",
-                user_avatar:
-                  activity.profiles?.user_avatar || "/default-avatar.png",
-              })
+              (activity: RawActivity) => {
+                // 1. Check if profiles is an array; if so, take the first item.
+                //    If not, use it as is.
+                const profile = Array.isArray(activity.profiles)
+                  ? activity.profiles[0]
+                  : activity.profiles;
+
+                // Do the same for the project
+                const project = Array.isArray(activity.projects)
+                  ? activity.projects[0]
+                  : activity.projects;
+
+                // 2. Now, reliably use the 'profile' and 'project' variables
+                return {
+                  id: activity.id,
+                  description: `${
+                    profile?.full_name || "Unknown user"
+                  } performed action '${activity.activity_type}' on project ${
+                    project?.name || "Unknown project"
+                  }`,
+                  timestamp: activity.created_at,
+                  user_name: profile?.full_name || "Unknown user",
+                  user_avatar: profile?.user_avatar || "/default-avatar.png",
+                };
+              }
             );
             setRecentActivity(formattedActivities);
           }
