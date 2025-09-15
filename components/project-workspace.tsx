@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -111,7 +111,16 @@ export default function ProjectWorkspace({
     <div className="flex h-full overflow-hidden">
       {/* Left Sidebar - File Explorer */}
       <div className="w-64 border-r bg-muted/30 flex flex-col">
-        <Tabs defaultValue="files" className="flex-1 flex flex-col">
+        <Tabs
+          defaultValue="files"
+          className="flex-1 flex flex-col"
+          onValueChange={(newValue) => {
+            if (newValue === "ai") {
+              console.log("AI Assistant tab clicked");
+              setIsAIAssistantOpen(true);
+            }
+          }}
+        >
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="files">Files</TabsTrigger>
             <TabsTrigger value="extensions">Extensions</TabsTrigger>
@@ -309,10 +318,7 @@ export default function ProjectWorkspace({
               <TabsTrigger value="console">Console</TabsTrigger>
               <TabsTrigger value="terminal">Terminal</TabsTrigger>
               <TabsTrigger value="problems">Problems</TabsTrigger>
-              <TabsTrigger
-                value="ai"
-                onClick={() => setIsAIAssistantOpen(true)}
-              >
+              <TabsTrigger value="ai">
                 <Brain className="h-4 w-4 mr-2" />
                 AI Assistant
               </TabsTrigger>
