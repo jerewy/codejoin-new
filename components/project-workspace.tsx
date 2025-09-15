@@ -108,23 +108,26 @@ export default function ProjectWorkspace({
   // 👇 The return statement should now start with the main 3-panel div
   //    (because the <header> is now in layout.tsx)
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div className="flex h-full overflow-hidden">
       {/* Left Sidebar - File Explorer */}
       <div className="w-64 border-r bg-muted/30 flex flex-col">
-        <Tabs defaultValue="files" className="flex-1">
+        <Tabs defaultValue="files" className="flex-1 flex flex-col">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="files">Files</TabsTrigger>
             <TabsTrigger value="extensions">Extensions</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
-          <TabsContent value="files" className="flex-1 p-0">
+          <TabsContent value="files" className="flex-1 overflow-y-auto p-0">
             <FileExplorer
               files={files}
               activeFile={activeFile}
               onFileSelect={setActiveFile}
             />
           </TabsContent>
-          <TabsContent value="extensions" className="flex-1 p-0">
+          <TabsContent
+            value="extensions"
+            className="flex-1 overflow-y-auto p-0"
+          >
             <div className="h-full flex flex-col">
               <div className="p-3 border-b">
                 <div className="flex items-center justify-between mb-2">
@@ -182,7 +185,7 @@ export default function ProjectWorkspace({
               </div>
             </div>
           </TabsContent>
-          <TabsContent value="settings" className="flex-1 p-0">
+          <TabsContent value="settings" className="flex-1 overflow-y-auto p-0">
             <div className="h-full overflow-auto p-4 space-y-4">
               <div>
                 <h3 className="text-sm font-medium mb-2">Editor Settings</h3>
@@ -300,8 +303,8 @@ export default function ProjectWorkspace({
         </div>
 
         {/* Bottom Panel - Console/Terminal */}
-        <div className="h-48 border-t">
-          <Tabs defaultValue="console" className="h-full">
+        <div className="h-48 border-t flex flex-col">
+          <Tabs defaultValue="console" className="h-full flex flex-col min-h-0">
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="console">Console</TabsTrigger>
               <TabsTrigger value="terminal">Terminal</TabsTrigger>
@@ -314,10 +317,13 @@ export default function ProjectWorkspace({
                 AI Assistant
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="console" className="h-full p-0">
+            <TabsContent value="console" className="flex-1 overflow-y-auto p-0">
               <ConsoleOutput />
             </TabsContent>
-            <TabsContent value="terminal" className="h-full p-4">
+            <TabsContent
+              value="terminal"
+              className="flex-1 overflow-y-auto p-4"
+            >
               <div className="font-mono text-sm">
                 <div className="text-green-500">$ npm start</div>
                 <div className="text-muted-foreground">
@@ -328,14 +334,20 @@ export default function ProjectWorkspace({
                 </div>
               </div>
             </TabsContent>
-            <TabsContent value="problems" className="h-full p-4">
+            <TabsContent
+              value="problems"
+              className="flex-1 overflow-y-auto p-4"
+            >
               <div className="text-sm text-muted-foreground">
                 No problems detected
               </div>
             </TabsContent>
-            <TabsContent value="ai" className="h-full p-0">
+            <TabsContent
+              value="ai"
+              className="flex-1 flex flex-col min-h-0 p-0"
+            >
               <div className="flex h-full">
-                <div className="flex-1 flex flex-col">
+                <div className="flex-1 flex flex-col min-h-0">
                   <div className="flex-1 overflow-auto p-3 space-y-3">
                     <div className="flex gap-3">
                       <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
@@ -472,7 +484,7 @@ export default function ProjectWorkspace({
                     )}
                   </div>
                 </div>
-                <div className="w-64 border-l p-3 space-y-3">
+                <div className="w-64 border-l p-3 space-y-3 overflow-y-auto">
                   <h3 className="text-sm font-medium">AI Suggestions</h3>
                   <div className="space-y-2">
                     <Button
