@@ -32,7 +32,11 @@ import {
   Send,
   PhoneOff,
   ArrowLeft,
+  ArrowRight,
+  Lock,
+  Eye,
 } from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import CodeEditor from "@/components/code-editor";
 import LivePreview from "@/components/live-preview";
 import VideoCall from "@/components/video-call";
@@ -64,6 +68,7 @@ import {
   mockExtensions,
   mockLanguageOptions,
 } from "@/lib/mock-data";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
 // Define the props it will receive
 interface ProjectWorkspaceProps {
@@ -79,12 +84,13 @@ export default function ProjectWorkspace({
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [isPreviewMaximized, setIsPreviewMaximized] = useState(false);
+  // const [isPreviewMaximized, setIsPreviewMaximized] = useState(false);
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
   const [isExtensionsOpen, setIsExtensionsOpen] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("html");
   const [isAIVoiceActive, setIsAIVoiceActive] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
+  const [viewMode, setViewMode] = useState("code");
 
   // 👇 Use the data passed in via props instead of hardcoded data
   const [files, setFiles] = useState(initialNodes);
@@ -110,7 +116,7 @@ export default function ProjectWorkspace({
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left Sidebar - File Explorer */}
-      <div className="w-64 border-r bg-muted/30 flex flex-col">
+      <aside className="w-64">
         <Tabs
           defaultValue="files"
           className="flex-1 flex flex-col"
@@ -261,294 +267,336 @@ export default function ProjectWorkspace({
             </div>
           </TabsContent>
         </Tabs>
-      </div>
+      </aside>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col">
-        <div className="flex flex-1">
-          {/* Code Editor */}
-          <div className="flex-1 flex flex-col">
-            <div className="flex items-center justify-between p-2 border-b bg-muted/50">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">{activeFile}</span>
-                <Badge variant="secondary" className="text-xs">
-                  {currentLanguage.toUpperCase()}
-                </Badge>
-              </div>
-              <Button variant="ghost" size="sm">
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <CodeEditor
-              file={files.find((f) => f.name === activeFile)}
-              collaborators={collaborators}
-            />
-          </div>
+        <PanelGroup direction="vertical">
+          <Panel defaultSize={70} minSize={20} className="flex flex-col">
+            {/* The New Combined Header */}
+            <div className="flex-shrink-0 flex items-center justify-between p-2 border-b bg-muted/50">
+              {/* The header content will now be dynamic */}
+              {viewMode === "code" ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{activeFile}</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {currentLanguage.toUpperCase()}
+                  </Badge>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {/* Your browser-like controls for the preview */}
+                  <Button variant="ghost" size="icon" className="h-7 w-7">
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    disabled
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7">
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                  <div className="flex-1 bg-background rounded-md px-3 py-1.5 flex items-center ml-2">
+                    <Lock className="h-3 w-3 mr-2 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      localhost:3000
+                    </span>
+                  </div>
+                </div>
+              )}
 
-          {/* Live Preview */}
-          <div
-            className={`${
-              isPreviewMaximized ? "flex-1" : "w-1/2"
-            } flex flex-col border-l`}
+              {/* The New View Switcher Toggle (replaces Maximize/Minimize) */}
+              <ToggleGroup
+                type="single"
+                value={viewMode}
+                onValueChange={(value) => {
+                  if (value) setViewMode(value);
+                }}
+                className="h-8"
+              >
+                <ToggleGroupItem value="code" aria-label="Code view">
+                  <Code className="h-4 w-4" />
+                </ToggleGroupItem>
+                <ToggleGroupItem value="preview" aria-label="Preview view">
+                  <Eye className="h-4 w-4" />
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+
+            {/* The Content Area - Renders one view at a time */}
+            <div className="flex-1 flex flex-col">
+              {viewMode === "code" ? (
+                <CodeEditor
+                  file={files.find((f) => f.name === activeFile)}
+                  collaborators={collaborators}
+                />
+              ) : (
+                <LivePreview files={files} />
+              )}
+            </div>
+          </Panel>
+
+          <PanelResizeHandle className="h-2 bg-muted/50 data-[resize-handle-state=drag]:bg-primary transition-colors" />
+          <Panel
+            defaultSize={30}
+            minSize={5}
+            collapsible={true}
+            collapsedSize={5} // Keeps the tab bar visible when collapsed
           >
-            <div className="flex items-center justify-between p-2 border-b bg-muted/50">
-              <span className="text-sm font-medium">Live Preview</span>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsPreviewMaximized(!isPreviewMaximized)}
+            {/* Bottom Panel - Console/Terminal */}
+            <div className="h-48 border-t flex flex-col">
+              <Tabs
+                defaultValue="console"
+                className="h-full flex flex-col min-h-0"
+              >
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="console">Console</TabsTrigger>
+                  <TabsTrigger value="terminal">Terminal</TabsTrigger>
+                  <TabsTrigger value="problems">Problems</TabsTrigger>
+                  <TabsTrigger value="ai">
+                    <Brain className="h-4 w-4 mr-2" />
+                    AI Assistant
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent
+                  value="console"
+                  className="flex-1 overflow-y-auto p-0"
                 >
-                  {isPreviewMaximized ? (
-                    <Minimize2 className="h-4 w-4" />
-                  ) : (
-                    <Maximize2 className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
+                  <ConsoleOutput />
+                </TabsContent>
+                <TabsContent
+                  value="terminal"
+                  className="flex-1 overflow-y-auto p-4"
+                >
+                  <div className="font-mono text-sm">
+                    <div className="text-green-500">$ npm start</div>
+                    <div className="text-muted-foreground">
+                      Starting development server...
+                    </div>
+                    <div className="text-muted-foreground">
+                      Server running on http://localhost:3000
+                    </div>
+                  </div>
+                </TabsContent>
+                <TabsContent
+                  value="problems"
+                  className="flex-1 overflow-y-auto p-4"
+                >
+                  <div className="text-sm text-muted-foreground">
+                    No problems detected
+                  </div>
+                </TabsContent>
+                <TabsContent
+                  value="ai"
+                  className="flex-1 flex flex-col min-h-0 p-0"
+                >
+                  <div className="flex h-full">
+                    <div className="flex-1 flex flex-col min-h-0">
+                      <div className="flex-1 overflow-auto p-3 space-y-3">
+                        <div className="flex gap-3">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Brain className="h-4 w-4 text-primary" />
+                          </div>
+                          <div className="flex-1 bg-muted/50 rounded-lg p-3">
+                            <p className="text-sm">
+                              I'm your AI coding assistant. I can help with code
+                              suggestions, debugging, and answering questions
+                              about your project. What can I help you with
+                              today?
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-3 justify-end">
+                          <div className="flex-1 max-w-[80%] bg-primary text-primary-foreground rounded-lg p-3">
+                            <p className="text-sm">
+                              Can you explain how the showMessage function works
+                              in script.js?
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-3">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Brain className="h-4 w-4 text-primary" />
+                          </div>
+                          <div className="flex-1 bg-muted/50 rounded-lg p-3">
+                            <p className="text-sm">
+                              The <code>showMessage()</code> function in
+                              script.js:
+                            </p>
+                            <ol className="text-sm list-decimal pl-5 mt-2 space-y-1">
+                              <li>
+                                Gets the element with ID 'output' from the DOM
+                              </li>
+                              <li>Creates an array of possible messages</li>
+                              <li>Selects a random message from the array</li>
+                              <li>
+                                Sets the innerHTML of the output element to
+                                display the message
+                              </li>
+                              <li>
+                                Adds a subtle animation by temporarily scaling
+                                the element down to 95% and then back to 100%
+                              </li>
+                            </ol>
+                            <p className="text-sm mt-2">
+                              The function is triggered when the user clicks the
+                              button in the HTML file.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="border-t p-3">
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Ask AI about your code..."
+                            value={aiMessage}
+                            onChange={(e) => setAiMessage(e.target.value)}
+                            onKeyPress={(e) =>
+                              e.key === "Enter" && handleSendAIMessage()
+                            }
+                          />
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  onClick={handleSendAIMessage}
+                                  disabled={!aiMessage.trim()}
+                                >
+                                  <Send className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Send message</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant={
+                                    isAIVoiceActive ? "destructive" : "outline"
+                                  }
+                                  onClick={() =>
+                                    setIsAIVoiceActive(!isAIVoiceActive)
+                                  }
+                                >
+                                  {isAIVoiceActive ? (
+                                    <PhoneOff className="h-4 w-4" />
+                                  ) : (
+                                    <Phone className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {isAIVoiceActive
+                                  ? "End voice call"
+                                  : "Start voice call"}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        {isAIVoiceActive && (
+                          <div className="flex items-center justify-between mt-3 p-2 bg-muted/50 rounded-lg">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                              <span className="text-xs font-medium">
+                                Voice Call Active
+                              </span>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setIsMicOn(!isMicOn)}
+                              >
+                                {isMicOn ? (
+                                  <Mic className="h-4 w-4" />
+                                ) : (
+                                  <MicOff className="h-4 w-4" />
+                                )}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setIsSpeakerOn(!isSpeakerOn)}
+                              >
+                                {isSpeakerOn ? (
+                                  <Volume2 className="h-4 w-4" />
+                                ) : (
+                                  <VolumeX className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="w-64 border-l p-3 space-y-3 overflow-y-auto">
+                      <h3 className="text-sm font-medium">AI Suggestions</h3>
+                      <div className="space-y-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full justify-start text-xs"
+                        >
+                          <Zap className="h-3 w-3 mr-2" />
+                          Optimize this function
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full justify-start text-xs"
+                        >
+                          <Code className="h-3 w-3 mr-2" />
+                          Add error handling
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full justify-start text-xs"
+                        >
+                          <FileText className="h-3 w-3 mr-2" />
+                          Generate documentation
+                        </Button>
+                      </div>
+                      <Separator />
+                      <div>
+                        <h4 className="text-xs font-medium mb-2">
+                          Current File Analysis
+                        </h4>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between">
+                            <span>Complexity:</span>
+                            <span className="font-medium">Low</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Issues:</span>
+                            <span className="font-medium text-yellow-500">
+                              2 warnings
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Performance:</span>
+                            <span className="font-medium text-green-500">
+                              Good
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
-            <LivePreview files={files} />
-          </div>
-        </div>
-
-        {/* Bottom Panel - Console/Terminal */}
-        <div className="h-48 border-t flex flex-col">
-          <Tabs defaultValue="console" className="h-full flex flex-col min-h-0">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="console">Console</TabsTrigger>
-              <TabsTrigger value="terminal">Terminal</TabsTrigger>
-              <TabsTrigger value="problems">Problems</TabsTrigger>
-              <TabsTrigger value="ai">
-                <Brain className="h-4 w-4 mr-2" />
-                AI Assistant
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="console" className="flex-1 overflow-y-auto p-0">
-              <ConsoleOutput />
-            </TabsContent>
-            <TabsContent
-              value="terminal"
-              className="flex-1 overflow-y-auto p-4"
-            >
-              <div className="font-mono text-sm">
-                <div className="text-green-500">$ npm start</div>
-                <div className="text-muted-foreground">
-                  Starting development server...
-                </div>
-                <div className="text-muted-foreground">
-                  Server running on http://localhost:3000
-                </div>
-              </div>
-            </TabsContent>
-            <TabsContent
-              value="problems"
-              className="flex-1 overflow-y-auto p-4"
-            >
-              <div className="text-sm text-muted-foreground">
-                No problems detected
-              </div>
-            </TabsContent>
-            <TabsContent
-              value="ai"
-              className="flex-1 flex flex-col min-h-0 p-0"
-            >
-              <div className="flex h-full">
-                <div className="flex-1 flex flex-col min-h-0">
-                  <div className="flex-1 overflow-auto p-3 space-y-3">
-                    <div className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Brain className="h-4 w-4 text-primary" />
-                      </div>
-                      <div className="flex-1 bg-muted/50 rounded-lg p-3">
-                        <p className="text-sm">
-                          I'm your AI coding assistant. I can help with code
-                          suggestions, debugging, and answering questions about
-                          your project. What can I help you with today?
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3 justify-end">
-                      <div className="flex-1 max-w-[80%] bg-primary text-primary-foreground rounded-lg p-3">
-                        <p className="text-sm">
-                          Can you explain how the showMessage function works in
-                          script.js?
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Brain className="h-4 w-4 text-primary" />
-                      </div>
-                      <div className="flex-1 bg-muted/50 rounded-lg p-3">
-                        <p className="text-sm">
-                          The <code>showMessage()</code> function in script.js:
-                        </p>
-                        <ol className="text-sm list-decimal pl-5 mt-2 space-y-1">
-                          <li>
-                            Gets the element with ID 'output' from the DOM
-                          </li>
-                          <li>Creates an array of possible messages</li>
-                          <li>Selects a random message from the array</li>
-                          <li>
-                            Sets the innerHTML of the output element to display
-                            the message
-                          </li>
-                          <li>
-                            Adds a subtle animation by temporarily scaling the
-                            element down to 95% and then back to 100%
-                          </li>
-                        </ol>
-                        <p className="text-sm mt-2">
-                          The function is triggered when the user clicks the
-                          button in the HTML file.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="border-t p-3">
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Ask AI about your code..."
-                        value={aiMessage}
-                        onChange={(e) => setAiMessage(e.target.value)}
-                        onKeyPress={(e) =>
-                          e.key === "Enter" && handleSendAIMessage()
-                        }
-                      />
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              onClick={handleSendAIMessage}
-                              disabled={!aiMessage.trim()}
-                            >
-                              <Send className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Send message</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant={
-                                isAIVoiceActive ? "destructive" : "outline"
-                              }
-                              onClick={() =>
-                                setIsAIVoiceActive(!isAIVoiceActive)
-                              }
-                            >
-                              {isAIVoiceActive ? (
-                                <PhoneOff className="h-4 w-4" />
-                              ) : (
-                                <Phone className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            {isAIVoiceActive
-                              ? "End voice call"
-                              : "Start voice call"}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </div>
-                    {isAIVoiceActive && (
-                      <div className="flex items-center justify-between mt-3 p-2 bg-muted/50 rounded-lg">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                          <span className="text-xs font-medium">
-                            Voice Call Active
-                          </span>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setIsMicOn(!isMicOn)}
-                          >
-                            {isMicOn ? (
-                              <Mic className="h-4 w-4" />
-                            ) : (
-                              <MicOff className="h-4 w-4" />
-                            )}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setIsSpeakerOn(!isSpeakerOn)}
-                          >
-                            {isSpeakerOn ? (
-                              <Volume2 className="h-4 w-4" />
-                            ) : (
-                              <VolumeX className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="w-64 border-l p-3 space-y-3 overflow-y-auto">
-                  <h3 className="text-sm font-medium">AI Suggestions</h3>
-                  <div className="space-y-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full justify-start text-xs"
-                    >
-                      <Zap className="h-3 w-3 mr-2" />
-                      Optimize this function
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full justify-start text-xs"
-                    >
-                      <Code className="h-3 w-3 mr-2" />
-                      Add error handling
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full justify-start text-xs"
-                    >
-                      <FileText className="h-3 w-3 mr-2" />
-                      Generate documentation
-                    </Button>
-                  </div>
-                  <Separator />
-                  <div>
-                    <h4 className="text-xs font-medium mb-2">
-                      Current File Analysis
-                    </h4>
-                    <div className="space-y-1 text-xs">
-                      <div className="flex justify-between">
-                        <span>Complexity:</span>
-                        <span className="font-medium">Low</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Issues:</span>
-                        <span className="font-medium text-yellow-500">
-                          2 warnings
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Performance:</span>
-                        <span className="font-medium text-green-500">Good</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </div>
+          </Panel>
+        </PanelGroup>
       </div>
 
       {/* Right Sidebar - Video Call & Chat */}
-      <div className="w-80 border-l flex flex-col">
+      <aside className="w-80">
         {/* Video Call Area */}
         {isVideoCallActive && (
           <div className="h-64 border-b">
@@ -573,7 +621,7 @@ export default function ProjectWorkspace({
           </div>
           <ChatPanel collaborators={collaborators} />
         </div>
-      </div>
+      </aside>
     </div>
   );
 }
