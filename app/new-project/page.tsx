@@ -10,6 +10,12 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   ArrowLeft,
   Plus,
   X,
@@ -28,6 +34,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { TemplateNode } from "@/lib/types";
 
 const projectTemplates = [
   {
@@ -37,6 +44,35 @@ const projectTemplates = [
     icon: Code,
     tags: ["React", "TypeScript", "Vite"],
     color: "bg-blue-500",
+    // 👇 Structure updated with nested 'children'
+    structure: [
+      {
+        name: "index.html",
+        type: "file",
+        content: `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>React App</title>\n  </head>\n  <body>\n    <div id="root"></div>\n    <script type="module" src="/src/main.tsx"></script>\n  </body>\n</html>`,
+      },
+      {
+        name: "src",
+        type: "folder",
+        children: [
+          {
+            name: "main.tsx",
+            type: "file",
+            content: `import React from 'react'\nimport ReactDOM from 'react-dom/client'\nimport App from './App.tsx'\nimport './index.css'\n\nReactDOM.createRoot(document.getElementById('root')!).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>,\n)`,
+          },
+          {
+            name: "App.tsx",
+            type: "file",
+            content: `function App() {\n  return (\n    <h1>Hello, React!</h1>\n  )\n}\n\nexport default App`,
+          },
+          {
+            name: "index.css",
+            type: "file",
+            content: `body { margin: 0; font-family: sans-serif; }`,
+          },
+        ],
+      },
+    ],
   },
   {
     id: "nextjs-app",
@@ -45,6 +81,26 @@ const projectTemplates = [
     icon: Globe,
     tags: ["Next.js", "React", "TypeScript"],
     color: "bg-black",
+    // 👇 Structure updated with nested 'children'
+    structure: [
+      {
+        name: "app",
+        type: "folder",
+        children: [
+          {
+            name: "layout.tsx",
+            type: "file",
+            content: `export default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang="en">\n      <body>{children}</body>\n    </html>\n  )\n}`,
+          },
+          {
+            name: "page.tsx",
+            type: "file",
+            content: `export default function Home() {\n  return <h1>Hello, Next.js!</h1>\n}`,
+          },
+        ],
+      },
+      { name: "public", type: "folder", children: [] },
+    ],
   },
   {
     id: "vue-app",
@@ -53,6 +109,30 @@ const projectTemplates = [
     icon: Zap,
     tags: ["Vue.js", "TypeScript", "Vite"],
     color: "bg-green-500",
+    // 👇 Structure updated with nested 'children'
+    structure: [
+      {
+        name: "index.html",
+        type: "file",
+        content: `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8">\n    <title>Vue App</title>\n  </head>\n  <body>\n    <div id="app"></div>\n    <script type="module" src="/src/main.ts"></script>\n  </body>\n</html>`,
+      },
+      {
+        name: "src",
+        type: "folder",
+        children: [
+          {
+            name: "main.ts",
+            type: "file",
+            content: `import { createApp } from 'vue'\nimport App from './App.vue'\n\ncreateApp(App).mount('#app')`,
+          },
+          {
+            name: "App.vue",
+            type: "file",
+            content: `<template>\n  <h1>Hello, Vue!</h1>\n</template>`,
+          },
+        ],
+      },
+    ],
   },
   {
     id: "mobile-app",
@@ -61,6 +141,15 @@ const projectTemplates = [
     icon: Smartphone,
     tags: ["React Native", "Expo", "TypeScript"],
     color: "bg-purple-500",
+    // 👇 This structure is already flat and correct
+    structure: [
+      {
+        name: "App.tsx",
+        type: "file",
+        content: `import { StatusBar } from 'expo-status-bar';\nimport { StyleSheet, Text, View } from 'react-native';\n\nexport default function App() {\n  return (\n    <View style={styles.container}>\n      <Text>Hello, React Native!</Text>\n      <StatusBar style="auto" />\n    </View>\n  );\n}\n\nconst styles = StyleSheet.create({\n  container: {\n    flex: 1,\n    backgroundColor: '#fff',\n    alignItems: 'center',\n    justifyContent: 'center',\n  },\n});`,
+      },
+      { name: "assets", type: "folder", children: [] },
+    ],
   },
   {
     id: "game",
@@ -69,6 +158,24 @@ const projectTemplates = [
     icon: Gamepad2,
     tags: ["JavaScript", "Canvas", "WebGL"],
     color: "bg-red-500",
+    // 👇 This structure is already flat and correct
+    structure: [
+      {
+        name: "index.html",
+        type: "file",
+        content: `<!DOCTYPE html>\n<html>\n<head>\n  <title>Game</title>\n  <link rel="stylesheet" href="style.css">\n</head>\n<body>\n  <canvas id="gameCanvas" width="800" height="600"></canvas>\n  <script src="game.js"></script>\n</body>\n</html>`,
+      },
+      {
+        name: "style.css",
+        type: "file",
+        content: `body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; }\ncanvas { border: 1px solid white; }`,
+      },
+      {
+        name: "game.js",
+        type: "file",
+        content: `const canvas = document.getElementById('gameCanvas');\nconst ctx = canvas.getContext('2d');\n\nfunction gameLoop() {\n  ctx.fillStyle = 'black';\n  ctx.fillRect(0, 0, canvas.width, canvas.height);\n\n  ctx.fillStyle = 'white';\n  ctx.font = '48px sans-serif';\n  ctx.fillText('Hello, Game Dev!', 200, 300);\n\n  requestAnimationFrame(gameLoop);\n}\n\ngameLoop();`,
+      },
+    ],
   },
   {
     id: "ai-project",
@@ -77,6 +184,20 @@ const projectTemplates = [
     icon: Bot,
     tags: ["Python", "TensorFlow", "PyTorch"],
     color: "bg-orange-500",
+    // 👇 This structure is already flat and correct
+    structure: [
+      {
+        name: "main.py",
+        type: "file",
+        content: `def main():\n    print("Hello, AI World!")\n\nif __name__ == "__main__":\n    main()`,
+      },
+      { name: "data", type: "folder", children: [] },
+      {
+        name: "README.md",
+        type: "file",
+        content: `# AI Project\n\nThis is a placeholder for the AI/ML project.`,
+      },
+    ],
   },
   {
     id: "api",
@@ -85,6 +206,19 @@ const projectTemplates = [
     icon: Database,
     tags: ["Node.js", "Express", "MongoDB"],
     color: "bg-indigo-500",
+    // 👇 This structure is already flat and correct
+    structure: [
+      {
+        name: "index.js",
+        type: "file",
+        content: `const express = require('express');\nconst app = express();\nconst port = 3001;\n\napp.get('/', (req, res) => {\n  res.send('Hello, API!');\n});\n\napp.listen(port, () => {\n  console.log(\`Server running at http://localhost:\${port}\`);\n});`,
+      },
+      {
+        name: "package.json",
+        type: "file",
+        content: `{ "name": "api-server", "version": "1.0.0", "main": "index.js", "scripts": { "start": "node index.js" }, "dependencies": { "express": "^4.18.2" } }`,
+      },
+    ],
   },
   {
     id: "static-site",
@@ -93,7 +227,45 @@ const projectTemplates = [
     icon: Palette,
     tags: ["HTML", "CSS", "JavaScript"],
     color: "bg-pink-500",
+    // 👇 This structure is already flat and correct
+    structure: [
+      {
+        name: "index.html",
+        type: "file",
+        content: `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>My Project</title>\n  <link rel="stylesheet" href="styles.css">\n</head>\n<body>\n  <h1>Hello, World!</h1>\n  <script src="script.js"></script>\n</body>\n</html>`,
+      },
+      {
+        name: "styles.css",
+        type: "file",
+        content: `body {\n  font-family: sans-serif;\n  display: grid;\n  place-content: center;\n  height: 100vh;\n  margin: 0;\n}`,
+      },
+      {
+        name: "script.js",
+        type: "file",
+        content: `console.log("Hello from your new project!");`,
+      },
+    ],
   },
+] as const;
+
+const languageOptions = [
+  // --- Core Web ---
+  { value: "javascript", label: "JavaScript" },
+  { value: "typescript", label: "TypeScript" },
+  { value: "html", label: "HTML" },
+  { value: "css", label: "CSS" },
+
+  // --- Popular Backend / General Purpose ---
+  { value: "python", label: "Python" },
+  { value: "java", label: "Java" },
+  { value: "csharp", label: "C#" },
+  { value: "go", label: "Go" },
+  { value: "rust", label: "Rust" },
+  { value: "php", label: "PHP" },
+
+  // --- Scripting & Other ---
+  { value: "sql", label: "SQL" },
+  { value: "shell", label: "Shell" },
 ];
 
 export default function NewProjectPage() {
@@ -107,8 +279,16 @@ export default function NewProjectPage() {
   const [importMethod, setImportMethod] = useState("template");
   const [githubUrl, setGithubUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [language, setLanguage] = useState("javascript");
 
+  const MAX_TAGS = 5;
   const addTag = () => {
+    // Check if the tag limit has been reached
+    if (tags.length >= MAX_TAGS) {
+      alert(`You can only add a maximum of ${MAX_TAGS} tags.`); // Or use a toast notification
+      return; // Stop the function
+    }
+
     if (newTag.trim() && !tags.includes(newTag.trim())) {
       setTags([...tags, newTag.trim()]);
       setNewTag("");
@@ -123,16 +303,13 @@ export default function NewProjectPage() {
     setIsLoading(true);
 
     try {
-      // 1. Get the current authenticated user's ID
       const {
         data: { user },
       } = await supabase.auth.getUser();
+      if (!user) throw new Error("You must be logged in to create a project.");
 
-      if (!user) {
-        throw new Error("You must be logged in to create a project.");
-      }
+      const template = projectTemplates.find((t) => t.id === selectedTemplate);
 
-      // 2. Insert the new project into the 'projects' table
       const { data: newProject, error: projectError } = await supabase
         .from("projects")
         .insert({
@@ -140,49 +317,75 @@ export default function NewProjectPage() {
           name: projectName,
           description: description,
           tags: tags,
-          language: selectedTemplate, // Assuming template ID matches language
-          // You can add other fields like 'isStarred' or 'status' here
+          language: template ? template.tags : [],
+          status: "active",
         })
-        .select() // Ask Supabase to return the newly created row
-        .single(); // Expect only one row to be returned
+        .select()
+        .single();
 
-      if (projectError) {
-        throw projectError; // If there was an error, stop the process
+      if (projectError) throw projectError;
+      if (!newProject) throw new Error("Project creation failed.");
+
+      // This function will handle nested structures
+      const createNodesRecursively = async (
+        nodes: TemplateNode[],
+        parentId: string | null
+      ) => {
+        if (!nodes || nodes.length === 0) return;
+
+        const nodesToInsert = nodes.map((node: TemplateNode) => ({
+          project_id: newProject.id,
+          name: node.name,
+          type: node.type,
+          content: node.content || null,
+          parent_id: parentId,
+        }));
+
+        const { data: insertedNodes, error: nodeError } = await supabase
+          .from("project_nodes")
+          .insert(nodesToInsert)
+          .select();
+
+        if (nodeError) throw nodeError;
+        if (!insertedNodes) return; // Add a check for the returned data
+
+        // For each folder we just created, create its children
+        for (let i = 0; i < nodes.length; i++) {
+          const sourceNode = nodes[i];
+          if (sourceNode.type === "folder" && sourceNode.children) {
+            // Also add a type for 'n' here for full type safety
+            const dbNode = insertedNodes.find(
+              (n: { id: string; name: string; parent_id: string | null }) =>
+                n.name === sourceNode.name && n.parent_id === parentId
+            );
+            // Important: Add a check to ensure dbNode was found
+            if (dbNode) {
+              await createNodesRecursively(sourceNode.children, dbNode.id);
+            }
+          }
+        }
+      };
+
+      if (importMethod === "blank" || !template) {
+        // Fallback for "Start Blank" projects
+        await supabase.from("project_nodes").insert({
+          project_id: newProject.id,
+          name: "root",
+          type: "folder",
+          parent_id: null,
+        });
+      } else if (template.structure) {
+        // Start the recursive creation process
+        await createNodesRecursively(template.structure, null);
       }
 
-      // 3. Create a default root folder in 'project_nodes' for the new project
-      const { error: nodeError } = await supabase.from("project_nodes").insert({
-        project_id: newProject.id, // Use the ID from the newly created project
-        name: "root",
-        type: "folder",
-        parent_id: null, // The root folder has no parent
-      });
-
-      if (nodeError) {
-        // Note: In a real app, you might want to delete the project created in step 2
-        // if this step fails, to avoid orphaned data.
-        throw nodeError;
-      }
-
-      // 4. Redirect to the new project page on success
       router.push(`/project/${newProject.id}`);
     } catch (error: unknown) {
-      // Always log the full error for debugging purposes
       console.error("Error creating project:", error);
-
-      let errorMessage = "An unexpected error occurred. Please try again.";
-
-      // Check if it's an Error instance
       if (error instanceof Error) {
-        errorMessage = error.message;
+        alert(error.message);
       }
-      // You could add more specific checks for Supabase errors if needed
-      // else if (isSupabaseError(error)) { ... }
-
-      // Show a user-friendly error message (replace with your toast library)
-      alert(errorMessage); // Example: toast.error(errorMessage);
     } finally {
-      // 5. This will run whether the process succeeds or fails
       setIsLoading(false);
     }
   };
@@ -195,6 +398,18 @@ export default function NewProjectPage() {
 
     // Redirect to the imported project
     router.push(`/project/imported-${Date.now()}`);
+  };
+
+  const handleTemplateSelect = (templateId: string) => {
+    const template = projectTemplates.find((t) => t.id === templateId);
+    if (!template) return;
+
+    setSelectedTemplate(template.id);
+    setProjectName(template.name);
+    setDescription(template.description);
+
+    // Create a new, mutable copy of the readonly tags array
+    setTags([...template.tags]);
   };
 
   return (
@@ -354,32 +569,35 @@ export default function NewProjectPage() {
                         }
                         // 👇 1. Remove flexbox properties from the button
                         className="h-auto p-0"
-                        onClick={() => setSelectedTemplate(template.id)}
+                        // onClick={() => setSelectedTemplate(template.id)}
+                        onClick={() => handleTemplateSelect(template.id)}
                       >
-                        {/* 👇 2. Add a new div to handle the layout */}
-                        <div className="p-4 flex flex-col items-start gap-3 w-full">
-                          <div
-                            className={`p-2 rounded-md ${template.color} text-white`}
-                          >
-                            <Icon className="h-6 w-6" />
+                        {/* The div inside the Button */}
+                        <div className="p-4 flex flex-col items-start gap-3 w-full h-full">
+                          {/* Icon and Title/Description stay the same */}
+                          <div>
+                            <div
+                              className={`p-2 rounded-md ${template.color} text-white`}
+                            >
+                              <Icon className="h-6 w-6" />
+                            </div>
                           </div>
-
                           <div className="text-left w-full">
                             <div className="font-medium">{template.name}</div>
-                            <div className="text-xs text-muted-foreground mb-2 line-clamp-2 min-h-[2.5rem]">
-                              {template.description}
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                              {template.tags.map((tag) => (
-                                <Badge
-                                  key={tag}
-                                  variant="secondary"
-                                  className="text-xs"
-                                >
-                                  {tag}
-                                </Badge>
-                              ))}
-                            </div>
+                            {/* ... your tooltip component for the description ... */}
+                          </div>
+
+                          {/* Add mt-auto to push this div to the bottom */}
+                          <div className="flex flex-wrap gap-1 mt-auto pt-2">
+                            {template.tags.map((tag) => (
+                              <Badge
+                                key={tag}
+                                variant="secondary"
+                                className="text-xs"
+                              >
+                                {tag}
+                              </Badge>
+                            ))}
                           </div>
                         </div>
                       </Button>
@@ -460,12 +678,22 @@ export default function NewProjectPage() {
                 </div>
                 <div className="flex gap-2">
                   <Input
-                    placeholder="Add a tag..."
+                    placeholder={
+                      tags.length >= MAX_TAGS
+                        ? "Tag limit reached"
+                        : "Add a tag..."
+                    }
                     value={newTag}
                     onChange={(e) => setNewTag(e.target.value)}
                     onKeyPress={(e) => e.key === "Enter" && addTag()}
+                    disabled={tags.length >= MAX_TAGS} // Disable when limit is met
                   />
-                  <Button onClick={addTag} variant="outline" size="sm">
+                  <Button
+                    onClick={addTag}
+                    variant="outline"
+                    size="sm"
+                    disabled={tags.length >= MAX_TAGS} // Disable when limit is met
+                  >
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>

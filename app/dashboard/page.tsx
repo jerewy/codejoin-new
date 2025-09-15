@@ -337,9 +337,11 @@ export default function DashboardPage() {
                                 <Share2 className="h-4 w-4 mr-2" />
                                 Share
                               </DropdownMenuItem>
-                              <DropdownMenuItem>
-                                <Settings className="h-4 w-4 mr-2" />
-                                Settings
+                              <DropdownMenuItem asChild>
+                                <Link href={`/project/${project.id}/settings`}>
+                                  <Settings className="h-4 w-4 mr-2" />
+                                  Settings
+                                </Link>
                               </DropdownMenuItem>
                               <DropdownMenuItem className="text-destructive">
                                 <Trash2 className="h-4 w-4 mr-2" />

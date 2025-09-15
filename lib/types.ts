@@ -41,3 +41,19 @@ export type Activity = {
   user_name: string;
   user_avatar: string | null;
 };
+
+export type TemplateNode = {
+  name: string;
+  type: "file" | "folder";
+  content?: string | null; // The '?' makes it optional
+  children?: readonly TemplateNode[]; // Optional array of itself for nesting
+};
+
+// You can add this type to lib/mock-data.ts or a new types file
+
+export type Collaborator = {
+  user_id: string; // From the collaborators table
+  role: string; // From the collaborators table
+  full_name: string | null; // From the profiles table
+  user_avatar: string | null; // From the profiles table
+};
