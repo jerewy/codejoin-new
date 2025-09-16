@@ -18,6 +18,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import CollaboratorsList from "@/components/collaborators-list";
 import { Collaborator } from "@/lib/types";
+import ProjectActions from "@/components/project-actions";
 
 // This type is for your client component, so keep it exported
 export type ProjectNode = {
@@ -77,23 +78,10 @@ export default async function ProjectPage({
           <Separator orientation="vertical" className="h-6" />
           <CollaboratorsList collaborators={collaborators} />
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <Play className="h-4 w-4 mr-1" /> Run
-          </Button>
-          <Button variant="outline" size="sm">
-            <Save className="h-4 w-4 mr-1" /> Save
-          </Button>
-          <Button variant="outline" size="sm">
-            <Share2 className="h-4 w-4 mr-1" /> Share
-          </Button>
-          <Button variant="outline" size="sm">
-            <Settings className="h-4 w-4" />
-          </Button>
-        </div>
+        <ProjectActions />
       </header>
       <main className="flex-1 min-h-0">
-        <ProjectWorkspace initialNodes={nodes} />
+        <ProjectWorkspace initialNodes={nodes} projectId={params.id} />
       </main>
     </div>
   );

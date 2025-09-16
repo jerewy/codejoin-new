@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -69,15 +69,18 @@ import {
   mockLanguageOptions,
 } from "@/lib/mock-data";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { supabase } from "@/lib/supabaseClient";
 
 // Define the props it will receive
 interface ProjectWorkspaceProps {
   initialNodes: ProjectNode[];
+  projectId: string;
 }
 
 // Rename the function and accept props
 export default function ProjectWorkspace({
   initialNodes,
+  projectId,
 }: ProjectWorkspaceProps) {
   const [isVideoCallActive, setIsVideoCallActive] = useState(false);
   const [isMicOn, setIsMicOn] = useState(true);
@@ -113,8 +116,96 @@ export default function ProjectWorkspace({
     }
   };
 
-  // 👇 The return statement should now start with the main 3-panel div
-  //    (because the <header> is now in layout.tsx)
+  // Listen to global header actions
+  useEffect(() => {
+    const onSave = () => {
+      if (currentFile?.id)
+        updateNodeContent(currentFile.id, currentFile.content ?? "");
+    };
+    const onRun = () => {
+      setViewMode("preview");
+    };
+    const onShare = () => {
+      // placeholder: could copy link or open share dialog
+      navigator.clipboard?.writeText(window.location.href);
+    };
+    const saveListener = () => onSave();
+    const runListener = () => onRun();
+    const shareListener = () => onShare();
+    window.addEventListener("project:save", saveListener as any);
+    window.addEventListener("project:run", runListener as any);
+    window.addEventListener("project:share", shareListener as any);
+    return () => {
+      window.removeEventListener("project:save", saveListener as any);
+      window.removeEventListener("project:run", runListener as any);
+      window.removeEventListener("project:share", shareListener as any);
+    };
+  }, [currentFile, viewMode]);
+
+  // Supabase wiring
+  const updateNodeContent = async (nodeId: string, content: string) => {
+    await supabase.from("project_nodes").update({ content }).eq("id", nodeId);
+  };
+
+  const createFile = async (name: string, parentId: string | null = null) => {
+    const { data, error } = await supabase
+      .from("project_nodes")
+      .insert({
+        name,
+        type: "file",
+        content: "",
+        project_id: projectId,
+        parent_id: parentId,
+      })
+      .select()
+      .single();
+    if (!error && data) {
+      setFiles((prev) => [...prev, data as any]);
+      setActiveFile(name);
+    }
+  };
+
+  const createFolder = async (name: string, parentId: string | null = null) => {
+    const { data, error } = await supabase
+      .from("project_nodes")
+      .insert({
+        name,
+        type: "folder",
+        project_id: projectId,
+        parent_id: parentId,
+      })
+      .select()
+      .single();
+    if (!error && data) {
+      setFiles((prev) => [...prev, data as any]);
+    }
+  };
+
+  const renameNode = async (
+    id: string | undefined,
+    _old: string,
+    newName: string
+  ) => {
+    if (!id) return;
+    const { error } = await supabase
+      .from("project_nodes")
+      .update({ name: newName })
+      .eq("id", id);
+    if (!error) {
+      setFiles((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, name: newName } : f))
+      );
+      if (activeFile === _old) setActiveFile(newName);
+    }
+  };
+
+  const deleteNode = async (id: string | undefined) => {
+    if (!id) return;
+    await supabase.from("project_nodes").delete().eq("id", id);
+    setFiles((prev) => prev.filter((f) => f.id !== id));
+    if (currentFile?.id === id) setActiveFile("");
+  };
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left Sidebar - File Explorer */}
@@ -139,6 +230,10 @@ export default function ProjectWorkspace({
               files={files}
               activeFile={activeFile}
               onFileSelect={setActiveFile}
+              onCreateFile={createFile}
+              onCreateFolder={createFolder}
+              onRename={renameNode}
+              onDelete={deleteNode}
             />
           </TabsContent>
           <TabsContent
@@ -282,7 +377,7 @@ export default function ProjectWorkspace({
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{activeFile}</span>
                   <Badge variant="secondary" className="text-xs">
-                    {currentLanguage.toUpperCase()}
+                    {currentLanguage?.toUpperCase()}
                   </Badge>
                 </div>
               ) : (
@@ -333,11 +428,28 @@ export default function ProjectWorkspace({
             <div className="flex-1 flex flex-col">
               {viewMode === "code" ? (
                 <CodeEditor
-                  file={files.find((f) => f.name === activeFile)}
+                  file={files.find((f) => f.name === activeFile) as any}
                   collaborators={collaborators}
+                  onChange={(newContent) => {
+                    if (!currentFile) return;
+                    setFiles((prev) =>
+                      prev.map((f) =>
+                        f.name === currentFile.name
+                          ? { ...f, content: newContent }
+                          : f
+                      )
+                    );
+                  }}
+                  onSave={async () => {
+                    if (!currentFile?.id) return;
+                    await updateNodeContent(
+                      currentFile.id,
+                      currentFile.content ?? ""
+                    );
+                  }}
                 />
               ) : (
-                <LivePreview files={files} />
+                <LivePreview files={files as any} />
               )}
             </div>
           </Panel>

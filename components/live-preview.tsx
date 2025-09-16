@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 interface LivePreviewProps {
-  files: Array<{ name: string; content: string }>;
+  files: Array<{ name: string; content: string | null }>;
 }
 
 export default function LivePreview({ files }: LivePreviewProps) {
@@ -15,13 +15,13 @@ export default function LivePreview({ files }: LivePreviewProps) {
     const jsFile = files.find((f) => f.name.endsWith(".js"));
 
     if (htmlFile) {
-      let content = htmlFile.content;
+      let content = htmlFile.content ?? "";
 
       // Inject CSS
       if (cssFile) {
         content = content.replace(
           '<link rel="stylesheet" href="styles.css">',
-          `<style>${cssFile.content}</style>`
+          `<style>${cssFile.content ?? ""}</style>`
         );
       }
 
@@ -29,7 +29,7 @@ export default function LivePreview({ files }: LivePreviewProps) {
       if (jsFile) {
         content = content.replace(
           '<script src="script.js"></script>',
-          `<script>${jsFile.content}</script>`
+          `<script>${jsFile.content ?? ""}</script>`
         );
       }
 

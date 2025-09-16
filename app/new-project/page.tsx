@@ -317,7 +317,7 @@ export default function NewProjectPage() {
           name: projectName,
           description: description,
           tags: tags,
-          language: template ? template.tags : [],
+          language: template ? template.tags.join(", ") : null,
           status: "active",
         })
         .select()
@@ -328,7 +328,7 @@ export default function NewProjectPage() {
 
       // This function will handle nested structures
       const createNodesRecursively = async (
-        nodes: TemplateNode[],
+        nodes: readonly TemplateNode[],
         parentId: string | null
       ) => {
         if (!nodes || nodes.length === 0) return;
@@ -376,7 +376,7 @@ export default function NewProjectPage() {
         });
       } else if (template.structure) {
         // Start the recursive creation process
-        await createNodesRecursively(template.structure, null);
+        await createNodesRecursively([...template.structure], null);
       }
 
       router.push(`/project/${newProject.id}`);
