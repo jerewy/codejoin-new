@@ -113,10 +113,11 @@ export default function FileExplorer({
         {items.map((item) => {
           if (item.type === "folder") {
             const isOpen = item.id ? expandedFolders.has(item.id) : false;
+            const isSelected = selectedFolderId === item.id;
             return (
               <div key={`${item.id ?? item.name}`}>
                 <div
-                  className={`flex items-center gap-2 p-1 rounded hover:bg-muted `}
+                  className={`flex items-center gap-2 p-1 rounded hover:bg-muted`}
                 >
                   <Button
                     variant="ghost"
@@ -223,21 +224,27 @@ export default function FileExplorer({
 
       <div className="flex-1 overflow-auto">
         <div className="p-2">
-          <div className="flex items-center gap-1 mb-2">
+          {/* Root row styled like other folders */}
+          <div className={`flex items-center gap-2 p-1 rounded hover:bg-muted`}>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
+              className="h-5 w-5"
               onClick={() => setIsExpanded(!isExpanded)}
-              className="p-0 h-auto"
             >
               {isExpanded ? (
                 <ChevronDown className="h-4 w-4" />
               ) : (
                 <ChevronRight className="h-4 w-4" />
               )}
+            </Button>
+            <button
+              className="flex-1 flex items-center gap-2 text-left"
+              onClick={() => setSelectedFolderId(null)}
+            >
               <Folder className="h-4 w-4 text-blue-500" />
               <span className="text-sm font-medium">root</span>
-            </Button>
+            </button>
           </div>
 
           {isExpanded && (
@@ -263,6 +270,10 @@ export default function FileExplorer({
                         setIsCreatingFolder(false);
                         setNewFolderName("");
                       }
+                    }}
+                    onBlur={() => {
+                      setIsCreatingFolder(false);
+                      setNewFolderName("");
                     }}
                     placeholder="folder-name"
                     className="h-6 text-xs"
@@ -291,7 +302,11 @@ export default function FileExplorer({
                         setNewFileName("");
                       }
                     }}
-                    placeholder="filename.ext"
+                    onBlur={() => {
+                      setIsCreatingFile(false);
+                      setNewFileName("");
+                    }}
+                    placeholder="filename"
                     className="h-6 text-xs"
                     autoFocus
                   />
