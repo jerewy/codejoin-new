@@ -246,6 +246,15 @@ const projectTemplates = [
       },
     ],
   },
+  {
+    id: "blank",
+    name: "Blank Project",
+    description: "Start with an empty folder.",
+    icon: Folder,
+    tags: [],
+    color: "bg-gray-500",
+    structure: [],
+  },
 ] as const;
 
 const languageOptions = [
@@ -326,57 +335,39 @@ export default function NewProjectPage() {
       if (projectError) throw projectError;
       if (!newProject) throw new Error("Project creation failed.");
 
-      // This function will handle nested structures
+      // This function will handle nested structures reliably
       const createNodesRecursively = async (
         nodes: readonly TemplateNode[],
         parentId: string | null
       ) => {
         if (!nodes || nodes.length === 0) return;
 
-        const nodesToInsert = nodes.map((node: TemplateNode) => ({
-          project_id: newProject.id,
-          name: node.name,
-          type: node.type,
-          content: node.content || null,
-          parent_id: parentId,
-        }));
+        // Process nodes one by one instead of in a batch
+        for (const node of nodes) {
+          const { data: insertedNode, error: nodeError } = await supabase
+            .from("project_nodes")
+            .insert({
+              project_id: newProject.id,
+              name: node.name,
+              type: node.type,
+              content: node.content || null,
+              parent_id: parentId,
+            })
+            .select()
+            .single(); // Insert and get the single new row back
 
-        const { data: insertedNodes, error: nodeError } = await supabase
-          .from("project_nodes")
-          .insert(nodesToInsert)
-          .select();
+          if (nodeError) throw nodeError;
 
-        if (nodeError) throw nodeError;
-        if (!insertedNodes) return; // Add a check for the returned data
-
-        // For each folder we just created, create its children
-        for (let i = 0; i < nodes.length; i++) {
-          const sourceNode = nodes[i];
-          if (sourceNode.type === "folder" && sourceNode.children) {
-            // Also add a type for 'n' here for full type safety
-            const dbNode = insertedNodes.find(
-              (n: { id: string; name: string; parent_id: string | null }) =>
-                n.name === sourceNode.name && n.parent_id === parentId
-            );
-            // Important: Add a check to ensure dbNode was found
-            if (dbNode) {
-              await createNodesRecursively(sourceNode.children, dbNode.id);
-            }
+          // If the node we just created is a folder and has children,
+          // immediately recurse into its children, passing the new ID.
+          if (insertedNode && node.type === "folder" && node.children) {
+            await createNodesRecursively(node.children, insertedNode.id);
           }
         }
       };
 
-      if (importMethod === "blank" || !template) {
-        // Fallback for "Start Blank" projects
-        await supabase.from("project_nodes").insert({
-          project_id: newProject.id,
-          name: "root",
-          type: "folder",
-          parent_id: null,
-        });
-      } else if (template.structure) {
-        // Start the recursive creation process
-        await createNodesRecursively(template.structure, null);
+      if (template?.structure) {
+        await createNodesRecursively([...template.structure], null);
       }
 
       router.push(`/project/${newProject.id}`);
@@ -495,7 +486,10 @@ export default function NewProjectPage() {
                 <Button
                   variant={importMethod === "blank" ? "default" : "outline"}
                   className="h-auto p-4 flex flex-col items-center gap-2"
-                  onClick={() => setImportMethod("blank")}
+                  onClick={() => {
+                    setImportMethod("blank");
+                    handleTemplateSelect("blank");
+                  }}
                 >
                   <Plus className="h-8 w-8" />
                   <div className="text-center">
