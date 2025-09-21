@@ -317,7 +317,7 @@ export default function NewProjectPage() {
           name: projectName,
           description: description,
           tags: tags,
-          language: template ? template.tags.join(", ") : null,
+          language: template ? template.tags : [],
           status: "active",
         })
         .select()
@@ -376,7 +376,7 @@ export default function NewProjectPage() {
         });
       } else if (template.structure) {
         // Start the recursive creation process
-        await createNodesRecursively([...template.structure], null);
+        await createNodesRecursively(template.structure, null);
       }
 
       router.push(`/project/${newProject.id}`);
