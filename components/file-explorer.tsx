@@ -54,6 +54,23 @@ export default function FileExplorer({
     new Set()
   );
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+
+  // Add this function to handle rename
+  const handleRenameSubmit = (node: FileItem) => async (e: React.FormEvent) => {
+    e.preventDefault();
+    const newName = editingName.trim();
+
+    if (!newName || newName === node.name) {
+      setEditingId(null);
+      return;
+    }
+
+    if (onRename) {
+      await onRename(node.id, node.name, newName);
+    }
+    setEditingId(null);
+  };
 
   const getFileIcon = (fileName: string, language?: string | null) => {
     if (language) {
@@ -152,39 +169,75 @@ export default function FileExplorer({
             );
           }
 
+          // File item
           return (
             <div
               key={`${item.id ?? item.name}`}
-              className={`flex items-center gap-2 p-1 rounded hover:bg-muted ${
+              className={`group flex items-center gap-2 p-1 rounded hover:bg-muted ${
                 activeFile === item.name ? "bg-muted" : ""
               }`}
             >
-              <button
-                className="flex-1 flex items-center gap-2 text-left"
-                onClick={() => onFileSelect(item.name)}
-              >
-                {getFileIcon(item.name, item.language)}
-                <span className="text-sm">{item.name}</span>
-              </button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => {
-                  setEditingId(item.id ?? item.name);
-                  setEditingName(item.name);
-                }}
-              >
-                <PencilLine className="h-3 w-3" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => onDelete?.(item.id)}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+              {editingId === item.id ? (
+                // --- EDITING MODE ---
+                <form
+                  onSubmit={handleRenameSubmit(item)}
+                  className="flex-1 flex items-center gap-2"
+                >
+                  {getFileIcon(item.name, item.language)}
+                  <Input
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onBlur={() => setEditingId(null)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setEditingId(null);
+                    }}
+                    autoFocus
+                    // Add text-sm to match the span's font size
+                    className="h-6 text-sm"
+                  />
+                </form>
+              ) : (
+                // --- DISPLAY MODE ---
+                <div
+                  className="flex-1 flex items-center gap-2 text-left truncate"
+                  onClick={() => onFileSelect(item.name)}
+                >
+                  {getFileIcon(item.name, item.language)}
+                  <span
+                    // Add truncate to handle long filenames gracefully
+                    className="flex-1 text-sm truncate"
+                    onDoubleClick={() => {
+                      setEditingId(item.id ?? item.name);
+                      setEditingName(item.name);
+                    }}
+                  >
+                    {item.name}
+                  </span>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex items-center">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => {
+                    setEditingId(item.id ?? item.name);
+                    setEditingName(item.name);
+                  }}
+                >
+                  <PencilLine className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => onDelete?.(item.id)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
             </div>
           );
         })}

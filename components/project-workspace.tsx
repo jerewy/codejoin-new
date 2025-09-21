@@ -68,7 +68,11 @@ import {
   mockExtensions,
   mockLanguageOptions,
 } from "@/lib/mock-data";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import { supabase } from "@/lib/supabaseClient";
 
 // Define the props it will receive
@@ -209,6 +213,10 @@ export default function ProjectWorkspace({
       .from("project_nodes")
       .update({ name: newName })
       .eq("id", id);
+
+    if (files.some((f) => f.name === newName)) {
+      return false;
+    }
     if (!error) {
       setFiles((prev) =>
         prev.map((f) => (f.id === id ? { ...f, name: newName } : f))
@@ -225,12 +233,12 @@ export default function ProjectWorkspace({
   };
 
   return (
-    <PanelGroup direction="horizontal">
+    <ResizablePanelGroup direction="horizontal">
       {/* Left Sidebar - File Explorer (resizable) */}
-      <Panel
+      <ResizablePanel
         defaultSize={16}
         minSize={12}
-        maxSize={24}
+        maxSize={80}
         className="min-w-[200px]"
       >
         <div className="h-full min-w-0">
@@ -377,221 +385,224 @@ export default function ProjectWorkspace({
             </TabsContent>
           </Tabs>
         </div>
-      </Panel>
+      </ResizablePanel>
 
-      <PanelResizeHandle className="w-2 bg-muted/50 data-[resize-handle-state=drag]:bg-primary transition-colors" />
+      <ResizableHandle className="w-2 bg-muted/50 data-[resize-handle-state=drag]:bg-primary transition-colors" />
 
       {/* Center/Main + Right sidebar in a nested vertical layout */}
-      <Panel defaultSize={showChat ? 64 : 84} minSize={40}>
-        <div className="flex h-full overflow-hidden min-w-0">
-          {/* Main Content Area */}
-          <div className="flex-1 flex flex-col min-w-0">
-            <PanelGroup direction="vertical">
-              <Panel defaultSize={70} minSize={20} className="flex flex-col">
-                <div className="flex-shrink-0 flex items-center justify-between p-2 border-b bg-muted/50">
-                  {viewMode === "code" ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{activeFile}</span>
-                      <Badge variant="secondary" className="text-xs">
-                        {currentLanguage?.toUpperCase()}
-                      </Badge>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="icon" className="h-7 w-7">
-                        <ArrowLeft className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        disabled
-                      >
-                        <ArrowRight className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7">
-                        <RefreshCw className="h-4 w-4" />
-                      </Button>
-                      <div className="flex-1 bg-background rounded-md px-3 py-1.5 flex items-center ml-2">
-                        <Lock className="h-3 w-3 mr-2 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">
-                          localhost:3000
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
+      <ResizablePanel
+        defaultSize={showChat ? 54 : 84}
+        minSize={40}
+        className="flex h-full overflow-hidden min-w-0"
+      >
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <ResizablePanelGroup direction="vertical">
+            <ResizablePanel
+              defaultSize={70}
+              minSize={20}
+              className="flex flex-col"
+            >
+              <div className="flex-shrink-0 flex items-center justify-between p-2 border-b bg-muted/50">
+                {viewMode === "code" ? (
                   <div className="flex items-center gap-2">
-                    <ToggleGroup
-                      type="single"
-                      value={viewMode}
-                      onValueChange={(value) => {
-                        if (value) setViewMode(value);
-                      }}
-                      className="h-8"
-                    >
-                      <ToggleGroupItem value="code" aria-label="Code view">
-                        <Code className="h-4 w-4" />
-                      </ToggleGroupItem>
-                      <ToggleGroupItem
-                        value="preview"
-                        aria-label="Preview view"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </ToggleGroupItem>
-                    </ToggleGroup>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => setShowChat(!showChat)}
-                          >
-                            <MessageSquare className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {showChat ? "Hide chat" : "Show chat"}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <span className="text-sm font-medium">{activeFile}</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {currentLanguage?.toUpperCase()}
+                    </Badge>
                   </div>
-                </div>
-
-                <div className="flex-1 flex flex-col min-w-0">
-                  {viewMode === "code" ? (
-                    <CodeEditor
-                      file={files.find((f) => f.name === activeFile) as any}
-                      collaborators={collaborators}
-                      onChange={(newContent) => {
-                        if (!currentFile) return;
-                        setFiles((prev) =>
-                          prev.map((f) =>
-                            f.name === currentFile.name
-                              ? { ...f, content: newContent }
-                              : f
-                          )
-                        );
-                      }}
-                      onSave={async () => {
-                        if (!currentFile?.id) return;
-                        await updateNodeContent(
-                          currentFile.id,
-                          currentFile.content ?? ""
-                        );
-                      }}
-                    />
-                  ) : (
-                    <LivePreview files={files as any} />
-                  )}
-                </div>
-              </Panel>
-
-              <PanelResizeHandle className="h-2 bg-muted/50 data-[resize-handle-state=drag]:bg-primary transition-colors" />
-              <Panel
-                defaultSize={30}
-                minSize={5}
-                collapsible={true}
-                collapsedSize={5}
-              >
-                <div className="h-full border-t flex flex-col bg-zinc-900">
-                  <Tabs
-                    value={activeBottomTab}
-                    onValueChange={setActiveBottomTab}
-                    className="flex flex-col flex-1 min-h-0"
-                  >
-                    <TabsList className="grid w-full grid-cols-4">
-                      <TabsTrigger value="console">Console</TabsTrigger>
-                      <TabsTrigger value="terminal">Terminal</TabsTrigger>
-                      <TabsTrigger value="problems">Problems</TabsTrigger>
-                      <TabsTrigger value="ai">
-                        <Brain className="h-4 w-4 mr-2" />
-                        AI Assistant
-                      </TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent
-                      value="console"
-                      className="flex-1 overflow-y-auto"
-                    >
-                      <ConsoleOutput />
-                    </TabsContent>
-
-                    <TabsContent
-                      value="terminal"
-                      className="flex-1 overflow-y-auto p-4"
-                    >
-                      <div className="font-mono text-sm">
-                        <div className="text-green-500">$ npm start</div>
-                        <div className="text-muted-foreground">
-                          Starting development server...
-                        </div>
-                        <div className="text-muted-foreground">
-                          Server running on http://localhost:3000
-                        </div>
-                      </div>
-                    </TabsContent>
-
-                    <TabsContent
-                      value="problems"
-                      className="flex-1 overflow-y-auto p-4"
-                    >
-                      <div className="text-sm text-muted-foreground">
-                        No problems detected
-                      </div>
-                    </TabsContent>
-
-                    {activeBottomTab === "ai" && (
-                      <TabsContent
-                        value="ai"
-                        className="flex-1 flex flex-col min-h-0"
-                      >
-                        <div className="flex-1" />
-                      </TabsContent>
-                    )}
-                  </Tabs>
-                </div>
-              </Panel>
-            </PanelGroup>
-          </div>
-
-          {/* Right Sidebar - Team Chat (resizable) */}
-          {showChat && (
-            <>
-              <PanelResizeHandle className="w-2 bg-muted/50 data-[resize-handle-state=drag]:bg-primary transition-colors" />
-              <Panel defaultSize={20} minSize={15} maxSize={40}>
-                <aside className="h-full flex flex-col border-l">
-                  {/* Chat Header */}
-                  <div className="flex items-center justify-between p-3 border-b bg-muted/50">
-                    <div className="flex items-center gap-2">
-                      <MessageSquare className="h-4 w-4" />
-                      <span className="text-sm font-medium">Team Chat</span>
-                      <Badge variant="secondary" className="text-xs">
-                        {membersCount} members
-                      </Badge>
-                    </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="icon" className="h-7 w-7">
+                      <ArrowLeft className="h-4 w-4" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 hover:bg-muted"
-                      onClick={() => setShowChat(false)}
+                      className="h-7 w-7"
+                      disabled
                     >
-                      <X className="h-4 w-4" />
+                      <ArrowRight className="h-4 w-4" />
                     </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7">
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
+                    <div className="flex-1 bg-background rounded-md px-3 py-1.5 flex items-center ml-2">
+                      <Lock className="h-3 w-3 mr-2 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">
+                        localhost:3000
+                      </span>
+                    </div>
                   </div>
+                )}
 
-                  {/* Chat Panel Component */}
-                  <div className="flex-1 min-h-0">
-                    <ChatPanel collaborators={collaborators} />
-                  </div>
-                </aside>
-              </Panel>
-            </>
-          )}
+                <div className="flex items-center gap-2">
+                  <ToggleGroup
+                    type="single"
+                    value={viewMode}
+                    onValueChange={(value) => {
+                      if (value) setViewMode(value);
+                    }}
+                    className="h-8"
+                  >
+                    <ToggleGroupItem value="code" aria-label="Code view">
+                      <Code className="h-4 w-4" />
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="preview" aria-label="Preview view">
+                      <Eye className="h-4 w-4" />
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => setShowChat(!showChat)}
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {showChat ? "Hide chat" : "Show chat"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              </div>
+
+              <div className="flex-1 flex flex-col min-w-0">
+                {viewMode === "code" ? (
+                  <CodeEditor
+                    file={files.find((f) => f.name === activeFile) as any}
+                    collaborators={collaborators}
+                    onChange={(newContent) => {
+                      if (!currentFile) return;
+                      setFiles((prev) =>
+                        prev.map((f) =>
+                          f.name === currentFile.name
+                            ? { ...f, content: newContent }
+                            : f
+                        )
+                      );
+                    }}
+                    onSave={async () => {
+                      if (!currentFile?.id) return;
+                      await updateNodeContent(
+                        currentFile.id,
+                        currentFile.content ?? ""
+                      );
+                    }}
+                  />
+                ) : (
+                  <LivePreview files={files as any} />
+                )}
+              </div>
+            </ResizablePanel>
+
+            <ResizableHandle className="h-2 bg-muted/50 data-[resize-handle-state=drag]:bg-primary transition-colors" />
+            <ResizablePanel
+              defaultSize={30}
+              minSize={5}
+              collapsible={true}
+              collapsedSize={5}
+            >
+              <div className="h-full border-t flex flex-col bg-zinc-900">
+                <Tabs
+                  value={activeBottomTab}
+                  onValueChange={setActiveBottomTab}
+                  className="flex flex-col flex-1 min-h-0"
+                >
+                  <TabsList className="grid w-full grid-cols-4">
+                    <TabsTrigger value="console">Console</TabsTrigger>
+                    <TabsTrigger value="terminal">Terminal</TabsTrigger>
+                    <TabsTrigger value="problems">Problems</TabsTrigger>
+                    <TabsTrigger value="ai">
+                      <Brain className="h-4 w-4 mr-2" />
+                      AI Assistant
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent
+                    value="console"
+                    className="flex-1 overflow-y-auto"
+                  >
+                    <ConsoleOutput />
+                  </TabsContent>
+
+                  <TabsContent
+                    value="terminal"
+                    className="flex-1 overflow-y-auto p-4"
+                  >
+                    <div className="font-mono text-sm">
+                      <div className="text-green-500">$ npm start</div>
+                      <div className="text-muted-foreground">
+                        Starting development server...
+                      </div>
+                      <div className="text-muted-foreground">
+                        Server running on http://localhost:3000
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent
+                    value="problems"
+                    className="flex-1 overflow-y-auto p-4"
+                  >
+                    <div className="text-sm text-muted-foreground">
+                      No problems detected
+                    </div>
+                  </TabsContent>
+
+                  {activeBottomTab === "ai" && (
+                    <TabsContent
+                      value="ai"
+                      className="flex-1 flex flex-col min-h-0"
+                    >
+                      <div className="flex-1" />
+                    </TabsContent>
+                  )}
+                </Tabs>
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </div>
-      </Panel>
-    </PanelGroup>
+      </ResizablePanel>
+
+      {/* Right Sidebar - Team Chat (resizable) */}
+      {showChat && (
+        <>
+          <ResizableHandle className="w-2 bg-muted/50 data-[resize-handle-state=drag]:bg-primary transition-colors" />
+          <ResizablePanel defaultSize={20} maxSize={40}>
+            <aside className="h-full flex flex-col border-l">
+              {/* Chat Header */}
+              <div className="flex items-center justify-between p-3 border-b bg-muted/50">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  <span className="text-sm font-medium">Team Chat</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {membersCount} members
+                  </Badge>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-muted"
+                  onClick={() => setShowChat(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Chat Panel Component */}
+              <div className="flex-1 min-h-0">
+                <ChatPanel collaborators={collaborators} />
+              </div>
+            </aside>
+          </ResizablePanel>
+        </>
+      )}
+    </ResizablePanelGroup>
   );
 }
