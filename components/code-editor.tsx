@@ -1,58 +1,29 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Editor, { OnMount } from "@monaco-editor/react";
+import { ProjectNodeFromDB } from "@/lib/types";
 
 // Define the shape of the props this component expects
 interface CodeEditorProps {
-  file:
-    | {
-        id?: string;
-        name: string;
-        content: string | null;
-        language?: string | null;
-      }
-    | undefined;
-  collaborators: Array<{
-    id: number;
-    name: string;
-    cursor: { line: number; ch: number } | null;
-  }>;
-  onChange?: (newContent: string) => void;
-  onSave?: () => void;
+  file: ProjectNodeFromDB | undefined;
+  onChange: (value: string | undefined) => void;
+  onSave: () => void;
 }
 
 export default function CodeEditor({
   file,
-  collaborators,
   onChange,
   onSave,
 }: CodeEditorProps) {
-  // Use state to manage the code content
-  const [code, setCode] = useState(file?.content ?? "");
+  // All the useState and useEffect hooks for code have been removed.
 
-  // Update the code in the editor when the file prop changes
-  useEffect(() => {
-    setCode(file?.content ?? "");
-  }, [file]);
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      onSave();
+    });
+  };
 
-  // propagate changes
-  useEffect(() => {
-    onChange?.(code);
-  }, [code]);
-
-  // Ctrl+S handler delegates to onSave
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        onSave?.();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onSave]);
-
-  // If no file is selected, show a message
   if (!file) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -62,16 +33,24 @@ export default function CodeEditor({
   }
 
   return (
-    <div className="flex-1 relative bg-zinc-900 text-white font-mono text-sm overflow-auto">
-      <textarea
-        value={code}
-        onChange={(e) => setCode(e.target.value)}
-        className="w-full h-full p-4 bg-transparent outline-none resize-none"
-        spellCheck={false}
-      />
-
-      {/* Mock collaborator cursors container retained for now */}
-      <div className="hidden">{collaborators.length}</div>
-    </div>
+    <Editor
+      height="100%"
+      language={file.language || file.name.split(".").pop() || "plaintext"}
+      value={file.content || ""}
+      theme="vs-dark"
+      onChange={onChange}
+      onMount={handleEditorDidMount}
+      options={{
+        fontSize: 14,
+        minimap: { enabled: false },
+        wordWrap: "on",
+        // --- ADD THESE OPTIONS TO FIX THE PADDING ---
+        padding: {
+          top: 16, // Add 1rem of padding to the top
+        },
+        glyphMargin: false, // Removes the space on the far left
+        lineNumbersMinChars: 3, // Reduces space reserved for line numbers
+      }}
+    />
   );
 }

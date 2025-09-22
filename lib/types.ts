@@ -57,3 +57,13 @@ export type Collaborator = {
   full_name: string | null; // From the profiles table
   user_avatar: string | null; // From the profiles table
 };
+
+export interface ProjectNodeFromDB {
+  id: string; // The unique ID of the file or folder
+  project_id: string; // The ID of the project it belongs to
+  parent_id: string | null; // The ID of the parent folder (or null for root items)
+  name: string; // The name of the file or folder (e.g., "index.html")
+  type: "file" | "folder";
+  content: string | null; // The code content for files
+  language: string | null; // The programming language
+}
