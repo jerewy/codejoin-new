@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go:*)",
+      "Bash(rust --version)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

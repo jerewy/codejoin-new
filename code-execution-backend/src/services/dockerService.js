@@ -4,8 +4,45 @@ const logger = require('../utils/logger');
 
 class DockerService {
   constructor() {
-    this.docker = new Docker();
+    // Configure Docker connection based on platform
+    let dockerOptions = {};
+
+    if (process.platform === 'win32') {
+      // Windows-specific configuration
+      dockerOptions = {
+        socketPath: process.env.DOCKER_SOCKET || '//./pipe/docker_engine',
+        // Alternative: use TCP connection
+        // host: 'localhost',
+        // port: 2375,
+        // protocol: 'http'
+      };
+
+      // Try TCP connection as fallback if socket fails
+      if (process.env.DOCKER_HOST) {
+        const dockerHost = process.env.DOCKER_HOST;
+        if (dockerHost.startsWith('tcp://')) {
+          const url = new URL(dockerHost);
+          dockerOptions = {
+            host: url.hostname,
+            port: parseInt(url.port) || 2375,
+            protocol: 'http'
+          };
+        }
+      }
+    } else {
+      // Unix/Linux configuration (default)
+      dockerOptions = {
+        socketPath: '/var/run/docker.sock'
+      };
+    }
+
+    this.docker = new Docker(dockerOptions);
     this.runningContainers = new Map();
+
+    logger.info('Docker service initialized', {
+      platform: process.platform,
+      options: JSON.stringify(dockerOptions, null, 2)
+    });
   }
 
   async executeCode(languageConfig, code, input = '') {
@@ -13,6 +50,9 @@ class DockerService {
     let container = null;
 
     try {
+      // Test Docker connection first
+      await this.testConnection();
+
       // Create container with security restrictions
       container = await this.createSecureContainer(languageConfig, code, containerId);
 
@@ -32,16 +72,38 @@ class DockerService {
 
     } catch (error) {
       logger.error(`Docker execution error: ${error.message}`, { containerId, error });
+
+      let errorMessage = error.message;
+
+      // Provide better error messages for common issues
+      if (error.message.includes('ENOENT') || error.message.includes('connect')) {
+        errorMessage = 'Docker is not running or not accessible. Please start Docker Desktop and try again.';
+      } else if (error.message.includes('permission denied')) {
+        errorMessage = 'Permission denied accessing Docker. Make sure your user has access to Docker.';
+      } else if (error.message.includes('no such image')) {
+        errorMessage = `Docker image '${languageConfig.image}' not found. Please pull the required images.`;
+      }
+
       return {
         success: false,
         output: '',
-        error: error.message,
+        error: errorMessage,
         exitCode: 1,
         executionTime: 0
       };
     } finally {
       // Always cleanup
       await this.cleanup(containerId, container);
+    }
+  }
+
+  async testConnection() {
+    try {
+      await this.docker.ping();
+      logger.debug('Docker connection test successful');
+    } catch (error) {
+      logger.error('Docker connection test failed', { error: error.message });
+      throw new Error(`Docker connection failed: ${error.message}`);
     }
   }
 
@@ -72,7 +134,7 @@ class DockerService {
         PidsLimit: 64, // Limit number of processes
         ReadonlyRootfs: false, // Need write access for compilation
         Tmpfs: {
-          '/tmp': 'rw,noexec,nosuid,size=100m',
+          '/tmp': 'rw,exec,nosuid,size=100m',
           '/var/tmp': 'rw,noexec,nosuid,size=10m'
         },
         Ulimits: [
@@ -82,25 +144,24 @@ class DockerService {
         SecurityOpt: [
           'no-new-privileges:true'
         ],
-        CapDrop: ['ALL'], // Drop all capabilities
-        AutoRemove: true
+        CapDrop: ['ALL'] // Drop all capabilities
       }
     };
 
-    // Set up the execution command
+    // Set up the execution command - embed code directly to avoid file copying issues
+    const escapedCode = codeContent.replace(/'/g, "'\"'\"'"); // Escape single quotes
+
     if (languageConfig.type === 'compiled') {
-      // For compiled languages, we need to compile first then run
-      containerConfig.Cmd = ['/bin/sh', '-c', this.getCompileAndRunCommand(languageConfig, fileName)];
+      // For compiled languages, create file, compile and run
+      const compileCmd = languageConfig.compileCommand.replace('/tmp/code', `/tmp/${fileName.split('.')[0]}`);
+      const runCmd = languageConfig.runCommand;
+      containerConfig.Cmd = ['sh', '-c', `echo '${escapedCode}' > /tmp/${fileName} && ${compileCmd} && ${runCmd}`];
     } else {
-      // For interpreted languages, run directly
-      containerConfig.Cmd = [languageConfig.runCommand, fileName];
+      // For interpreted languages, create file and run
+      containerConfig.Cmd = ['sh', '-c', `echo '${escapedCode}' > /tmp/${fileName} && ${languageConfig.runCommand} /tmp/${fileName}`];
     }
 
     const container = await this.docker.createContainer(containerConfig);
-
-    // Copy code file into container
-    await this.copyCodeToContainer(container, fileName, codeContent);
-
     return container;
   }
 
@@ -120,67 +181,60 @@ class DockerService {
     let error = '';
     let exitCode = 0;
 
-    // Start the container
-    const stream = await container.attach({
-      stream: true,
-      stdin: true,
-      stdout: true,
-      stderr: true
-    });
+    try {
+      // Start container and wait for completion
+      await container.start();
 
-    await container.start();
-
-    // Set up timeout
-    const timeout = setTimeout(async () => {
-      try {
-        await container.kill();
-        error += '\nExecution timed out';
-      } catch (e) {
-        logger.warn(`Failed to kill timed out container: ${e.message}`);
-      }
-    }, languageConfig.timeout);
-
-    // Handle stdin if input is provided
-    if (input) {
-      stream.write(input);
-    }
-    stream.end();
-
-    // Capture output
-    return new Promise((resolve) => {
-      const chunks = [];
-
-      stream.on('data', (chunk) => {
-        chunks.push(chunk);
+      // Set up timeout promise
+      const timeoutPromise = new Promise((resolve) => {
+        setTimeout(() => {
+          resolve({ timedOut: true });
+        }, languageConfig.timeout);
       });
 
-      stream.on('end', async () => {
-        clearTimeout(timeout);
+      // Wait for container to complete or timeout
+      const resultPromise = container.wait();
+      const result = await Promise.race([resultPromise, timeoutPromise]);
 
+      if (result.timedOut) {
         try {
-          const result = await container.wait();
-          exitCode = result.StatusCode;
-
-          // Parse Docker stream format
-          const parsedOutput = this.parseDockerStream(Buffer.concat(chunks));
-          output = parsedOutput.stdout;
-          error += parsedOutput.stderr;
-
+          await container.kill();
         } catch (e) {
-          error += `Container wait error: ${e.message}`;
-          exitCode = 1;
+          logger.warn(`Failed to kill timed out container: ${e.message}`);
         }
+        error = 'Execution timed out';
+        exitCode = 124;
+      } else {
+        exitCode = result.StatusCode || 0;
+      }
 
-        const executionTime = Date.now() - startTime;
-
-        resolve({
-          output: this.sanitizeOutput(output),
-          error: this.sanitizeOutput(error),
-          exitCode,
-          executionTime
-        });
+      // Get logs from container
+      const logs = await container.logs({
+        stdout: true,
+        stderr: true,
+        timestamps: false
       });
-    });
+
+      // Parse logs
+      const parsedOutput = this.parseDockerStream(logs);
+      output = parsedOutput.stdout;
+      if (!result.timedOut) {
+        error = parsedOutput.stderr;
+      }
+
+    } catch (e) {
+      error = `Container execution error: ${e.message}`;
+      exitCode = 1;
+    }
+
+    const executionTime = Date.now() - startTime;
+
+    return {
+      output: this.sanitizeOutput(output),
+      error: this.sanitizeOutput(error),
+      exitCode,
+      executionTime
+    };
   }
 
   parseDockerStream(buffer) {

@@ -42,6 +42,9 @@ interface CodeEditorProps {
   onChange: (value: string | undefined) => void;
   onSave: () => void;
   onExecute?: (result: ExecutionResult) => void;
+  isExecuting?: boolean;
+  onExecutionStart?: () => void;
+  onExecutionStop?: () => void;
 }
 
 export default function CodeEditor({
@@ -49,6 +52,9 @@ export default function CodeEditor({
   onChange,
   onSave,
   onExecute,
+  isExecuting = false,
+  onExecutionStart,
+  onExecutionStop,
 }: CodeEditorProps) {
   const detectLanguage = (fileName: string): string => {
     const ext = fileName.split(".").pop()?.toLowerCase() || "";
@@ -59,12 +65,12 @@ export default function CodeEditor({
   const currentLanguage = file ? detectLanguage(file.name) : "javascript";
 
   const handleEditorDidMount: OnMount = (editor, monaco) => {
-    // Enhanced theme with better syntax highlighting
+    // Enhanced VS Code-like dark theme
     monaco.editor.defineTheme("enhanced-dark", {
       base: "vs-dark",
       inherit: true,
       rules: [
-        { token: "comment", foreground: "6A994E", fontStyle: "italic" },
+        { token: "comment", foreground: "6A9955", fontStyle: "italic" },
         { token: "keyword", foreground: "569CD6", fontStyle: "bold" },
         { token: "string", foreground: "CE9178" },
         { token: "number", foreground: "B5CEA8" },
@@ -86,13 +92,25 @@ export default function CodeEditor({
         "editor.background": "#1E1E1E",
         "editor.foreground": "#D4D4D4",
         "editorCursor.foreground": "#AEAFAD",
-        "editor.lineHighlightBackground": "#282828",
+        "editor.lineHighlightBackground": "#2A2D2E",
         "editor.selectionBackground": "#264F78",
         "editorLineNumber.foreground": "#858585",
         "editorLineNumber.activeForeground": "#C6C6C6",
         "editor.inactiveSelectionBackground": "#3A3D41",
+        "editorGutter.background": "#1E1E1E",
+        "editorWidget.background": "#252526",
+        "editorWidget.border": "#454545",
+        "editorSuggestWidget.background": "#252526",
+        "editorSuggestWidget.border": "#454545",
+        "editorSuggestWidget.foreground": "#CCCCCC",
+        "editorSuggestWidget.selectedBackground": "#094771",
+        "editorHoverWidget.background": "#252526",
+        "editorHoverWidget.border": "#454545",
       },
     });
+
+    // Apply the theme immediately
+    monaco.editor.setTheme("enhanced-dark");
 
     // Enhanced language configurations
     setupLanguageFeatures(monaco);
@@ -563,109 +581,54 @@ export default function CodeEditor({
   };
 
   const executeCode = async () => {
-    if (!file?.content || !onExecute) return;
+    if (!file?.content || !onExecute || isExecuting) return;
 
+    onExecutionStart?.();
     const startTime = Date.now();
 
     try {
-      const result = await runCode(file.content, currentLanguage, file.name);
-      const executionTime = Date.now() - startTime;
+      // Dynamically import the API service
+      const { codeExecutionAPI } = await import('@/lib/api/codeExecution');
 
-      const executionResult: ExecutionResult = {
-        ...result,
-        executionTime,
-      };
+      // Detect the language for the current file
+      const detectedLanguage = codeExecutionAPI.detectLanguageFromFileName(file.name);
 
-      onExecute(executionResult);
+      const result = await codeExecutionAPI.executeCode({
+        language: detectedLanguage,
+        code: file.content,
+        timeout: 30000, // 30 second timeout
+      });
+
+      onExecute({
+        output: result.output,
+        error: result.error,
+        exitCode: result.exitCode,
+        executionTime: result.executionTime,
+      });
     } catch (error: any) {
       const executionResult: ExecutionResult = {
         output: "",
-        error: error.message,
+        error: error.message || "Failed to execute code",
         exitCode: 1,
         executionTime: Date.now() - startTime,
       };
 
       onExecute(executionResult);
+    } finally {
+      onExecutionStop?.();
     }
   };
 
-  const runCode = async (
-    code: string,
-    language: string,
-    fileName: string
-  ): Promise<Omit<ExecutionResult, "executionTime">> => {
-    // This is a mock implementation. In a real app, you'd send this to a backend code execution service
-    switch (language) {
-      case "javascript":
-        return await runJavaScript(code);
-
-      case "python":
-        return await runPython(code);
-
-      case "html":
-        return await runHTML(code);
-
-      default:
-        return {
-          output: `Code execution for ${language} is not implemented in this demo.\nWould run: ${fileName}`,
-          exitCode: 0,
-        };
-    }
-  };
-
-  const runJavaScript = async (
-    code: string
-  ): Promise<Omit<ExecutionResult, "executionTime">> => {
-    try {
-      // Create a safe execution environment
-      const output: string[] = [];
-      const mockConsole = {
-        log: (...args: any[]) =>
-          output.push(args.map((arg) => String(arg)).join(" ")),
-        error: (...args: any[]) =>
-          output.push("ERROR: " + args.map((arg) => String(arg)).join(" ")),
-        warn: (...args: any[]) =>
-          output.push("WARNING: " + args.map((arg) => String(arg)).join(" ")),
-        info: (...args: any[]) =>
-          output.push("INFO: " + args.map((arg) => String(arg)).join(" ")),
-      };
-
-      // Create a new function with the code
-      const func = new Function("console", code);
-      func(mockConsole);
-
-      return {
-        output: output.join("\n"),
-        exitCode: 0,
-      };
-    } catch (error: any) {
-      return {
-        output: "",
-        error: error.message,
-        exitCode: 1,
-      };
-    }
-  };
-
-  const runPython = async (
-    code: string
-  ): Promise<Omit<ExecutionResult, "executionTime">> => {
-    // This would normally call a Python interpreter on the backend
-    return {
-      output: `Python execution would run:\n${code}\n\n(Backend Python interpreter needed for actual execution)`,
-      exitCode: 0,
+  // Listen for execution events from workspace Run button
+  useEffect(() => {
+    const handleExecuteEvent = () => {
+      executeCode();
     };
-  };
 
-  const runHTML = async (
-    code: string
-  ): Promise<Omit<ExecutionResult, "executionTime">> => {
-    // For HTML, we might open it in an iframe or new window
-    return {
-      output: "HTML rendered successfully (check preview panel)",
-      exitCode: 0,
-    };
-  };
+    window.addEventListener("codeEditorExecute", handleExecuteEvent);
+    return () => window.removeEventListener("codeEditorExecute", handleExecuteEvent);
+  }, [executeCode]);
+
 
   if (!file) {
     return (
@@ -683,7 +646,7 @@ export default function CodeEditor({
   }
 
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full bg-[#1E1E1E]">
       <Editor
         height="100%"
         language={currentLanguage}

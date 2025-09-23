@@ -59,8 +59,8 @@ export default async function ProjectPage({
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
-      <header className="flex items-center justify-between p-4 border-b">
+    <div className="h-screen w-screen flex flex-col overflow-hidden fixed inset-0">
+      <header className="flex items-center justify-between p-4 border-b bg-background z-10 flex-shrink-0">
         <div className="flex items-center gap-6">
           <Link href="/dashboard">
             <Button variant="ghost" size="sm">
@@ -80,7 +80,7 @@ export default async function ProjectPage({
         </div>
         <ProjectActions />
       </header>
-      <main className="flex-1 min-h-0">
+      <main className="flex-1 min-h-0 overflow-hidden">
         <ProjectWorkspace initialNodes={nodes} projectId={params.id} />
       </main>
     </div>

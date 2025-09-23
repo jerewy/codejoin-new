@@ -83,7 +83,7 @@ const SUPPORTED_LANGUAGES = {
   java: {
     name: 'Java',
     type: 'compiled',
-    image: 'openjdk:17-alpine',
+    image: 'code-exec-multi',
     fileExtension: '.java',
     compileCommand: 'javac -d /tmp /tmp/Main.java',
     runCommand: 'java -cp /tmp Main',

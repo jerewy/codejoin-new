@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -51,6 +51,7 @@ import ChatPanel from "@/components/chat-panel";
 import FileExplorer from "@/components/file-explorer";
 import CollaboratorsList from "@/components/collaborators-list";
 import ConsoleOutput from "@/components/console-output";
+import BackendStatus from "@/components/backend-status";
 import {
   Tooltip,
   TooltipContent,
@@ -114,84 +115,265 @@ const getFileExtension = (fileName: string): string => {
 };
 
 
-// Terminal component
-function TerminalPanel() {
-  const [commands, setCommands] = useState<string[]>([
-    "Welcome to CodeJoin Terminal",
-    "Type 'help' for available commands",
-  ]);
+// VS Code-style Terminal component
+function TerminalPanel({
+  executionOutputs = [],
+  onClearExecutions = () => {},
+}: {
+  executionOutputs?: ExecutionResult[];
+  onClearExecutions?: () => void;
+}) {
+  const [commands, setCommands] = useState<string[]>([]);
   const [currentCommand, setCurrentCommand] = useState("");
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-scroll to bottom when new execution results arrive
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      const { scrollHeight, clientHeight } = scrollContainerRef.current;
+      scrollContainerRef.current.scrollTop = scrollHeight - clientHeight;
+    }
+  }, [executionOutputs, commands]);
+
+  // Focus input when terminal is clicked
+  const handleTerminalClick = () => {
+    inputRef.current?.focus();
+  };
 
   const handleCommand = (cmd: string) => {
     const trimmed = cmd.trim();
-    setCommands((prev) => [...prev, `$ ${trimmed}`]);
+    if (!trimmed) return;
+
+    // Add command with user@codejoin prompt
+    setCommands((prev) => [...prev, `user@codejoin:~$ ${trimmed}`]);
 
     switch (trimmed.toLowerCase()) {
       case "help":
         setCommands((prev) => [
           ...prev,
-          "Available commands:",
-          "  clear - Clear terminal",
-          "  npm start - Start development server",
-          "  npm install - Install dependencies",
+          "",
+          "CodeJoin Terminal Commands:",
+          "  help            Show this help message",
+          "  clear           Clear terminal history",
+          "  executions      Show execution outputs",
+          "  executions clear Clear execution outputs",
+          "  npm start       Start development server",
+          "  npm install     Install dependencies",
+          "  docker ps       Show running containers",
+          "",
         ]);
         break;
       case "clear":
-        setCommands(["Welcome to CodeJoin Terminal"]);
+        setCommands([]);
+        break;
+      case "executions":
+        if (executionOutputs.length === 0) {
+          setCommands((prev) => [...prev, "No code executions yet. Run some code to see results!", ""]);
+        } else {
+          setCommands((prev) => [...prev, `Found ${executionOutputs.length} execution result(s). Check the output panel above.`, ""]);
+        }
+        break;
+      case "executions clear":
+        onClearExecutions();
+        setCommands((prev) => [...prev, "Execution outputs cleared", ""]);
         break;
       case "npm start":
         setCommands((prev) => [
           ...prev,
-          "Starting development server...",
-          "Server running on http://localhost:3000",
+          "Starting CodeJoin development server...",
+          "> next dev",
+          "",
+          "  ▲ Next.js 15.5.2",
+          "  - Local:        http://localhost:3000",
+          "  - Network:      http://192.168.1.100:3000",
+          "",
+          "✓ Ready in 1.2s",
+          "",
         ]);
         break;
       case "npm install":
         setCommands((prev) => [
           ...prev,
           "Installing dependencies...",
-          "Dependencies installed successfully",
+          "",
+          "added 847 packages, and audited 848 packages in 12s",
+          "",
+          "109 packages are looking for funding",
+          "  run `npm fund` for details",
+          "",
+          "found 0 vulnerabilities",
+          "",
         ]);
         break;
+      case "docker ps":
+        setCommands((prev) => [
+          ...prev,
+          "CONTAINER ID   IMAGE                    COMMAND       CREATED       STATUS       PORTS     NAMES",
+          "a1b2c3d4e5f6   python:3.11-alpine      \"python\"     2 min ago     Up 2 min               code-exec-python",
+          "f6e5d4c3b2a1   node:18-alpine          \"node\"       5 min ago     Up 5 min               code-exec-node",
+          "",
+        ]);
+        break;
+      case "ls":
+      case "ls -la":
+        setCommands((prev) => [
+          ...prev,
+          "total 48",
+          "drwxr-xr-x  12 user  staff   384 Sep 23 20:30 .",
+          "drwxr-xr-x   3 user  staff    96 Sep 23 18:00 ..",
+          "-rw-r--r--   1 user  staff   314 Sep 23 19:41 .gitignore",
+          "-rw-r--r--   1 user  staff  2430 Sep 23 20:15 package.json",
+          "drwxr-xr-x   8 user  staff   256 Sep 23 20:00 app/",
+          "drwxr-xr-x  15 user  staff   480 Sep 23 20:30 components/",
+          "drwxr-xr-x   4 user  staff   128 Sep 23 19:45 lib/",
+          "",
+        ]);
+        break;
+      case "pwd":
+        setCommands((prev) => [...prev, "/workspace/codejoin", ""]);
+        break;
       default:
-        if (trimmed) {
-          setCommands((prev) => [...prev, `Command not found: ${trimmed}`]);
-        }
+        setCommands((prev) => [...prev, `bash: ${trimmed}: command not found`, ""]);
     }
     setCurrentCommand("");
   };
 
+  const formatExecutionTime = (ms: number) => {
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(2)}s`;
+  };
+
+  const getStatusIcon = (exitCode: number) => {
+    return exitCode === 0 ? (
+      <CheckCircle className="h-3 w-3 text-green-400" />
+    ) : (
+      <XCircle className="h-3 w-3 text-red-400" />
+    );
+  };
+
   return (
-    <div className="h-full flex flex-col bg-black text-green-400">
-      <div className="flex items-center justify-between p-2 border-b border-muted">
-        <span className="text-sm font-medium">Terminal</span>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setCommands(["Welcome to CodeJoin Terminal"])}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+    <div className="h-full flex flex-col bg-[#1e1e1e] text-[#cccccc] font-mono text-sm">
+      {/* Terminal Header - VS Code style */}
+      <div className="flex items-center justify-between px-3 py-2 bg-[#2d2d30] border-b border-[#3c3c3c]">
+        <div className="flex items-center gap-2">
+          <Terminal className="h-4 w-4 text-[#cccccc]" />
+          <span className="text-sm text-[#cccccc]">Terminal</span>
+        </div>
+        <div className="flex items-center gap-1">
+          {executionOutputs.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClearExecutions}
+              className="h-6 w-6 p-0 text-[#cccccc] hover:bg-[#3c3c3c] hover:text-white"
+              title="Clear execution outputs"
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCommands([])}
+            className="h-6 w-6 p-0 text-[#cccccc] hover:bg-[#3c3c3c] hover:text-white"
+            title="Clear terminal"
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
       </div>
-      <div className="flex-1 overflow-auto p-2 font-mono text-sm">
-        {commands.map((cmd, index) => (
-          <div key={index} className="mb-1">
-            {cmd}
+
+      {/* Terminal Content */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-auto p-3 cursor-text"
+        onClick={handleTerminalClick}
+      >
+        {/* Execution outputs with VS Code styling */}
+        {executionOutputs.map((execution, index) => (
+          <div key={`exec-${index}`} className="mb-4">
+            {/* Execution header */}
+            <div className="flex items-center gap-2 mb-2 text-[#569cd6]">
+              {getStatusIcon(execution.exitCode)}
+              <span className="text-xs text-[#4ec9b0]">
+                [Execution {index + 1}]
+              </span>
+              <span className="text-xs text-[#cccccc]">
+                {formatExecutionTime(execution.executionTime)} • Exit {execution.exitCode}
+              </span>
+            </div>
+
+            {/* Standard output */}
+            {execution.output && (
+              <div className="mb-2">
+                <pre className="text-[#cccccc] whitespace-pre-wrap leading-relaxed">
+                  {execution.output}
+                </pre>
+              </div>
+            )}
+
+            {/* Error output */}
+            {execution.error && (
+              <div className="mb-2">
+                <pre className="text-[#f48771] whitespace-pre-wrap leading-relaxed bg-[#5a1d1d]/20 p-2 rounded border-l-2 border-[#f48771]">
+                  {execution.error}
+                </pre>
+              </div>
+            )}
           </div>
         ))}
-        <div className="flex items-center">
-          <span className="mr-2">$</span>
-          <Input
-            value={currentCommand}
-            onChange={(e) => setCurrentCommand(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleCommand(currentCommand);
-              }
-            }}
-            className="bg-transparent border-none p-0 text-green-400 focus-visible:ring-0"
-            placeholder="Enter command..."
-          />
+
+        {/* Terminal command history */}
+        <div className="space-y-1">
+          {commands.map((cmd, index) => (
+            <div key={`cmd-${index}`} className="leading-relaxed">
+              {cmd.startsWith('user@codejoin:~$') ? (
+                <div className="text-[#4ec9b0]">{cmd}</div>
+              ) : (
+                <div className="text-[#cccccc] pl-0">{cmd}</div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Current command input line */}
+        <div className="flex items-center mt-2">
+          <span className="text-[#4ec9b0] mr-2 select-none">user@codejoin:~$</span>
+          <div className="flex-1 relative">
+            <input
+              ref={inputRef}
+              type="text"
+              value={currentCommand}
+              onChange={(e) => setCurrentCommand(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleCommand(currentCommand);
+                } else if (e.key === "Tab") {
+                  e.preventDefault();
+                  // Simple tab completion
+                  const commands = ["help", "clear", "executions", "npm", "docker", "ls", "pwd"];
+                  const matches = commands.filter(cmd => cmd.startsWith(currentCommand));
+                  if (matches.length === 1) {
+                    setCurrentCommand(matches[0]);
+                  }
+                }
+              }}
+              onFocus={() => setIsInputFocused(true)}
+              onBlur={() => setIsInputFocused(false)}
+              className="w-full bg-transparent border-none outline-none text-[#cccccc] font-mono text-sm"
+              placeholder="Type a command..."
+              autoFocus
+            />
+            {/* Cursor simulation */}
+            {isInputFocused && (
+              <div
+                className="absolute top-0 h-4 w-0.5 bg-[#cccccc] animate-pulse"
+                style={{ left: `${currentCommand.length * 0.6}em` }}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -347,78 +529,35 @@ export default function ProjectWorkspace({
     }
   };
 
-  // Enhanced run functionality with proper Python execution simulation
+  // Enhanced run functionality - now delegates to CodeEditor for real backend execution
   const handleRun = async () => {
     if (!currentFile) return;
 
-    setIsExecuting(true);
-    setActiveBottomTab("terminal");
+    // Auto-save before running
+    if (hasUnsavedChanges) {
+      await handleSave();
+    }
 
-    try {
-      // Auto-save before running
-      if (hasUnsavedChanges) {
-        await handleSave();
-      }
+    const ext = getFileExtension(currentFile.name);
 
-      const ext = getFileExtension(currentFile.name);
-      const code = currentFile.content || "";
-
-      // Switch to preview mode for web files
-      if ([".html", ".htm"].includes(ext)) {
-        setViewMode("preview");
-        setConsoleOutputs((prev) => [
-          ...prev,
-          {
-            output: `✓ Rendered ${currentFile.name} in preview`,
-            exitCode: 0,
-            executionTime: 50,
-          },
-        ]);
-        return;
-      }
-
-      // Simulate code execution based on file type
-      let result: ExecutionResult;
-
-      if (ext === ".py") {
-        result = await simulatePythonExecution(code, currentFile.name);
-      } else if (ext === ".js") {
-        result = await simulateJavaScriptExecution(code);
-      } else {
-        result = {
-          output: `Running ${currentFile.name}...\nFile type ${ext} execution simulated.`,
-          exitCode: 0,
-          executionTime: Math.floor(Math.random() * 500) + 100,
-        };
-      }
-
-      setConsoleOutputs((prev) => [...prev, result]);
-
-      if (result.error) {
-        const newProblem: Problem = {
-          id: Date.now().toString(),
-          file: currentFile.name,
-          line: 1,
-          column: 1,
-          message: result.error,
-          severity: "error",
-          source: "runtime",
-        };
-        setProblems((prev) => [...prev, newProblem]);
-      }
-    } catch (error) {
+    // Switch to preview mode for web files
+    if ([".html", ".htm"].includes(ext)) {
+      setViewMode("preview");
       setConsoleOutputs((prev) => [
         ...prev,
         {
-          output: "",
-          error: `Execution failed: ${error}`,
-          exitCode: 1,
-          executionTime: 0,
+          output: `✓ Rendered ${currentFile.name} in preview`,
+          exitCode: 0,
+          executionTime: 50,
         },
       ]);
-    } finally {
-      setIsExecuting(false);
+      return;
     }
+
+    // For all code files, trigger the CodeEditor execution which uses real backend
+    // This will be handled by the CodeEditor component's executeCode function
+    const event = new CustomEvent('codeEditorExecute');
+    window.dispatchEvent(event);
   };
 
   const handleSendAIMessage = () => {
@@ -432,6 +571,21 @@ export default function ProjectWorkspace({
   const handleExecutionResult = (result: ExecutionResult) => {
     setConsoleOutputs((prev) => [...prev, result]);
     setActiveBottomTab("terminal");
+
+    // Show user feedback based on execution result
+    if (result.exitCode === 0) {
+      // Success feedback
+      if (result.output) {
+        // Code executed successfully with output
+        console.log(`✓ Code executed successfully in ${result.executionTime}ms`);
+      } else {
+        // Code executed successfully but no output
+        console.log(`✓ Code executed successfully (no output) in ${result.executionTime}ms`);
+      }
+    } else {
+      // Error feedback
+      console.error(`✗ Execution failed (exit code ${result.exitCode})`);
+    }
 
     // Add syntax errors to problems panel
     if (result.error) {
@@ -524,91 +678,6 @@ export default function ProjectWorkspace({
     }
   }, [currentFile?.content, currentFile?.name]);
 
-  // Simulate Python execution
-  const simulatePythonExecution = async (
-    code: string,
-    filename: string
-  ): Promise<ExecutionResult> => {
-    // Check for syntax errors first
-    const syntaxProblems = detectPythonSyntaxError(code);
-    if (syntaxProblems.some((p) => p.severity === "error")) {
-      return {
-        output: "",
-        error:
-          syntaxProblems.find((p) => p.severity === "error")?.message ||
-          "Syntax error",
-        exitCode: 1,
-        executionTime: 10,
-      };
-    }
-
-    // Simulate print statement execution
-    const lines = code.split("\n");
-    const outputs: string[] = [];
-
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      if (trimmedLine.startsWith("print(")) {
-        // Extract content between print parentheses
-        const match = trimmedLine.match(/print\s*\(\s*["'](.*)["']\s*\)/);
-        if (match) {
-          outputs.push(match[1]);
-        } else {
-          // Handle more complex print statements
-          const content = trimmedLine
-            .replace(/print\s*\(\s*/, "")
-            .replace(/\s*\).*$/, "");
-          outputs.push(content.replace(/["']/g, ""));
-        }
-      }
-    }
-
-    return {
-      output:
-        outputs.length > 0
-          ? outputs.join("\n")
-          : "Python script executed successfully (no output)",
-      exitCode: 0,
-      executionTime: Math.floor(Math.random() * 300) + 50,
-    };
-  };
-
-  // Simulate JavaScript execution
-  const simulateJavaScriptExecution = async (
-    code: string
-  ): Promise<ExecutionResult> => {
-    try {
-      const outputs: string[] = [];
-      const mockConsole = {
-        log: (...args: any[]) =>
-          outputs.push(args.map((arg) => String(arg)).join(" ")),
-        error: (...args: any[]) =>
-          outputs.push("ERROR: " + args.map((arg) => String(arg)).join(" ")),
-        warn: (...args: any[]) =>
-          outputs.push("WARNING: " + args.map((arg) => String(arg)).join(" ")),
-      };
-
-      // Create a safe execution environment
-      const func = new Function("console", code);
-      func(mockConsole);
-
-      return {
-        output:
-          outputs.length > 0
-            ? outputs.join("\n")
-            : "JavaScript executed successfully (no output)",
-        exitCode: 0,
-        executionTime: Math.floor(Math.random() * 200) + 30,
-      };
-    } catch (error: any) {
-      return {
-        output: "",
-        error: error.message,
-        exitCode: 1,
-        executionTime: 10,
-      };
-    }
-  };
 
   // Fetch collaborators count
   useEffect(() => {
@@ -733,7 +802,7 @@ export default function ProjectWorkspace({
   };
 
   return (
-    <div className="h-screen w-screen overflow-hidden">
+    <div className="h-full w-full overflow-hidden">
       <ResizablePanelGroup direction="horizontal">
         {/* Left Sidebar - File Explorer */}
         <ResizablePanel
@@ -935,6 +1004,9 @@ export default function ProjectWorkspace({
                 )}
 
                 <div className="flex items-center gap-2">
+                  {/* Backend status */}
+                  <BackendStatus showRefresh={false} />
+
                   {/* Save and Run buttons */}
                   <TooltipProvider>
                     <Tooltip>
@@ -1016,6 +1088,9 @@ export default function ProjectWorkspace({
                     file={currentFile}
                     onSave={handleSave}
                     onExecute={handleExecutionResult}
+                    isExecuting={isExecuting}
+                    onExecutionStart={() => setIsExecuting(true)}
+                    onExecutionStop={() => setIsExecuting(false)}
                     onChange={(newContent) => {
                       if (!currentFile) return;
                       // Mark as unsaved when content changes
