@@ -271,4 +271,16 @@ export default function ExtensionsPage() {
                           className="w-full"
                         >
                           {extension.installed ? "Installed" : "Install"}
-                        </Button\
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </section>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}
