@@ -672,3 +672,34 @@
 {"executionTime":403,"exitCode":0,"language":"python","level":"info","message":"Code execution completed","requestId":"f2076f6a-8d33-4391-8154-e9d2279ecae1","service":"code-execution-backend","success":true,"timestamp":"2025-09-24T06:15:29.906Z"}
 {"codeLength":44,"inputLength":0,"language":"javascript","level":"info","message":"Code execution request","requestId":"54c2431e-147b-45d4-a291-5e782c832f81","service":"code-execution-backend","timeout":30000,"timestamp":"2025-09-24T06:15:39.495Z"}
 {"executionTime":411,"exitCode":0,"language":"javascript","level":"info","message":"Code execution completed","requestId":"54c2431e-147b-45d4-a291-5e782c832f81","service":"code-execution-backend","success":true,"timestamp":"2025-09-24T06:15:40.007Z"}
+=======
+{"level":"info","message":"Docker service initialized","options":"{\n  \"socketPath\": \"//./pipe/docker_engine\"\n}","platform":"win32","service":"code-execution-backend","timestamp":"2025-09-24T06:13:50.355Z"}
+{"level":"info","message":"Code execution backend started on port 3001","service":"code-execution-backend","timestamp":"2025-09-24T06:13:50.369Z"}
+{"level":"info","message":"Environment: production","service":"code-execution-backend","timestamp":"2025-09-24T06:13:50.369Z"}
+{"level":"info","message":"Health check: http://localhost:3001/health","service":"code-execution-backend","timestamp":"2025-09-24T06:13:50.370Z"}
+{"codeLength":216,"inputLength":0,"language":"javascript","level":"info","message":"Code execution request","requestId":"b9104f13-a4f9-4f6e-a545-aeac54de98ec","service":"code-execution-backend","timeout":30000,"timestamp":"2025-09-24T06:14:48.918Z"}
+{"error":"connect ENOENT //./pipe/docker_engine","level":"error","message":"Docker connection test failed","service":"code-execution-backend","timestamp":"2025-09-24T06:14:48.923Z"}
+{"containerId":"5639a49f-b4e6-463c-8ec5-25b98c506e59","error":{},"level":"error","message":"Docker execution error: Docker connection failed: connect ENOENT //./pipe/docker_engine","service":"code-execution-backend","timestamp":"2025-09-24T06:14:48.923Z"}
+{"executionTime":0,"exitCode":1,"language":"javascript","level":"info","message":"Code execution completed","requestId":"b9104f13-a4f9-4f6e-a545-aeac54de98ec","service":"code-execution-backend","success":false,"timestamp":"2025-09-24T06:14:48.923Z"}
+{"level":"info","message":"Docker service initialized","options":"{\n  \"socketPath\": \"//./pipe/docker_engine\"\n}","platform":"win32","service":"code-execution-backend","timestamp":"2025-09-24T06:38:25.955Z"}
+{"level":"info","message":"Code execution backend started on port 3001","service":"code-execution-backend","timestamp":"2025-09-24T06:38:25.976Z"}
+{"level":"info","message":"Environment: production","service":"code-execution-backend","timestamp":"2025-09-24T06:38:25.976Z"}
+{"level":"info","message":"Health check: http://localhost:3001/health","service":"code-execution-backend","timestamp":"2025-09-24T06:38:25.976Z"}
+{"level":"info","message":"SIGINT received, starting graceful shutdown","service":"code-execution-backend","timestamp":"2025-09-24T06:40:25.733Z"}
+{"level":"info","message":"Docker service initialized","options":"{\n  \"socketPath\": \"//./pipe/docker_engine\"\n}","platform":"win32","service":"code-execution-backend","timestamp":"2025-09-24T07:20:59.729Z"}
+{"level":"info","message":"Code execution backend started on port 3001","service":"code-execution-backend","timestamp":"2025-09-24T07:20:59.763Z"}
+{"level":"info","message":"Environment: production","service":"code-execution-backend","timestamp":"2025-09-24T07:20:59.763Z"}
+{"level":"info","message":"Health check: http://localhost:3001/health","service":"code-execution-backend","timestamp":"2025-09-24T07:20:59.764Z"}
+{"codeLength":216,"inputLength":0,"language":"javascript","level":"info","message":"Code execution request","requestId":"255a9fde-c2a8-4f46-8ac5-880da62e1c03","service":"code-execution-backend","timeout":30000,"timestamp":"2025-09-24T07:22:47.617Z"}
+{"executionTime":1034,"exitCode":0,"language":"javascript","level":"info","message":"Code execution completed","requestId":"255a9fde-c2a8-4f46-8ac5-880da62e1c03","service":"code-execution-backend","success":true,"timestamp":"2025-09-24T07:22:48.936Z"}
+{"codeLength":216,"inputLength":0,"language":"javascript","level":"info","message":"Code execution request","requestId":"2724e2a8-f8c5-4c58-aaf6-61432622cc54","service":"code-execution-backend","timeout":30000,"timestamp":"2025-09-24T07:22:55.940Z"}
+{"executionTime":556,"exitCode":0,"language":"javascript","level":"info","message":"Code execution completed","requestId":"2724e2a8-f8c5-4c58-aaf6-61432622cc54","service":"code-execution-backend","success":true,"timestamp":"2025-09-24T07:22:56.634Z"}
+{"codeLength":132,"inputLength":0,"language":"java","level":"info","message":"Code execution request","requestId":"22ca2c6e-02ed-4423-8e6c-e3c35e52602a","service":"code-execution-backend","timeout":30000,"timestamp":"2025-09-24T07:23:16.721Z"}
+{"executionTime":1705,"exitCode":0,"language":"java","level":"info","message":"Code execution completed","requestId":"22ca2c6e-02ed-4423-8e6c-e3c35e52602a","service":"code-execution-backend","success":true,"timestamp":"2025-09-24T07:23:18.590Z"}
+{"codeLength":79,"inputLength":0,"language":"cpp","level":"info","message":"Code execution request","requestId":"db9d719c-2b75-4286-b573-24727ab21af6","service":"code-execution-backend","timeout":30000,"timestamp":"2025-09-24T07:23:24.802Z"}
+{"executionTime":743,"exitCode":0,"language":"cpp","level":"info","message":"Code execution completed","requestId":"db9d719c-2b75-4286-b573-24727ab21af6","service":"code-execution-backend","success":true,"timestamp":"2025-09-24T07:23:25.714Z"}
+{"codeLength":39,"inputLength":0,"language":"python","level":"info","message":"Code execution request","requestId":"71a68947-46db-4dd6-9b79-2099d786ae92","service":"code-execution-backend","timeout":30000,"timestamp":"2025-09-24T07:23:29.396Z"}
+{"executionTime":495,"exitCode":0,"language":"python","level":"info","message":"Code execution completed","requestId":"71a68947-46db-4dd6-9b79-2099d786ae92","service":"code-execution-backend","success":true,"timestamp":"2025-09-24T07:23:30.066Z"}
+{"codeLength":239,"inputLength":0,"language":"javascript","level":"info","message":"Code execution request","requestId":"069efb18-cc8f-40a9-ae31-89c38aec88a9","service":"code-execution-backend","timeout":30000,"timestamp":"2025-09-24T07:23:45.047Z"}
+{"executionTime":541,"exitCode":0,"language":"javascript","level":"info","message":"Code execution completed","requestId":"069efb18-cc8f-40a9-ae31-89c38aec88a9","service":"code-execution-backend","success":true,"timestamp":"2025-09-24T07:23:45.724Z"}
+>>>>>>> Stashed changes
