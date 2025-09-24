@@ -175,7 +175,7 @@ const response = await fetch('http://localhost:3001/api/execute', {
 - **Monaco Editor**: Dark theme properly configured
 - **Container Fixes**: Resolved Docker execution and file handling issues
 
-### ✅ Supported Languages (12 Essential Languages)
+### ✅ Supported Languages (11 Essential Languages)
 
 **Essential Core (5):**
 - **JavaScript** ✅ - 450ms execution time - Web development, Node.js backends
@@ -184,14 +184,13 @@ const response = await fetch('http://localhost:3001/api/execute', {
 - **TypeScript** 🔄 - Type-safe JavaScript for larger projects
 - **SQL** 🔄 - Database management (SQLite for demos)
 
-**Specialized but Very Popular (7):**
+**Specialized but Very Popular (6):**
 - **C#** 🔄 - Microsoft ecosystem, game development
 - **Go** 🔄 - Modern backend services, cloud infrastructure
 - **Rust** 🔄 - System programming, performance-critical apps
 - **Swift** 🔄 - iOS/macOS development
 - **C++** 🔄 - System programming, game engines, high-performance
 - **C** 🔄 - System programming, embedded systems
-- **SQL** 🔄 - Database queries and management
 
 **Legend:** ✅ Tested & Working | 🔄 Configured & Ready
 
