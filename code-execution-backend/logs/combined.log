@@ -658,6 +658,7 @@
 {"executionTime":371,"exitCode":1,"language":"cpp","level":"info","message":"Code execution completed","requestId":"e0bdfc00-1c00-4750-8325-473c812cd68c","service":"code-execution-backend","success":true,"timestamp":"2025-09-24T04:20:47.089Z"}
 {"codeLength":79,"inputLength":0,"language":"cpp","level":"info","message":"Code execution request","requestId":"ee6a4516-9523-4a08-97d4-6b14a869cae2","service":"code-execution-backend","timeout":30000,"timestamp":"2025-09-24T04:20:52.647Z"}
 {"executionTime":386,"exitCode":0,"language":"cpp","level":"info","message":"Code execution completed","requestId":"ee6a4516-9523-4a08-97d4-6b14a869cae2","service":"code-execution-backend","success":true,"timestamp":"2025-09-24T04:20:53.137Z"}
+<<<<<<< Updated upstream
 {"level":"info","message":"Docker service initialized","options":"{\n  \"host\": \"localhost\",\n  \"port\": 2375,\n  \"protocol\": \"http\"\n}","platform":"win32","service":"code-execution-backend","timestamp":"2025-09-24T05:56:16.412Z"}
 {"level":"info","message":"Code execution backend started on port 3001","service":"code-execution-backend","timestamp":"2025-09-24T05:56:16.424Z"}
 {"level":"info","message":"Environment: development","service":"code-execution-backend","timestamp":"2025-09-24T05:56:16.425Z"}
