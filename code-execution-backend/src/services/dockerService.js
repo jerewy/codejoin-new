@@ -131,16 +131,13 @@ class DockerService {
         Memory: this.parseMemoryLimit(languageConfig.memoryLimit),
         CpuQuota: Math.floor(languageConfig.cpuLimit * 100000),
         CpuPeriod: 100000,
-        PidsLimit: 64, // Limit number of processes
+        PidsLimit: languageConfig.name === 'Go' ? 128 : 64, // Higher process limit for Go
         ReadonlyRootfs: false, // Need write access for compilation
         Tmpfs: {
           '/tmp': 'rw,exec,nosuid,size=100m',
           '/var/tmp': 'rw,noexec,nosuid,size=10m'
         },
-        Ulimits: [
-          { Name: 'nofile', Soft: 64, Hard: 64 }, // File descriptor limit
-          { Name: 'nproc', Soft: 32, Hard: 32 }   // Process limit
-        ],
+        Ulimits: this.getUlimitsForLanguage(languageConfig),
         SecurityOpt: [
           'no-new-privileges:true'
         ],
@@ -149,16 +146,29 @@ class DockerService {
     };
 
     // Set up the execution command - embed code directly to avoid file copying issues
-    const escapedCode = codeContent.replace(/'/g, "'\"'\"'"); // Escape single quotes
-
-    if (languageConfig.type === 'compiled') {
-      // For compiled languages, create file, compile and run
-      const compileCmd = languageConfig.compileCommand.replace('/tmp/code', `/tmp/${fileName.split('.')[0]}`);
-      const runCmd = languageConfig.runCommand;
-      containerConfig.Cmd = ['sh', '-c', `echo '${escapedCode}' > /tmp/${fileName} && ${compileCmd} && ${runCmd}`];
+    // Special handling for SQL which has quote sensitivity issues with here-documents
+    if (languageConfig.name === 'SQL') {
+      // Use printf with proper escaping for SQL
+      const escapedCode = codeContent
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "'\"'\"'")
+        .replace(/\n/g, '\\n')
+        .replace(/\t/g, '\\t')
+        .replace(/\r/g, '\\r');
+      containerConfig.Cmd = ['sh', '-c', `printf '${escapedCode}' > /tmp/${fileName} && ${languageConfig.runCommand}`];
     } else {
-      // For interpreted languages, create file and run
-      containerConfig.Cmd = ['sh', '-c', `echo '${escapedCode}' > /tmp/${fileName} && ${languageConfig.runCommand} /tmp/${fileName}`];
+      // Use here-document approach for other languages to handle newlines properly
+      const escapedCode = codeContent.replace(/'/g, "'\"'\"'"); // Only escape single quotes for here-doc
+
+      if (languageConfig.type === 'compiled' || languageConfig.type === 'transpiled') {
+        // For compiled/transpiled languages, create file, compile and run
+        const compileCmd = languageConfig.compileCommand.replace('/tmp/code', `/tmp/${fileName.split('.')[0]}`);
+        const runCmd = languageConfig.runCommand;
+        containerConfig.Cmd = ['sh', '-c', `cat << 'CODEFILE' > /tmp/${fileName}\n${escapedCode}\nCODEFILE\n${compileCmd} && ${runCmd}`];
+      } else {
+        // For interpreted languages, create file and run
+        containerConfig.Cmd = ['sh', '-c', `cat << 'CODEFILE' > /tmp/${fileName}\n${escapedCode}\nCODEFILE\n${languageConfig.runCommand} /tmp/${fileName}`];
+      }
     }
 
     const container = await this.docker.createContainer(containerConfig);
@@ -365,6 +375,24 @@ class DockerService {
       logger.error(`Failed to get Docker info: ${error.message}`);
       throw error;
     }
+  }
+
+  getUlimitsForLanguage(languageConfig) {
+    // Language-specific ulimits to handle different compilation requirements
+    const defaultUlimits = [
+      { Name: 'nofile', Soft: 64, Hard: 64 }, // File descriptor limit
+      { Name: 'nproc', Soft: 32, Hard: 32 }   // Process limit
+    ];
+
+    // Go compiler needs more file descriptors and processes
+    if (languageConfig.name === 'Go') {
+      return [
+        { Name: 'nofile', Soft: 256, Hard: 256 }, // Higher file descriptor limit for Go
+        { Name: 'nproc', Soft: 128, Hard: 128 }   // Higher process limit for Go
+      ];
+    }
+
+    return defaultUlimits;
   }
 }
 

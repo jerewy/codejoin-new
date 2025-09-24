@@ -175,12 +175,25 @@ const response = await fetch('http://localhost:3001/api/execute', {
 - **Monaco Editor**: Dark theme properly configured
 - **Container Fixes**: Resolved Docker execution and file handling issues
 
-### ✅ Tested & Working Languages
-- **Python** ✅ - 350ms execution time
-- **Java** ✅ - 930ms execution time (includes compilation)
-- **JavaScript/Node.js** ✅ - 450ms execution time
-- **Shell** ✅ - For basic commands
-- **Available but not tested**: C++, C, Go, Rust, TypeScript, PHP, Ruby, and 13 more
+### ✅ Supported Languages (12 Essential Languages)
+
+**Essential Core (5):**
+- **JavaScript** ✅ - 450ms execution time - Web development, Node.js backends
+- **Python** ✅ - 350ms execution time - Data science, AI/ML, automation
+- **Java** ✅ - 930ms execution time - Enterprise apps, Android development
+- **TypeScript** 🔄 - Type-safe JavaScript for larger projects
+- **SQL** 🔄 - Database management (SQLite for demos)
+
+**Specialized but Very Popular (7):**
+- **C#** 🔄 - Microsoft ecosystem, game development
+- **Go** 🔄 - Modern backend services, cloud infrastructure
+- **Rust** 🔄 - System programming, performance-critical apps
+- **Swift** 🔄 - iOS/macOS development
+- **C++** 🔄 - System programming, game engines, high-performance
+- **C** 🔄 - System programming, embedded systems
+- **SQL** 🔄 - Database queries and management
+
+**Legend:** ✅ Tested & Working | 🔄 Configured & Ready
 
 ### 🔧 Recent Session Fixes (2025-09-23)
 - **Docker Backend Issues**: Fixed container execution, file copying, and timeout handling
@@ -192,7 +205,7 @@ const response = await fetch('http://localhost:3001/api/execute', {
 
 ### 🔧 Next Development Priorities
 1. **Frontend Integration** - Connect React frontend to backend API
-2. **Language Selector UI** - Dropdown for choosing from 22+ languages
+2. **Language Selector UI** - Dropdown for choosing from 12 essential languages
 3. **Real-time Collaboration** - Multiple users editing same code
 4. **AI Assistant Integration** - Code suggestions and help
 5. **User Authentication** - Login/registration system

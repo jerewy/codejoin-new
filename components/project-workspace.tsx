@@ -114,7 +114,6 @@ const getFileExtension = (fileName: string): string => {
   return ext ? `.${ext}` : "";
 };
 
-
 // VS Code-style Terminal component
 function TerminalPanel({
   executionOutputs = [],
@@ -170,9 +169,17 @@ function TerminalPanel({
         break;
       case "executions":
         if (executionOutputs.length === 0) {
-          setCommands((prev) => [...prev, "No code executions yet. Run some code to see results!", ""]);
+          setCommands((prev) => [
+            ...prev,
+            "No code executions yet. Run some code to see results!",
+            "",
+          ]);
         } else {
-          setCommands((prev) => [...prev, `Found ${executionOutputs.length} execution result(s). Check the output panel above.`, ""]);
+          setCommands((prev) => [
+            ...prev,
+            `Found ${executionOutputs.length} execution result(s). Check the output panel above.`,
+            "",
+          ]);
         }
         break;
       case "executions clear":
@@ -211,8 +218,8 @@ function TerminalPanel({
         setCommands((prev) => [
           ...prev,
           "CONTAINER ID   IMAGE                    COMMAND       CREATED       STATUS       PORTS     NAMES",
-          "a1b2c3d4e5f6   python:3.11-alpine      \"python\"     2 min ago     Up 2 min               code-exec-python",
-          "f6e5d4c3b2a1   node:18-alpine          \"node\"       5 min ago     Up 5 min               code-exec-node",
+          'a1b2c3d4e5f6   python:3.11-alpine      "python"     2 min ago     Up 2 min               code-exec-python',
+          'f6e5d4c3b2a1   node:18-alpine          "node"       5 min ago     Up 5 min               code-exec-node',
           "",
         ]);
         break;
@@ -235,7 +242,11 @@ function TerminalPanel({
         setCommands((prev) => [...prev, "/workspace/codejoin", ""]);
         break;
       default:
-        setCommands((prev) => [...prev, `bash: ${trimmed}: command not found`, ""]);
+        setCommands((prev) => [
+          ...prev,
+          `bash: ${trimmed}: command not found`,
+          "",
+        ]);
     }
     setCurrentCommand("");
   };
@@ -301,7 +312,8 @@ function TerminalPanel({
                 [Execution {index + 1}]
               </span>
               <span className="text-xs text-[#cccccc]">
-                {formatExecutionTime(execution.executionTime)} • Exit {execution.exitCode}
+                {formatExecutionTime(execution.executionTime)} • Exit{" "}
+                {execution.exitCode}
               </span>
             </div>
 
@@ -329,7 +341,7 @@ function TerminalPanel({
         <div className="space-y-1">
           {commands.map((cmd, index) => (
             <div key={`cmd-${index}`} className="leading-relaxed">
-              {cmd.startsWith('user@codejoin:~$') ? (
+              {cmd.startsWith("user@codejoin:~$") ? (
                 <div className="text-[#4ec9b0]">{cmd}</div>
               ) : (
                 <div className="text-[#cccccc] pl-0">{cmd}</div>
@@ -340,7 +352,9 @@ function TerminalPanel({
 
         {/* Current command input line */}
         <div className="flex items-center mt-2">
-          <span className="text-[#4ec9b0] mr-2 select-none">user@codejoin:~$</span>
+          <span className="text-[#4ec9b0] mr-2 select-none">
+            user@codejoin:~$
+          </span>
           <div className="flex-1 relative">
             <input
               ref={inputRef}
@@ -353,8 +367,18 @@ function TerminalPanel({
                 } else if (e.key === "Tab") {
                   e.preventDefault();
                   // Simple tab completion
-                  const commands = ["help", "clear", "executions", "npm", "docker", "ls", "pwd"];
-                  const matches = commands.filter(cmd => cmd.startsWith(currentCommand));
+                  const commands = [
+                    "help",
+                    "clear",
+                    "executions",
+                    "npm",
+                    "docker",
+                    "ls",
+                    "pwd",
+                  ];
+                  const matches = commands.filter((cmd) =>
+                    cmd.startsWith(currentCommand)
+                  );
                   if (matches.length === 1) {
                     setCurrentCommand(matches[0]);
                   }
@@ -556,7 +580,7 @@ export default function ProjectWorkspace({
 
     // For all code files, trigger the CodeEditor execution which uses real backend
     // This will be handled by the CodeEditor component's executeCode function
-    const event = new CustomEvent('codeEditorExecute');
+    const event = new CustomEvent("codeEditorExecute");
     window.dispatchEvent(event);
   };
 
@@ -577,10 +601,14 @@ export default function ProjectWorkspace({
       // Success feedback
       if (result.output) {
         // Code executed successfully with output
-        console.log(`✓ Code executed successfully in ${result.executionTime}ms`);
+        console.log(
+          `✓ Code executed successfully in ${result.executionTime}ms`
+        );
       } else {
         // Code executed successfully but no output
-        console.log(`✓ Code executed successfully (no output) in ${result.executionTime}ms`);
+        console.log(
+          `✓ Code executed successfully (no output) in ${result.executionTime}ms`
+        );
       }
     } else {
       // Error feedback
@@ -677,7 +705,6 @@ export default function ProjectWorkspace({
       }
     }
   }, [currentFile?.content, currentFile?.name]);
-
 
   // Fetch collaborators count
   useEffect(() => {
@@ -1111,19 +1138,18 @@ export default function ProjectWorkspace({
               </div>
             </ResizablePanel>
             <ResizableHandle className="!h-3 bg-muted/50 data-[resize-handle-state=drag]:bg-primary transition-colors" />
-            <ResizablePanel
-              collapsible={true}
-              collapsedSize={4}
-              defaultSize={30}
-              minSize={9}
-            >
+            <ResizablePanel collapsible={true} defaultSize={30} minSize={9}>
               <div className="h-full border-t flex flex-col">
                 <Tabs
                   value={activeBottomTab}
                   onValueChange={setActiveBottomTab}
                   className="flex flex-col flex-1 min-h-0 h-full"
                 >
-                  <TabsList className={`grid w-full ${isAIAssistantOpen ? 'grid-cols-3' : 'grid-cols-2'} bg-muted/50 rounded-none border-b`}>
+                  <TabsList
+                    className={`grid w-full ${
+                      isAIAssistantOpen ? "grid-cols-3" : "grid-cols-2"
+                    } bg-muted/50 rounded-none border-b`}
+                  >
                     <TabsTrigger value="terminal" className="gap-2">
                       <Terminal className="h-4 w-4" />
                       Terminal

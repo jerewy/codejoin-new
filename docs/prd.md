@@ -1,5 +1,3 @@
-# This should be a backup for my web application when it's too large i will try this so that it's only for a certain language
-
 # CodeJoin - Product Requirements Document
 
 **Document Version:** 1.0  
@@ -113,32 +111,44 @@ CodeJoin addresses these challenges by providing:
 - Changes are reflected in real-time (<100ms latency)
 - Syntax highlighting works correctly for 100% of supported language constructs
 
-#### 6.1.2 Language Support (Initial Focus)
+#### 6.1.2 Language Support (Multi-Language Approach)
 
 **Priority:** High
-**Description:** Support for Python as the initial programming language
+**Description:** Support for 11 essential programming languages covering 95% of development needs
 **Requirements:**
 
-- Complete Python syntax support and highlighting (Python 3.11+)
-- Python-specific code completion and IntelliSense
+**Essential Core Languages (5):**
+
+- JavaScript - Web development, Node.js backends
+- Python - Data science, AI/ML, automation
+- Java - Enterprise applications, Android development
+- TypeScript - Type-safe JavaScript for larger projects
+- SQL - Database management and queries
+
+**Specialized but Very Popular (7):**
+
+- C# - Microsoft ecosystem, game development
+- Go - Modern backend services, cloud infrastructure
+- Rust - System programming, performance-critical applications
+- Swift - iOS/macOS development
+- C++ - System programming, game engines, high-performance
+- C - System programming, embedded systems
+
+**Technical Requirements:**
+
+- Complete syntax support and highlighting for all languages
+- Language-specific code completion and IntelliSense
 - Error detection and basic debugging support
-- Support for common Python libraries (requests, numpy, pandas basics)
-- Interactive Python execution with immediate output
+- Docker-based secure execution environment
+- Performance targets: <1000ms for compiled languages, <500ms for interpreted
 
 **Success Criteria:**
 
-- Full Python feature support including modern syntax
+- Full language feature support for all 12 languages
 - Accurate syntax error detection (>95% accuracy)
-- Code completion works for Python standard library and basic packages
-- Python code executes successfully with proper output display
-- Support for both script execution and interactive Python sessions
-
-**Rationale for Python Choice:**
-
-- Most popular language for beginners and students
-- Excellent for collaborative learning due to readable syntax
-- Rich ecosystem for data science, web development, and general programming
-- Strong AI/ML integration possibilities for future features
+- Code completion suggestions work for standard library functions
+- All languages execute within performance targets
+- Secure container isolation maintained
 
 #### 6.1.3 AI Code Assistant
 
@@ -265,12 +275,12 @@ CodeJoin addresses these challenges by providing:
 1. Sarah creates an account on CodeJoin
 2. She creates a new room for her Python study group
 3. She shares the room link with her 3 teammates
-4. They start working on a Python data structures assignment together
-5. When Sarah writes inefficient Python code, the AI suggests Pythonic improvements
-6. Her teammate sees the suggestion and explains list comprehensions
-7. They collaborate to implement the optimized Python solution
-8. The AI validates their final Python code and confirms it follows PEP 8 standards
-9. They save the project and schedule their next Python coding session
+4. They start working on a data structures assignment together
+5. When Sarah writes inefficient code, the AI suggests improvements
+6. Her teammate sees the suggestion and explains the concept further
+7. They collaborate to implement the optimized solution
+8. The AI validates their final code and confirms it follows best practices
+9. They save the project and schedule their next coding session
 
 ---
 
@@ -301,13 +311,12 @@ CodeJoin addresses these challenges by providing:
 
 ## 10. Implementation Timeline
 
-### Phase 1 (Months 1-3): Core Development - Python Focus
+### Phase 1 (Months 1-3): Core Development
 
-- Set up development environment with simplified architecture
-- Implement collaborative code editor with Python support only
-- Configure Docker backend for Python execution (python:3.11-alpine only)
+- Set up development environment and basic architecture
+- Implement collaborative code editor with chosen programming language
 - Develop basic room creation and management
-- Integrate AI code assistant (Python-focused version)
+- Integrate AI code assistant (basic version)
 - Basic user authentication system
 
 ### Phase 2 (Months 4-5): Enhancement & Testing
@@ -340,8 +349,8 @@ CodeJoin addresses these challenges by providing:
 
 ### 11.2 Product Risks
 
-**Risk:** Low user adoption due to Python-only support
-**Mitigation:** Python is the most popular beginner language; focus on excellence in Python rather than breadth. Gather early feedback to validate language choice and plan expansion based on user demand
+**Risk:** Complexity management with 11 languages
+**Mitigation:** Focus on essential languages that cover 95% of use cases, prioritize quality over quantity, implement robust testing for each language
 
 **Risk:** Competition from established platforms
 **Mitigation:** Focus on unique value proposition of collaborative learning with AI
@@ -357,14 +366,14 @@ CodeJoin addresses these challenges by providing:
 
 ### Post-MVP Features (6+ months)
 
-- **Language Expansion**: Add JavaScript and Java support
-- Advanced Python features (package management, virtual environments)
 - Advanced AI features (code generation, architecture suggestions)
 - Video/voice communication integration
-- Learning paths and structured Python curricula
+- Learning paths and structured curricula for each language
 - Mobile application development
 - Integration with popular educational platforms
 - Advanced analytics and learning insights
+- Language-specific debugging and profiling tools
+- Package management and dependency handling
 
 ### Long-term Vision (12+ months)
 
