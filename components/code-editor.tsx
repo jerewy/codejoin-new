@@ -558,26 +558,62 @@ export default function CodeEditor({
   };
 
   const validateJsonSyntax = (code: string, markers: any[], monaco: any) => {
+    // Skip validation for empty or whitespace-only content
+    if (!code.trim()) return;
+
     try {
       JSON.parse(code);
     } catch (error: any) {
-      const match = error.message.match(/position (\d+)/);
-      if (match) {
-        const position = parseInt(match[1]);
-        const lines = code.substring(0, position).split("\n");
-        const lineNumber = lines.length;
-        const column = lines[lines.length - 1].length + 1;
+      // Improved error handling for various JSON syntax errors
+      let lineNumber = 1;
+      let column = 1;
+      let errorMessage = error.message;
 
-        markers.push({
-          startLineNumber: lineNumber,
-          endLineNumber: lineNumber,
-          startColumn: column,
-          endColumn: column + 1,
-          message: error.message,
-          severity: monaco.MarkerSeverity.Error,
-        });
+      // Try to extract position information from different error message formats
+      const positionMatch = error.message.match(/position (\d+)/);
+      const lineColumnMatch = error.message.match(/line (\d+) column (\d+)/);
+
+      if (positionMatch) {
+        const position = parseInt(positionMatch[1]);
+        const lines = code.substring(0, position).split("\n");
+        lineNumber = lines.length;
+        column = lines[lines.length - 1].length + 1;
+      } else if (lineColumnMatch) {
+        lineNumber = parseInt(lineColumnMatch[1]);
+        column = parseInt(lineColumnMatch[2]);
       }
+
+      // Provide more user-friendly error messages
+      if (errorMessage.includes('Unexpected token')) {
+        errorMessage = `JSON Syntax Error: ${errorMessage}. Check for missing commas, quotes, or brackets.`;
+      } else if (errorMessage.includes('Unexpected end')) {
+        errorMessage = `JSON Syntax Error: Unexpected end of input. Check for unclosed brackets, braces, or quotes.`;
+      } else if (errorMessage.includes('Bad control character')) {
+        errorMessage = `JSON Syntax Error: Invalid control character. Special characters need to be escaped.`;
+      } else if (errorMessage.includes('Bad escaped character')) {
+        errorMessage = `JSON Syntax Error: Invalid escape sequence. Use proper JSON escape sequences (\\n, \\t, \\", \\\\, etc.).`;
+      } else {
+        errorMessage = `JSON Syntax Error: ${errorMessage}`;
+      }
+
+      markers.push({
+        startLineNumber: lineNumber,
+        endLineNumber: lineNumber,
+        startColumn: Math.max(1, column - 1),
+        endColumn: column + 1,
+        message: errorMessage,
+        severity: monaco.MarkerSeverity.Error,
+      });
     }
+  };
+
+  // Helper function to safely handle content with special characters
+  const sanitizeContent = (content: string): string => {
+    // Remove or replace problematic characters that can cause issues
+    return content
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '') // Remove control characters
+      .replace(/\u2028/g, '\\u2028') // Escape line separator
+      .replace(/\u2029/g, '\\u2029'); // Escape paragraph separator
   };
 
   const executeCode = async () => {
@@ -595,7 +631,7 @@ export default function CodeEditor({
 
       const result = await codeExecutionAPI.executeCode({
         language: detectedLanguage,
-        code: file.content,
+        code: sanitizeContent(file.content),
         timeout: 30000, // 30 second timeout
       });
 

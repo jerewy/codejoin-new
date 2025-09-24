@@ -24,17 +24,42 @@ export default function QuickStats({ projects }: QuickStatsProps) {
 
   const getMostFrequentLanguage = () => {
     if (projects.length === 0) return "N/A";
+
+    // Count languages from project language arrays and individual language field
     const languageCounts = projects.reduce((acc, p) => {
-      if (p.language) {
+      // Handle project.language field (single language)
+      if (p.language && typeof p.language === 'string') {
         acc[p.language] = (acc[p.language] || 0) + 1;
       }
+
+      // Handle projects that might have language arrays in tags or other fields
+      // Check if the project has tags that might represent languages
+      if ('tags' in p && Array.isArray((p as any).tags)) {
+        const languageKeywords = ['JavaScript', 'Python', 'Java', 'TypeScript', 'C#', 'Go', 'Rust', 'Swift', 'C++', 'C', 'SQL'];
+        (p as any).tags.forEach((tag: string) => {
+          const normalizedTag = languageKeywords.find(lang =>
+            lang.toLowerCase() === tag.toLowerCase() ||
+            (tag.toLowerCase() === 'js' && lang === 'JavaScript') ||
+            (tag.toLowerCase() === 'ts' && lang === 'TypeScript') ||
+            (tag.toLowerCase() === 'py' && lang === 'Python')
+          );
+          if (normalizedTag) {
+            acc[normalizedTag] = (acc[normalizedTag] || 0) + 1;
+          }
+        });
+      }
+
       return acc;
     }, {} as Record<string, number>);
 
-    const topLanguage = Object.keys(languageCounts).reduce(
-      (a, b) => (languageCounts[a] > languageCounts[b] ? a : b),
-      "None"
+    // Return the most frequent language or "None" if no languages found
+    const languageEntries = Object.entries(languageCounts);
+    if (languageEntries.length === 0) return "None";
+
+    const [topLanguage] = languageEntries.reduce(
+      (a, b) => (a[1] > b[1] ? a : b)
     );
+
     return topLanguage;
   };
 

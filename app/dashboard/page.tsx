@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,7 @@ import {
   GitBranch,
   Calendar,
   Activity as ActivityIcon,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import ProjectCard from "@/components/project-card";
@@ -42,6 +43,101 @@ const UserDropdown = dynamic(() => import("@/components/user-dropdown"), {
   ssr: false,
 });
 
+interface DeleteConfirmationProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  projectName: string;
+  isDeleting: boolean;
+}
+
+function DeleteConfirmation({
+  isOpen,
+  onClose,
+  onConfirm,
+  projectName,
+  isDeleting,
+}: DeleteConfirmationProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isDeleting) {
+        onClose();
+      }
+    };
+
+    const handleEnter = (event: KeyboardEvent) => {
+      if (event.key === "Enter" && !isDeleting) {
+        onConfirm();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener("keydown", handleEscape);
+      document.addEventListener("keydown", handleEnter);
+      dialogRef.current?.focus();
+    }
+
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("keydown", handleEnter);
+    };
+  }, [isOpen, onClose, onConfirm, isDeleting]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div
+        ref={dialogRef}
+        className="bg-background border rounded-lg shadow-lg p-6 max-w-md w-full mx-4"
+        tabIndex={-1}
+      >
+        <div className="flex items-center gap-3 mb-4">
+          <AlertTriangle className="h-6 w-6 text-red-500" />
+          <h2 className="text-lg font-semibold">Delete Project</h2>
+        </div>
+
+        <p className="text-sm text-muted-foreground mb-6">
+          Are you sure you want to delete{" "}
+          <span className="font-medium text-foreground">"{projectName}"</span>?
+          <span className="block mt-2 text-red-600">
+            This will permanently remove all project files and data.
+          </span>
+          <span className="block mt-2 font-medium">
+            This action cannot be undone.
+          </span>
+        </p>
+
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose} disabled={isDeleting}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="bg-red-600 hover:bg-red-700"
+          >
+            {isDeleting ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                Deleting...
+              </>
+            ) : (
+              <>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete Project
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
@@ -50,6 +146,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
   const [userName, setUserName] = useState<string>("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [openDropdowns, setOpenDropdowns] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     async function getDashboardData() {
@@ -146,6 +246,104 @@ export default function DashboardPage() {
 
     getDashboardData();
   }, []);
+
+  // Handle project deletion
+  const handleDeleteProject = async () => {
+    if (!projectToDelete) return;
+
+    setIsDeleting(true);
+
+    try {
+      console.log('Attempting to delete project:', projectToDelete.id);
+
+      // Check if user is authenticated
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        throw new Error('You must be logged in to delete a project');
+      }
+
+      // Verify user owns this project
+      const { data: projectCheck, error: checkError } = await supabase
+        .from('projects')
+        .select('user_id')
+        .eq('id', projectToDelete.id)
+        .single();
+
+      if (checkError) {
+        console.error('Error checking project ownership:', checkError);
+        throw new Error('Failed to verify project ownership');
+      }
+
+      if (projectCheck.user_id !== user.id) {
+        throw new Error('You can only delete your own projects');
+      }
+
+      // First, delete all project nodes (files and folders)
+      const { error: nodesError } = await supabase
+        .from('project_nodes')
+        .delete()
+        .eq('project_id', projectToDelete.id);
+
+      if (nodesError) {
+        console.error('Error deleting project nodes:', nodesError);
+        throw nodesError;
+      }
+
+      // Then delete the project itself
+      const { error: projectError } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', projectToDelete.id);
+
+      if (projectError) {
+        console.error('Error deleting project:', projectError);
+        throw projectError;
+      }
+
+      console.log('Project deleted successfully');
+
+      // Remove project from local state
+      setProjects(projects.filter(p => p.id !== projectToDelete.id));
+
+      // Close dialog and reset state
+      setDeleteDialogOpen(false);
+      setProjectToDelete(null);
+
+      // Show success message
+      console.log(`Project "${projectToDelete.name}" deleted successfully`);
+
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`Failed to delete project: ${errorMessage}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Open delete confirmation dialog
+  const openDeleteDialog = (project: Project) => {
+    console.log('Opening delete dialog for project:', project);
+    // Close the dropdown first
+    setOpenDropdowns(new Set());
+    setTimeout(() => {
+      setProjectToDelete(project);
+      setDeleteDialogOpen(true);
+    }, 100);
+  };
+
+  // Handle dropdown open state
+  const handleDropdownOpenChange = (projectId: string, open: boolean) => {
+    setOpenDropdowns(prev => {
+      const next = new Set(prev);
+      if (open) {
+        next.add(projectId);
+      } else {
+        next.delete(projectId);
+      }
+      return next;
+    });
+  };
 
   if (loading) {
     return <div>Loading your dashboard...</div>;
@@ -281,7 +479,11 @@ export default function DashboardPage() {
               <TabsContent value="grid">
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {filteredProjects.map((project) => (
-                    <ProjectCard key={project.id} project={project} />
+                    <ProjectCard
+                      key={project.id}
+                      project={project}
+                      onDelete={openDeleteDialog}
+                    />
                   ))}
                 </div>
               </TabsContent>
@@ -322,18 +524,34 @@ export default function DashboardPage() {
                             <Clock className="h-4 w-4" />
                             {new Date(project.updated_at).toLocaleDateString()}
                           </div>
-                          <DropdownMenu>
+                          <DropdownMenu
+                            open={openDropdowns.has(project.id)}
+                            onOpenChange={(open) => handleDropdownOpenChange(project.id, open)}
+                          >
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="sm">
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent>
-                              <DropdownMenuItem>
-                                <Eye className="h-4 w-4 mr-2" />
-                                Open
+                              <DropdownMenuItem asChild>
+                                <Link href={`/project/${project.id}`}>
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  Open
+                                </Link>
                               </DropdownMenuItem>
-                              <DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => {
+                                if (navigator.share) {
+                                  navigator.share({
+                                    title: project.name,
+                                    text: project.description || 'Check out this project',
+                                    url: `${window.location.origin}/project/${project.id}`
+                                  });
+                                } else {
+                                  navigator.clipboard.writeText(`${window.location.origin}/project/${project.id}`);
+                                  alert('Project link copied to clipboard!');
+                                }
+                              }}>
                                 <Share2 className="h-4 w-4 mr-2" />
                                 Share
                               </DropdownMenuItem>
@@ -343,7 +561,15 @@ export default function DashboardPage() {
                                   Settings
                                 </Link>
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-destructive">
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  console.log('Delete button clicked!', project);
+                                  openDeleteDialog(project);
+                                }}
+                              >
                                 <Trash2 className="h-4 w-4 mr-2" />
                                 Delete
                               </DropdownMenuItem>
@@ -385,50 +611,67 @@ export default function DashboardPage() {
                     Create New Project
                   </Button>
                 </Link>
-                <Button className="w-full justify-start" variant="outline">
-                  <Users className="h-4 w-4 mr-2" />
-                  Invite Team Member
-                </Button>
-                <Button className="w-full justify-start" variant="outline">
-                  <Folder className="h-4 w-4 mr-2" />
-                  Browse Templates
-                </Button>
-                <Button className="w-full justify-start" variant="outline">
-                  <GitBranch className="h-4 w-4 mr-2" />
-                  Import from GitHub
-                </Button>
+                <Link href="/teams">
+                  <Button className="w-full justify-start" variant="outline">
+                    <Users className="h-4 w-4 mr-2" />
+                    Invite Team Member
+                  </Button>
+                </Link>
+                <Link href="/templates-section">
+                  <Button className="w-full justify-start" variant="outline">
+                    <Folder className="h-4 w-4 mr-2" />
+                    Browse Templates
+                  </Button>
+                </Link>
+                <Link href="/new-project">
+                  <Button className="w-full justify-start" variant="outline">
+                    <GitBranch className="h-4 w-4 mr-2" />
+                    Import from GitHub
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
 
-            {/* Upcoming Deadlines */}
+            {/* Project Statistics */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Calendar className="h-5 w-5" />
-                  Upcoming Deadlines
+                  Project Statistics
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium text-sm">E-commerce Website</p>
+                    <p className="font-medium text-sm">Active Projects</p>
                     <p className="text-xs text-muted-foreground">
-                      Client review
+                      Currently in development
                     </p>
                   </div>
-                  <Badge variant="destructive" className="text-xs">
-                    2 days
+                  <Badge variant="default" className="text-xs">
+                    {projects.filter((p) => p.status === "active").length}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium text-sm">Task Management App</p>
+                    <p className="font-medium text-sm">Total Projects</p>
                     <p className="text-xs text-muted-foreground">
-                      Beta release
+                      All time projects
                     </p>
                   </div>
                   <Badge variant="secondary" className="text-xs">
-                    1 week
+                    {projects.length}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-sm">Collaborators</p>
+                    <p className="text-xs text-muted-foreground">
+                      Total team members
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-xs">
+                    {projects.reduce((sum, p) => sum + (p.collaborators || 0), 0)}
                   </Badge>
                 </div>
               </CardContent>
@@ -436,6 +679,18 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmation
+        isOpen={deleteDialogOpen}
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setProjectToDelete(null);
+        }}
+        onConfirm={handleDeleteProject}
+        projectName={projectToDelete?.name || ""}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 }

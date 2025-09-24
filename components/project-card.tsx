@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -30,9 +31,19 @@ import { Project } from "@/lib/types";
 
 interface ProjectCardProps {
   project: Project;
+  onDelete?: (project: Project) => void;
 }
 
-export default function ProjectCard({ project }: ProjectCardProps) {
+export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  const handleDelete = () => {
+    setDropdownOpen(false); // Close dropdown immediately
+    setTimeout(() => {
+      onDelete?.(project); // Small delay to ensure dropdown closes first
+    }, 100);
+  };
+
   return (
     <Card className="group hover:shadow-md transition-shadow">
       <CardHeader className="pb-2">
@@ -43,7 +54,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
               <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
             )}
           </div>
-          <DropdownMenu>
+          <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
@@ -54,9 +65,11 @@ export default function ProjectCard({ project }: ProjectCardProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <DropdownMenuItem>
-                <Eye className="h-4 w-4 mr-2" />
-                Open
+              <DropdownMenuItem asChild>
+                <Link href={`/project/${project.id}`}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  Open
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <Share2 className="h-4 w-4 mr-2" />
@@ -68,7 +81,15 @@ export default function ProjectCard({ project }: ProjectCardProps) {
                   <span>Settings</span>
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-destructive">
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('ProjectCard delete clicked!', project);
+                  handleDelete();
+                }}
+              >
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete
               </DropdownMenuItem>

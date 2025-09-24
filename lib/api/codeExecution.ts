@@ -68,14 +68,22 @@ class CodeExecutionAPI {
         try {
           const errorJson = JSON.parse(errorBody);
           errorMessage = errorJson.error || errorJson.message || 'API request failed';
-        } catch {
-          errorMessage = errorBody || `HTTP ${response.status}: ${response.statusText}`;
+        } catch (jsonParseError) {
+          // If the response isn't valid JSON, use the raw text or default message
+          errorMessage = errorBody.length > 0 && errorBody.length < 500
+            ? errorBody
+            : `HTTP ${response.status}: ${response.statusText}`;
         }
 
         throw new Error(errorMessage);
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        throw new Error('Invalid JSON response from server');
+      }
       return data as T;
     } catch (error) {
       clearTimeout(timeoutId);

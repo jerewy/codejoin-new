@@ -27,15 +27,39 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isProtectedRoute = sidebarRoutes.includes(segment || "");
   const hasSidebar = isLoggedIn && isProtectedRoute;
 
-  // Read/write sidebar state from localStorage
+  // Project pages should always have sidebar closed for focus
+  const isProjectPage = segment === "project";
+
+  // Read sidebar state from localStorage on mount
   useEffect(() => {
     const savedState = localStorage.getItem("sidebarOpen");
-    if (savedState !== null) setIsSidebarOpen(JSON.parse(savedState));
+    if (savedState !== null) {
+      const savedOpen = JSON.parse(savedState);
+      // On project pages, always close sidebar regardless of saved state
+      setIsSidebarOpen(isProjectPage ? false : savedOpen);
+    }
   }, []);
 
+  // Handle route changes - close sidebar when entering project, restore when leaving
   useEffect(() => {
-    localStorage.setItem("sidebarOpen", JSON.stringify(isSidebarOpen));
-  }, [isSidebarOpen]);
+    if (isProjectPage) {
+      // Always close sidebar on project pages
+      setIsSidebarOpen(false);
+    } else {
+      // Restore saved state when leaving project pages
+      const savedState = localStorage.getItem("sidebarOpen");
+      if (savedState !== null) {
+        setIsSidebarOpen(JSON.parse(savedState));
+      }
+    }
+  }, [isProjectPage]);
+
+  // Save sidebar state to localStorage (but not when on project pages)
+  useEffect(() => {
+    if (!isProjectPage) {
+      localStorage.setItem("sidebarOpen", JSON.stringify(isSidebarOpen));
+    }
+  }, [isSidebarOpen, isProjectPage]);
 
   if (isProtectedRoute && !isLoggedIn) {
     return (
@@ -57,14 +81,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   if (hasSidebar) {
     return (
       <SidebarProvider
-        defaultOpen={isSidebarOpen}
-        onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+        open={isSidebarOpen}
+        onOpenChange={(open) => {
+          // Only allow toggling when not on project pages
+          if (!isProjectPage) {
+            setIsSidebarOpen(open);
+          }
+        }}
       >
+        <AppSidebar />
         <SidebarInset>
-          <div className="flex min-h-screen">
-            <AppSidebar />
-            <main className="flex-1">{children}</main>
-          </div>
+          <main className="flex-1">{children}</main>
         </SidebarInset>
       </SidebarProvider>
     );
