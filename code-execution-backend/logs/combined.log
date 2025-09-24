@@ -660,6 +660,7 @@
 {"executionTime":386,"exitCode":0,"language":"cpp","level":"info","message":"Code execution completed","requestId":"ee6a4516-9523-4a08-97d4-6b14a869cae2","service":"code-execution-backend","success":true,"timestamp":"2025-09-24T04:20:53.137Z"}
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 {"level":"info","message":"Docker service initialized","options":"{\n  \"host\": \"localhost\",\n  \"port\": 2375,\n  \"protocol\": \"http\"\n}","platform":"win32","service":"code-execution-backend","timestamp":"2025-09-24T05:56:16.412Z"}
 {"level":"info","message":"Code execution backend started on port 3001","service":"code-execution-backend","timestamp":"2025-09-24T05:56:16.424Z"}
 {"level":"info","message":"Environment: development","service":"code-execution-backend","timestamp":"2025-09-24T05:56:16.425Z"}
@@ -675,6 +676,8 @@
 {"codeLength":44,"inputLength":0,"language":"javascript","level":"info","message":"Code execution request","requestId":"54c2431e-147b-45d4-a291-5e782c832f81","service":"code-execution-backend","timeout":30000,"timestamp":"2025-09-24T06:15:39.495Z"}
 {"executionTime":411,"exitCode":0,"language":"javascript","level":"info","message":"Code execution completed","requestId":"54c2431e-147b-45d4-a291-5e782c832f81","service":"code-execution-backend","success":true,"timestamp":"2025-09-24T06:15:40.007Z"}
 =======
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 {"level":"info","message":"Docker service initialized","options":"{\n  \"socketPath\": \"//./pipe/docker_engine\"\n}","platform":"win32","service":"code-execution-backend","timestamp":"2025-09-24T06:13:50.355Z"}
@@ -707,6 +710,9 @@
 {"codeLength":239,"inputLength":0,"language":"javascript","level":"info","message":"Code execution request","requestId":"069efb18-cc8f-40a9-ae31-89c38aec88a9","service":"code-execution-backend","timeout":30000,"timestamp":"2025-09-24T07:23:45.047Z"}
 {"executionTime":541,"exitCode":0,"language":"javascript","level":"info","message":"Code execution completed","requestId":"069efb18-cc8f-40a9-ae31-89c38aec88a9","service":"code-execution-backend","success":true,"timestamp":"2025-09-24T07:23:45.724Z"}
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
