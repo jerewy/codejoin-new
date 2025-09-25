@@ -20,16 +20,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // Define which routes should have the sidebar
   const sidebarRoutes = [
     "dashboard",
-    "settings",
     "project",
+    "settings",
+    "new-project",
     "ai-assistant",
     "templates-section",
+    "teams",
   ];
   const isProtectedRoute = sidebarRoutes.includes(segment || "");
   const hasSidebar = isLoggedIn && isProtectedRoute;
 
   // Project pages should always have sidebar closed for focus
-  const isProjectPage = segment === "project";
+  const isSidebarClosed = segment === "project" || segment === "settings";
 
   // Read sidebar state from localStorage on mount
   useEffect(() => {
@@ -37,13 +39,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     if (savedState !== null) {
       const savedOpen = JSON.parse(savedState);
       // On project pages, always close sidebar regardless of saved state
-      setIsSidebarOpen(isProjectPage ? false : savedOpen);
+      setIsSidebarOpen(isSidebarClosed ? false : savedOpen);
     }
   }, []);
 
   // Handle route changes - close sidebar when entering project, restore when leaving
   useEffect(() => {
-    if (isProjectPage) {
+    if (isSidebarClosed) {
       // Always close sidebar on project pages
       setIsSidebarOpen(false);
     } else {
@@ -53,14 +55,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         setIsSidebarOpen(JSON.parse(savedState));
       }
     }
-  }, [isProjectPage]);
+  }, [isSidebarClosed]);
 
   // Save sidebar state to localStorage (but not when on project pages)
   useEffect(() => {
-    if (!isProjectPage) {
+    if (!isSidebarClosed) {
       localStorage.setItem("sidebarOpen", JSON.stringify(isSidebarOpen));
     }
-  }, [isSidebarOpen, isProjectPage]);
+  }, [isSidebarOpen, isSidebarClosed]);
 
   if (isProtectedRoute && !isLoggedIn) {
     return (
@@ -85,7 +87,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         open={isSidebarOpen}
         onOpenChange={(open) => {
           // Only allow toggling when not on project pages
-          if (!isProjectPage) {
+          if (!isSidebarClosed) {
             setIsSidebarOpen(open);
           }
         }}
