@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
+import { useSocket, useFileCollaboration } from "@/lib/socket";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -42,12 +43,16 @@ import {
   Info,
   Trash2,
   Copy,
+  History,
+  PanelLeftClose,
+  PanelLeft,
 } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import CodeEditor from "@/components/code-editor";
 import LivePreview from "@/components/live-preview";
 import VideoCall from "@/components/video-call";
 import ChatPanel from "@/components/chat-panel";
+import ExecutionHistory from "@/components/execution-history";
 import FileExplorer from "@/components/file-explorer";
 import CollaboratorsList from "@/components/collaborators-list";
 import ConsoleOutput from "@/components/console-output";
@@ -485,6 +490,9 @@ export default function ProjectWorkspace({
   initialNodes,
   projectId,
 }: ProjectWorkspaceProps) {
+  // Socket integration for real-time collaboration
+  const { joinProject, isConnected, collaborators } = useSocket();
+
   const [isVideoCallActive, setIsVideoCallActive] = useState(false);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
@@ -505,21 +513,39 @@ export default function ProjectWorkspace({
 
   // show/hide Team Chat panel
   const [showChat, setShowChat] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(true);
 
-  // dynamic collaborators count for header badge
-  const [membersCount, setMembersCount] = useState<number>(0);
+  // Get dynamic collaborators count from real-time data
+  const membersCount = collaborators.length;
 
   const [nodes, setNodes] = useState(initialNodes);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(
     initialNodes.find((n) => n.type === "file")?.id || null
   );
 
-  const [collaborators] = useState<Collaborator[]>(mockCollaborators);
+  const [mockCollaboratorsList] = useState<Collaborator[]>(mockCollaborators);
   const [extensions] = useState<Extension[]>(mockExtensions);
   const [languageOptions] = useState<LanguageOption[]>(mockLanguageOptions);
 
-  const currentFile = nodes.find((f) => f.name === activeNodeId);
+  const currentFile = nodes.find((f) => f.id === activeNodeId);
+
+  // Debug logging
+  console.log("Active Node ID:", activeNodeId);
+  console.log("Current File:", currentFile);
+  console.log("Initial Nodes:", initialNodes);
   const currentLanguage = currentFile?.language || selectedLanguage;
+
+  // Real-time collaboration for the current file
+  const {
+    remoteChanges,
+    handleContentChange,
+    handleFileSelect,
+    clearRemoteChanges,
+  } = useFileCollaboration(
+    projectId,
+    currentFile?.id || "",
+    "user-id-placeholder"
+  );
 
   const [activeBottomTab, setActiveBottomTab] = useState("terminal");
 
@@ -689,6 +715,36 @@ export default function ProjectWorkspace({
     return newProblems;
   };
 
+  // Join project for real-time collaboration
+  useEffect(() => {
+    if (isConnected && projectId) {
+      // Mock user data - in production, get from auth context
+      joinProject(projectId, {
+        userId: "user-id-placeholder",
+        userName: "Anonymous User",
+        userAvatar: "/placeholder.svg",
+      });
+    }
+  }, [isConnected, projectId, joinProject]);
+
+  // Handle remote file changes
+  useEffect(() => {
+    if (remoteChanges.length > 0) {
+      const latestChange = remoteChanges[remoteChanges.length - 1];
+      if (latestChange.fileId === currentFile?.id) {
+        // Update the file content from remote change
+        setNodes((prev) =>
+          prev.map((node) =>
+            node.id === latestChange.fileId
+              ? { ...node, content: latestChange.content }
+              : node
+          )
+        );
+        clearRemoteChanges();
+      }
+    }
+  }, [remoteChanges, currentFile?.id, clearRemoteChanges]);
+
   // Watch for file changes to detect syntax errors
   useEffect(() => {
     if (currentFile && currentFile.content) {
@@ -706,19 +762,7 @@ export default function ProjectWorkspace({
     }
   }, [currentFile?.content, currentFile?.name]);
 
-  // Fetch collaborators count
-  useEffect(() => {
-    const fetchCount = async () => {
-      const { data, error } = await supabase
-        .from("collaborators")
-        .select("user_id", { count: "exact", head: true })
-        .eq("project_id", projectId);
-      if (!error) {
-        setMembersCount(data ? (data as any).length ?? 0 : 0);
-      }
-    };
-    fetchCount();
-  }, [projectId]);
+  // Collaborators count is now dynamic from real-time Socket.IO data
 
   // Listen to global header actions
   useEffect(() => {
@@ -754,24 +798,38 @@ export default function ProjectWorkspace({
         e.preventDefault();
         handleRun();
       }
+      // Toggle sidebar with Ctrl+B
+      if ((e.ctrlKey || e.metaKey) && e.key === "b") {
+        e.preventDefault();
+        setShowSidebar(!showSidebar);
+      }
+      // Toggle chat with Ctrl+Shift+C
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "C") {
+        e.preventDefault();
+        setShowChat(!showChat);
+      }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [handleSave, handleRun]);
+  }, [handleSave, handleRun, showSidebar, showChat]);
 
   // Supabase wiring
   const updateNodeContent = async (nodeId: string, content: string) => {
     await supabase.from("project_nodes").update({ content }).eq("id", nodeId);
   };
 
-  const createFile = async (name: string, parentId: string | null = null) => {
+  const createFile = async (
+    name: string,
+    parentId: string | null = null,
+    content: string = ""
+  ) => {
     const { data, error } = await supabase
       .from("project_nodes")
       .insert({
         name,
         type: "file",
-        content: "",
+        content: content,
         project_id: projectId,
         parent_id: parentId,
       })
@@ -833,152 +891,182 @@ export default function ProjectWorkspace({
       <ResizablePanelGroup direction="horizontal">
         {/* Left Sidebar - File Explorer */}
         <ResizablePanel
-          defaultSize={16}
-          minSize={10}
-          maxSize={80}
+          defaultSize={showSidebar ? 16 : 0}
+          minSize={0}
+          maxSize={30}
           collapsible={true}
+          collapsedSize={0}
+          onCollapse={() => setShowSidebar(false)}
+          onExpand={() => setShowSidebar(true)}
+          className={showSidebar ? "md:min-w-48 min-w-40" : ""}
         >
-          <div className="h-full min-w-0">
-            <Tabs defaultValue="files" className="flex-1 flex flex-col h-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="files">Files</TabsTrigger>
-                <TabsTrigger value="extensions">Extensions</TabsTrigger>
-                <TabsTrigger value="settings">Settings</TabsTrigger>
-              </TabsList>
-              <TabsContent value="files" className="flex-1 overflow-y-auto p-0">
-                <FileExplorer
-                  files={nodes}
-                  activeFile={activeNodeId}
-                  onFileSelect={setActiveNodeId}
-                  onCreateFile={createFile}
-                  onCreateFolder={createFolder}
-                  onRename={renameNode}
-                  onDelete={deleteNode}
-                />
-              </TabsContent>
-              <TabsContent
-                value="extensions"
-                className="flex-1 overflow-y-auto p-0"
+          {showSidebar && (
+            <div className="h-full min-w-0">
+              <Tabs
+                defaultValue="files"
+                className="flex-1 flex flex-col h-full"
               >
-                <div className="h-full flex flex-col">
-                  <div className="p-3 border-b">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-medium">Extensions</h3>
-                      <Button variant="ghost" size="sm">
-                        <RefreshCw className="h-4 w-4" />
-                      </Button>
+                <TabsList className="grid w-full grid-cols-3 text-xs">
+                  <TabsTrigger value="files" className="text-xs px-2">
+                    <span className="hidden sm:inline">Files</span>
+                    <FileText className="h-4 w-4 sm:hidden" />
+                  </TabsTrigger>
+                  <TabsTrigger value="extensions" className="text-xs px-2">
+                    <span className="hidden sm:inline">Extensions</span>
+                    <Zap className="h-4 w-4 sm:hidden" />
+                  </TabsTrigger>
+                  <TabsTrigger value="settings" className="text-xs px-2">
+                    <span className="hidden sm:inline">Settings</span>
+                    <Settings className="h-4 w-4 sm:hidden" />
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent
+                  value="files"
+                  className="flex-1 overflow-y-auto p-0"
+                >
+                  <FileExplorer
+                    files={nodes}
+                    activeFile={activeNodeId}
+                    onFileSelect={setActiveNodeId}
+                    onCreateFile={createFile}
+                    onCreateFolder={createFolder}
+                    onRename={renameNode}
+                    onDelete={deleteNode}
+                    projectId={projectId}
+                    onFilesUploaded={(uploadedFiles) => {
+                      // Add uploaded files to the project
+                      uploadedFiles.forEach((file) => {
+                        if (file.content && file.status === "success") {
+                          createFile(file.name, null, file.content);
+                        }
+                      });
+                    }}
+                  />
+                </TabsContent>
+                <TabsContent
+                  value="extensions"
+                  className="flex-1 overflow-y-auto p-0"
+                >
+                  <div className="h-full flex flex-col">
+                    <div className="p-3 border-b">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-medium">Extensions</h3>
+                        <Button variant="ghost" size="sm">
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search extensions..."
+                          className="pl-10"
+                        />
+                      </div>
                     </div>
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Search extensions..."
-                        className="pl-10"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex-1 overflow-auto p-2 space-y-2">
-                    {extensions.map((ext) => (
-                      <div
-                        key={ext.id}
-                        className="flex flex-col border rounded-md p-3 hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <img
-                              src={ext.icon || "/placeholder.svg"}
-                              alt={ext.name}
-                              className="w-6 h-6 rounded"
-                            />
-                            <div>
-                              <h4 className="text-sm font-medium">
-                                {ext.name}
-                              </h4>
-                              <p className="text-xs text-muted-foreground">
-                                {ext.author}
-                              </p>
+                    <div className="flex-1 overflow-auto p-2 space-y-2">
+                      {extensions.map((ext) => (
+                        <div
+                          key={ext.id}
+                          className="flex flex-col border rounded-md p-3 hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <img
+                                src={ext.icon || "/placeholder.svg"}
+                                alt={ext.name}
+                                className="w-6 h-6 rounded"
+                              />
+                              <div>
+                                <h4 className="text-sm font-medium">
+                                  {ext.name}
+                                </h4>
+                                <p className="text-xs text-muted-foreground">
+                                  {ext.author}
+                                </p>
+                              </div>
                             </div>
+                            <Switch checked={ext.installed && ext.enabled} />
                           </div>
-                          <Switch checked={ext.installed && ext.enabled} />
+                          <p className="text-xs text-muted-foreground mt-2">
+                            {ext.description}
+                          </p>
+                          <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+                            <span>v{ext.version}</span>
+                            <span>
+                              {ext.downloads.toLocaleString()} downloads
+                            </span>
+                          </div>
+                          {!ext.installed && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-2 w-full"
+                            >
+                              <Download className="h-3 w-3 mr-1" />
+                              Install
+                            </Button>
+                          )}
                         </div>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          {ext.description}
-                        </p>
-                        <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                          <span>v{ext.version}</span>
-                          <span>
-                            {ext.downloads.toLocaleString()} downloads
-                          </span>
-                        </div>
-                        {!ext.installed && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-2 w-full"
-                          >
-                            <Download className="h-3 w-3 mr-1" />
-                            Install
-                          </Button>
-                        )}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              </TabsContent>
-              <TabsContent
-                value="settings"
-                className="flex-1 overflow-y-auto p-0"
-              >
-                <div className="h-full overflow-auto p-4 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium mb-2">
-                      Editor Settings
-                    </h3>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Font Size</span>
-                        <Select defaultValue="14">
-                          <SelectTrigger className="w-20">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="12">12px</SelectItem>
-                            <SelectItem value="14">14px</SelectItem>
-                            <SelectItem value="16">16px</SelectItem>
-                            <SelectItem value="18">18px</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Tab Size</span>
-                        <Select defaultValue="2">
-                          <SelectTrigger className="w-20">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="2">2</SelectItem>
-                            <SelectItem value="4">4</SelectItem>
-                            <SelectItem value="8">8</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Word Wrap</span>
-                        <Switch defaultChecked />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Line Numbers</span>
-                        <Switch defaultChecked />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Auto Save</span>
-                        <Switch defaultChecked />
+                </TabsContent>
+                <TabsContent
+                  value="settings"
+                  className="flex-1 overflow-y-auto p-0"
+                >
+                  <div className="h-full overflow-auto p-4 space-y-4">
+                    <div>
+                      <h3 className="text-sm font-medium mb-2">
+                        Editor Settings
+                      </h3>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">Font Size</span>
+                          <Select defaultValue="14">
+                            <SelectTrigger className="w-20">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="12">12px</SelectItem>
+                              <SelectItem value="14">14px</SelectItem>
+                              <SelectItem value="16">16px</SelectItem>
+                              <SelectItem value="18">18px</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">Tab Size</span>
+                          <Select defaultValue="2">
+                            <SelectTrigger className="w-20">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="2">2</SelectItem>
+                              <SelectItem value="4">4</SelectItem>
+                              <SelectItem value="8">8</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">Word Wrap</span>
+                          <Switch defaultChecked />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">Line Numbers</span>
+                          <Switch defaultChecked />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">Auto Save</span>
+                          <Switch defaultChecked />
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
         </ResizablePanel>
 
         <ResizableHandle className="w-2 bg-muted/50 data-[resize-handle-state=drag]:bg-primary transition-colors" />
@@ -986,16 +1074,18 @@ export default function ProjectWorkspace({
         {/* Center/Main + Right sidebar in a nested vertical layout */}
         <ResizablePanel
           defaultSize={showChat ? 54 : 84}
-          minSize={40}
+          minSize={35}
           className="flex flex-col min-w-0 h-full"
         >
           {/* Main Content Area */}
           <ResizablePanelGroup direction="vertical">
             <ResizablePanel defaultSize={70} className="flex flex-col">
-              <div className="flex-shrink-0 flex items-center justify-between p-2 border-b bg-muted/50">
+              <div className="flex-shrink-0 flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 border-b bg-muted/50 gap-2 sm:gap-0">
                 {viewMode === "code" ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{activeNodeId}</span>
+                    <span className="text-sm font-medium">
+                      {currentFile ? currentFile.name : "No file selected"}
+                    </span>
                     <Badge variant="secondary" className="text-xs">
                       {currentFile
                         ? getFileExtension(currentFile.name)
@@ -1030,9 +1120,11 @@ export default function ProjectWorkspace({
                   </div>
                 )}
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto overflow-x-auto">
                   {/* Backend status */}
-                  <BackendStatus showRefresh={false} />
+                  <div className="hidden lg:block">
+                    <BackendStatus showRefresh={false} />
+                  </div>
 
                   {/* Save and Run buttons */}
                   <TooltipProvider>
@@ -1043,9 +1135,10 @@ export default function ProjectWorkspace({
                           size="sm"
                           onClick={handleSave}
                           disabled={!currentFile || !hasUnsavedChanges}
+                          className="h-8 px-2 sm:px-3"
                         >
-                          <Save className="h-4 w-4 mr-1" />
-                          Save
+                          <Save className="h-4 w-4 sm:mr-1" />
+                          <span className="hidden sm:inline">Save</span>
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Save file (Ctrl+S)</TooltipContent>
@@ -1060,13 +1153,14 @@ export default function ProjectWorkspace({
                           size="sm"
                           onClick={handleRun}
                           disabled={!currentFile || isExecuting}
+                          className="h-8 px-2 sm:px-3"
                         >
                           {isExecuting ? (
-                            <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                            <RefreshCw className="h-4 w-4 sm:mr-1 animate-spin" />
                           ) : (
-                            <Play className="h-4 w-4 mr-1" />
+                            <Play className="h-4 w-4 sm:mr-1" />
                           )}
-                          Run
+                          <span className="hidden sm:inline">Run</span>
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Run code (Ctrl+R)</TooltipContent>
@@ -1081,10 +1175,18 @@ export default function ProjectWorkspace({
                     }}
                     className="h-8"
                   >
-                    <ToggleGroupItem value="code" aria-label="Code view">
+                    <ToggleGroupItem
+                      value="code"
+                      aria-label="Code view"
+                      className="h-8 px-2"
+                    >
                       <Code className="h-4 w-4" />
                     </ToggleGroupItem>
-                    <ToggleGroupItem value="preview" aria-label="Preview view">
+                    <ToggleGroupItem
+                      value="preview"
+                      aria-label="Preview view"
+                      className="h-8 px-2"
+                    >
                       <Eye className="h-4 w-4" />
                     </ToggleGroupItem>
                   </ToggleGroup>
@@ -1093,7 +1195,7 @@ export default function ProjectWorkspace({
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
-                          variant="outline"
+                          variant={showChat ? "default" : "outline"}
                           size="icon"
                           className="h-8 w-8"
                           onClick={() => setShowChat(!showChat)}
@@ -1102,7 +1204,9 @@ export default function ProjectWorkspace({
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        {showChat ? "Hide chat" : "Show chat"}
+                        {showChat
+                          ? "Hide chat (Ctrl+Shift+C)"
+                          : "Show chat (Ctrl+Shift+C)"}
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -1130,6 +1234,8 @@ export default function ProjectWorkspace({
                             : node
                         )
                       );
+                      // Emit real-time collaboration change
+                      handleContentChange(newContent ?? "", "edit");
                     }}
                   />
                 ) : (
@@ -1147,16 +1253,22 @@ export default function ProjectWorkspace({
                 >
                   <TabsList
                     className={`grid w-full ${
-                      isAIAssistantOpen ? "grid-cols-3" : "grid-cols-2"
+                      isAIAssistantOpen ? "grid-cols-4" : "grid-cols-3"
                     } bg-muted/50 rounded-none border-b`}
                   >
-                    <TabsTrigger value="terminal" className="gap-2">
+                    <TabsTrigger
+                      value="terminal"
+                      className="gap-1 sm:gap-2 px-2 sm:px-4"
+                    >
                       <Terminal className="h-4 w-4" />
-                      Terminal
+                      <span className="hidden sm:inline">Terminal</span>
                     </TabsTrigger>
-                    <TabsTrigger value="problems" className="relative gap-2">
+                    <TabsTrigger
+                      value="problems"
+                      className="relative gap-1 sm:gap-2 px-2 sm:px-4"
+                    >
                       <AlertTriangle className="h-4 w-4" />
-                      Problems
+                      <span className="hidden sm:inline">Problems</span>
                       {problems.length > 0 && (
                         <Badge
                           variant="destructive"
@@ -1166,10 +1278,20 @@ export default function ProjectWorkspace({
                         </Badge>
                       )}
                     </TabsTrigger>
+                    <TabsTrigger
+                      value="history"
+                      className="gap-1 sm:gap-2 px-2 sm:px-4"
+                    >
+                      <History className="h-4 w-4" />
+                      <span className="hidden sm:inline">History</span>
+                    </TabsTrigger>
                     {isAIAssistantOpen && (
-                      <TabsTrigger value="ai" className="gap-2">
+                      <TabsTrigger
+                        value="ai"
+                        className="gap-1 sm:gap-2 px-2 sm:px-4"
+                      >
                         <Brain className="h-4 w-4" />
-                        AI Assistant
+                        <span className="hidden sm:inline">AI Assistant</span>
                       </TabsTrigger>
                     )}
                   </TabsList>
@@ -1192,6 +1314,23 @@ export default function ProjectWorkspace({
                       problems={problems}
                       onClear={() => setProblems([])}
                     />
+                  </TabsContent>
+
+                  <TabsContent
+                    value="history"
+                    className="flex-1 overflow-hidden p-0 m-0 h-full"
+                  >
+                    <div className="p-4 h-full flex items-center justify-center">
+                      <ExecutionHistory
+                        projectId={projectId}
+                        onReplayExecution={(record) => {
+                          // Handle replay execution
+                          if (record.fileName) {
+                            setActiveBottomTab("terminal");
+                          }
+                        }}
+                      />
+                    </div>
                   </TabsContent>
 
                   {isAIAssistantOpen && (
@@ -1236,14 +1375,24 @@ export default function ProjectWorkspace({
         {showChat && (
           <>
             <ResizableHandle className="w-2 bg-muted/50 data-[resize-handle-state=drag]:bg-primary transition-colors" />
-            <ResizablePanel defaultSize={20} maxSize={40}>
+            <ResizablePanel
+              defaultSize={25}
+              minSize={15}
+              maxSize={45}
+              collapsible={true}
+            >
               <aside className="h-full flex flex-col border-l">
                 {/* Chat Header */}
-                <div className="flex items-center justify-between p-3 border-b bg-muted/50">
-                  <div className="flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4" />
-                    <span className="text-sm font-medium">Team Chat</span>
-                    <Badge variant="secondary" className="text-xs">
+                <div className="flex items-center justify-between p-2 sm:p-3 border-b bg-muted/50">
+                  <div className="flex items-center gap-1 sm:gap-2 min-w-0">
+                    <MessageSquare className="h-4 w-4 flex-shrink-0" />
+                    <span className="text-sm font-medium truncate">
+                      Team Chat
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className="text-xs hidden sm:inline-flex"
+                    >
                       {membersCount} members
                     </Badge>
                   </div>
@@ -1259,7 +1408,15 @@ export default function ProjectWorkspace({
 
                 {/* Chat Panel Component */}
                 <div className="flex-1 min-h-0">
-                  <ChatPanel collaborators={collaborators} />
+                  <ChatPanel
+                    collaborators={collaborators.map((collab, index) => ({
+                      id: index + 1,
+                      name: collab.userName,
+                      avatar:
+                        collab.userAvatar ||
+                        "/placeholder.svg?height=32&width=32",
+                    }))}
+                  />
                 </div>
               </aside>
             </ResizablePanel>

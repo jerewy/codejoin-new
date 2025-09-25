@@ -16,8 +16,10 @@ import {
   PencilLine,
   FolderPlus,
   FilePlus,
+  Upload,
   AlertTriangle,
 } from "lucide-react";
+import FileUploadModal from "./file-upload-modal";
 
 interface FileItem {
   id?: string;
@@ -27,14 +29,28 @@ interface FileItem {
   parent_id?: string | null;
 }
 
+interface UploadedFile {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  content?: string;
+  path: string;
+  status: 'pending' | 'uploading' | 'success' | 'error';
+  progress: number;
+  error?: string;
+}
+
 interface FileExplorerProps {
   files: FileItem[];
   activeFile: string | null;
-  onFileSelect: (fileName: string) => void;
+  onFileSelect: (fileId: string) => void;
   onCreateFile?: (name: string, parentId?: string | null) => void;
   onCreateFolder?: (name: string, parentId?: string | null) => void;
   onRename?: (id: string | undefined, oldName: string, newName: string) => void;
   onDelete?: (id: string | undefined) => void;
+  onFilesUploaded?: (files: UploadedFile[]) => void;
+  projectId: string;
 }
 
 interface DeleteConfirmationProps {
@@ -131,6 +147,7 @@ interface ContextMenuProps {
   onNewFolder: () => void;
   onRename?: () => void;
   onDelete?: () => void;
+  onUpload: () => void;
   isFolder: boolean;
   isRoot?: boolean;
 }
@@ -143,6 +160,7 @@ function ContextMenu({
   onNewFolder,
   onRename,
   onDelete,
+  onUpload,
   isFolder,
   isRoot = false,
 }: ContextMenuProps) {
@@ -184,6 +202,11 @@ function ContextMenu({
         label: "New Folder",
         icon: <FolderPlus className="h-4 w-4" />,
         action: onNewFolder,
+      },
+      {
+        label: "Upload Files",
+        icon: <Upload className="h-4 w-4" />,
+        action: onUpload,
       }
     );
   }
@@ -250,6 +273,8 @@ export default function FileExplorer({
   onCreateFolder,
   onRename,
   onDelete,
+  onFilesUploaded,
+  projectId,
 }: FileExplorerProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -268,6 +293,7 @@ export default function FileExplorer({
     type: "file" | "folder";
   } | null>(null);
   const [creatingName, setCreatingName] = useState("");
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
     item: FileItem;
     isOpen: boolean;
@@ -511,7 +537,7 @@ export default function FileExplorer({
             <div
               key={`${item.id ?? item.name}`}
               className={`group flex items-center gap-2 p-1 rounded hover:bg-muted ${
-                activeFile === item.name ? "bg-muted" : ""
+                activeFile === (item.id || item.name) ? "bg-muted" : ""
               }`}
               onContextMenu={(e) => handleContextMenu(e, item)}
             >
@@ -535,7 +561,7 @@ export default function FileExplorer({
               ) : (
                 <div
                   className="flex-1 flex items-center gap-2 text-left truncate cursor-pointer"
-                  onClick={() => onFileSelect(item.name)}
+                  onClick={() => onFileSelect(item.id || item.name)}
                 >
                   {getFileIcon(item.name, item.language)}
                   <span className="flex-1 text-sm truncate">{item.name}</span>
@@ -623,6 +649,7 @@ export default function FileExplorer({
           onDelete={
             contextMenu.item ? () => handleDelete(contextMenu.item!) : undefined
           }
+          onUpload={() => setIsUploadModalOpen(true)}
           isFolder={
             contextMenu.item?.type === "folder" || contextMenu.isRoot || false
           }
@@ -640,6 +667,18 @@ export default function FileExplorer({
           itemType={deleteConfirmation.item.type as "file" | "folder"}
         />
       )}
+
+      {/* File Upload Modal */}
+      <FileUploadModal
+        projectId={projectId}
+        isOpen={isUploadModalOpen}
+        onOpenChange={setIsUploadModalOpen}
+        onFilesUploaded={(uploadedFiles) => {
+          if (onFilesUploaded) {
+            onFilesUploaded(uploadedFiles);
+          }
+        }}
+      />
     </div>
   );
 }

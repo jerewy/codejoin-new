@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 import { AppLayout } from "@/components/app-layout";
 import { RouteChangeIndicator } from "@/components/route-change-indicator";
+import { SocketProvider } from "@/lib/socket";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -29,9 +30,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <RouteChangeIndicator />
-          <AppLayout>{children}</AppLayout>
-          <Toaster />
+          <SocketProvider>
+            <AppLayout>{children}</AppLayout>
+            <Toaster />
+          </SocketProvider>
         </ThemeProvider>
       </body>
     </html>
