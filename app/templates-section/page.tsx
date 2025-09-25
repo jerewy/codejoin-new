@@ -1,288 +1,322 @@
 "use client";
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Search,
-  Filter,
-  Download,
-  Code,
-  Palette,
-  Smartphone,
-  Globe,
-  Database,
-  Zap,
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+
+import { supabase } from "@/lib/supabaseClient";
+import { starterProjects, featuredStarterProjects, starterProjectLanguages } from "@/lib/data/starter-projects";
 import TemplateCard from "@/components/template-card";
 import TemplatePreview from "@/components/template-preview";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { PageHeader } from "@/components/PageHeader";
+import NavLinks from "@/components/nav-links";
+import { Search, RefreshCcw, Sparkles, Library } from "lucide-react";
 
-export default function TemplatesPage() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+interface CommunityTemplateRow {
+  id: string;
+  name: string;
+  description: string | null;
+  language: string | null;
+  updated_at: string | null;
+  visibility?: string | null;
+  downloads?: number | null;
+  rating?: number | null;
+  tags?: string[] | null;
+  owner_name?: string | null;
+}
 
-  const categories = [
-    { id: "all", name: "All Templates", icon: Globe },
-    { id: "react", name: "React", icon: Code },
-    { id: "vue", name: "Vue.js", icon: Code },
-    { id: "angular", name: "Angular", icon: Code },
-    { id: "html", name: "HTML/CSS", icon: Palette },
-    { id: "mobile", name: "Mobile", icon: Smartphone },
-    { id: "backend", name: "Backend", icon: Database },
-    { id: "ai", name: "AI/ML", icon: Zap },
-  ];
+type TemplateSummary = Parameters<typeof TemplateCard>[0]["template"];
 
-  const templates = [
-    {
-      id: 1,
-      name: "E-commerce Store",
-      description: "Complete online store with cart, payments, and admin panel",
-      category: "react",
-      difficulty: "Advanced",
-      downloads: 1250,
-      rating: 4.8,
-      tags: ["React", "TypeScript", "Stripe", "Tailwind"],
-      author: "CodeJoin Team",
-      thumbnail: "/placeholder.svg?height=200&width=300",
-      featured: true,
-    },
-    {
-      id: 2,
-      name: "Portfolio Website",
-      description: "Modern portfolio template with animations and dark mode",
-      category: "html",
-      difficulty: "Beginner",
-      downloads: 2100,
-      rating: 4.9,
-      tags: ["HTML", "CSS", "JavaScript", "GSAP"],
-      author: "Sarah Chen",
-      thumbnail: "/placeholder.svg?height=200&width=300",
-      featured: true,
-    },
-    {
-      id: 3,
-      name: "Task Management App",
-      description: "Kanban-style task manager with real-time collaboration",
-      category: "vue",
-      difficulty: "Intermediate",
-      downloads: 890,
-      rating: 4.7,
-      tags: ["Vue.js", "Vuex", "Socket.io", "Node.js"],
-      author: "Mike Rodriguez",
-      thumbnail: "/placeholder.svg?height=200&width=300",
-      featured: false,
-    },
-    {
-      id: 4,
-      name: "Weather Dashboard",
-      description: "Beautiful weather app with charts and forecasts",
-      category: "react",
-      difficulty: "Intermediate",
-      downloads: 1560,
-      rating: 4.6,
-      tags: ["React", "Chart.js", "API", "PWA"],
-      author: "Alex Kim",
-      thumbnail: "/placeholder.svg?height=200&width=300",
-      featured: false,
-    },
-    {
-      id: 5,
-      name: "Chat Application",
-      description: "Real-time chat app with video calls and file sharing",
-      category: "backend",
-      difficulty: "Advanced",
-      downloads: 750,
-      rating: 4.8,
-      tags: ["Node.js", "Socket.io", "WebRTC", "MongoDB"],
-      author: "Emma Wilson",
-      thumbnail: "/placeholder.svg?height=200&width=300",
-      featured: true,
-    },
-    {
-      id: 6,
-      name: "AI Image Generator",
-      description: "Generate images using AI with a beautiful interface",
-      category: "ai",
-      difficulty: "Advanced",
-      downloads: 420,
-      rating: 4.9,
-      tags: ["Python", "FastAPI", "Stable Diffusion", "React"],
-      author: "David Park",
-      thumbnail: "/placeholder.svg?height=200&width=300",
-      featured: false,
-    },
-  ];
+const DEFAULT_LANGUAGE = "all";
+const DEFAULT_TAB = "starter";
 
-  const filteredTemplates = templates.filter((template) => {
-    const matchesSearch =
-      template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      template.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      template.tags.some((tag) =>
-        tag.toLowerCase().includes(searchQuery.toLowerCase())
+export default function LibraryPage() {
+  const [activeTab, setActiveTab] = useState<string>(DEFAULT_TAB);
+  const [languageFilter, setLanguageFilter] = useState<string>(DEFAULT_LANGUAGE);
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateSummary | null>(null);
+
+  const [communityTemplates, setCommunityTemplates] = useState<TemplateSummary[]>([]);
+  const [isLoadingCommunity, setIsLoadingCommunity] = useState<boolean>(false);
+  const [communityError, setCommunityError] = useState<string | null>(null);
+
+  const languages = useMemo(
+    () => [
+      { id: DEFAULT_LANGUAGE, name: "All stacks" },
+      ...starterProjectLanguages.map((language) => ({
+        id: language.id,
+        name: language.name,
+      })),
+    ],
+    [],
+  );
+
+  const normalisedSearch = searchTerm.trim().toLowerCase();
+
+  const filteredStarterProjects = useMemo(() => {
+    return starterProjects.filter((template) => {
+      const matchesLanguage =
+        languageFilter === DEFAULT_LANGUAGE || template.id === languageFilter || template.language.toLowerCase() === languageFilter.toLowerCase();
+
+      if (!matchesLanguage) {
+        return false;
+      }
+
+      if (!normalisedSearch) {
+        return true;
+      }
+
+      return (
+        template.name.toLowerCase().includes(normalisedSearch) ||
+        template.description.toLowerCase().includes(normalisedSearch) ||
+        template.tags.some((tag) => tag.toLowerCase().includes(normalisedSearch))
       );
-    const matchesCategory =
-      selectedCategory === "all" || template.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+    });
+  }, [languageFilter, normalisedSearch]);
 
-  const featuredTemplates = templates.filter((t) => t.featured);
+  const loadCommunityTemplates = useCallback(async () => {
+    setIsLoadingCommunity(true);
+    setCommunityError(null);
+
+    try {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("id,name,description,language,updated_at,visibility,downloads,rating,tags,owner_name")
+        .eq("visibility", "public")
+        .order("updated_at", { ascending: false })
+        .limit(40);
+
+      if (error) {
+        throw error;
+      }
+
+      const rows = ((data ?? []) as CommunityTemplateRow[]);
+      const mapped: TemplateSummary[] = rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description ?? "Public project shared by the community.",
+        category: row.language,
+        difficulty: "Community",
+        downloads: row.downloads ?? 0,
+        rating: row.rating ?? 4.6,
+        tags: row.tags ?? (row.language ? [row.language] : []),
+        author: row.owner_name ?? "Anonymous builder",
+        thumbnail: null,
+        featured: false,
+        language: row.language ?? undefined,
+        updatedAt: row.updated_at ?? undefined,
+      }));
+
+      setCommunityTemplates(mapped);
+    } catch (error) {
+      setCommunityError(error instanceof Error ? error.message : "Failed to load community templates");
+      setCommunityTemplates([]);
+    } finally {
+      setIsLoadingCommunity(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCommunityTemplates();
+  }, [loadCommunityTemplates]);
+
+  const filteredCommunityTemplates = useMemo(() => {
+    return communityTemplates.filter((template) => {
+      const matchesLanguage =
+        languageFilter === DEFAULT_LANGUAGE || template.language?.toLowerCase() === languageFilter.toLowerCase();
+
+      if (!matchesLanguage) {
+        return false;
+      }
+
+      if (!normalisedSearch) {
+        return true;
+      }
+
+      const tags = template.tags ?? [];
+
+      return (
+        template.name.toLowerCase().includes(normalisedSearch) ||
+        template.description.toLowerCase().includes(normalisedSearch) ||
+        tags.some((tag) => tag.toLowerCase().includes(normalisedSearch))
+      );
+    });
+  }, [communityTemplates, languageFilter, normalisedSearch]);
+
+  const handlePreview = (template: TemplateSummary) => {
+    setSelectedTemplate(template);
+  };
+
+  const handleClosePreview = () => {
+    setSelectedTemplate(null);
+  };
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
-      <PageHeader
-        leading={<SidebarTrigger />}
-        startContent={
-          <div className="hidden items-center gap-2 text-sm font-medium text-muted-foreground sm:flex">
-            <Code className="h-4 w-4" />
-            Template library
+    <div className="flex min-h-screen flex-col bg-background">
+      <header className="border-b bg-background/95 backdrop-blur">
+        <div className="container flex h-16 items-center justify-between">
+          <div className="flex items-center gap-3">
+            <SidebarTrigger />
+            <Library className="h-6 w-6 text-primary" />
+            <div>
+              <h1 className="text-xl font-bold">Code Library</h1>
+              <p className="text-sm text-muted-foreground">
+                Starter kits for all 11 supported languages plus community-made projects.
+              </p>
+            </div>
           </div>
-        }
-        title="Templates"
-        description="Browse curated starter kits for web, mobile, and backend projects. Preview, customize, and launch in minutes."
-        actions={
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <div className="relative w-full sm:w-72">
+          <NavLinks />
+        </div>
+      </header>
+
+      <main className="container flex-1 py-6 space-y-8">
+        <section className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search templates..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search library..."
+                className="pl-9"
               />
             </div>
-            <Button className="w-full sm:w-auto">
-              <Download className="h-4 w-4" />
-              <span className="ml-2">Upload Template</span>
-            </Button>
-          </div>
-        }
-      />
-
-      <div className="flex-1 container py-6">
-        {/* Featured Templates */}
-        <section className="mb-8">
-          <h2 className="text-2xl font-bold mb-4">Featured Templates</h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {featuredTemplates.map((template) => (
-              <TemplateCard
-                key={template.id}
-                template={template}
-                onPreview={setSelectedTemplate}
-                featured={true}
-              />
-            ))}
-          </div>
-        </section>
-
-        <div className="grid gap-6 lg:grid-cols-4">
-          {/* Categories Sidebar */}
-          <div className="lg:col-span-1">
-            <Card>
-              <CardHeader>
-                <CardTitle>Categories</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {categories.map((category) => (
-                  <Button
-                    key={category.id}
-                    variant={
-                      selectedCategory === category.id ? "default" : "ghost"
-                    }
-                    className="w-full justify-start"
-                    onClick={() => setSelectedCategory(category.id)}
-                  >
-                    <category.icon className="h-4 w-4 mr-2" />
-                    {category.name}
-                  </Button>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* Filters */}
-            <Card className="mt-6">
-              <CardHeader>
-                <CardTitle>Filters</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Difficulty
-                  </label>
-                  <div className="space-y-2">
-                    {["Beginner", "Intermediate", "Advanced"].map((level) => (
-                      <label
-                        key={level}
-                        className="flex items-center space-x-2"
-                      >
-                        <input type="checkbox" className="rounded" />
-                        <span className="text-sm">{level}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Rating
-                  </label>
-                  <div className="space-y-2">
-                    {["4+ Stars", "3+ Stars", "2+ Stars"].map((rating) => (
-                      <label
-                        key={rating}
-                        className="flex items-center space-x-2"
-                      >
-                        <input type="checkbox" className="rounded" />
-                        <span className="text-sm">{rating}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Templates Grid */}
-          <div className="lg:col-span-3">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold">
-                {selectedCategory === "all"
-                  ? "All Templates"
-                  : categories.find((c) => c.id === selectedCategory)?.name}
-              </h2>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">
-                  {filteredTemplates.length} templates
-                </span>
-                <Button variant="outline" size="sm">
-                  <Filter className="h-4 w-4 mr-2" />
-                  Sort by
+            <div className="flex items-center gap-2 overflow-x-auto">
+              {languages.map((language) => (
+                <Button
+                  key={language.id}
+                  variant={languageFilter === language.id ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setLanguageFilter(language.id)}
+                >
+                  {language.name}
                 </Button>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {filteredTemplates.map((template) => (
-                <TemplateCard
-                  key={template.id}
-                  template={template}
-                  onPreview={setSelectedTemplate}
-                />
               ))}
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Template Preview Modal */}
+          <Card>
+            <CardContent className="flex h-full flex-col justify-between gap-3 py-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <span>{starterProjects.length} starter kits curated by the CodeJoin team</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <span>{communityTemplates.length} public projects shared by the community</span>
+              </div>
+              <div className="flex justify-end">
+                <Link href="/new-project">
+                  <Button size="sm">Share your template</Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <div className="flex items-center justify-between">
+            <TabsList>
+              <TabsTrigger value="starter">Starter Kits</TabsTrigger>
+              <TabsTrigger value="community">Community Showcase</TabsTrigger>
+            </TabsList>
+            {activeTab === "community" && (
+              <Button variant="outline" size="sm" onClick={loadCommunityTemplates} disabled={isLoadingCommunity}>
+                <RefreshCcw className="mr-2 h-4 w-4" />
+                Refresh
+              </Button>
+            )}
+          </div>
+
+          <TabsContent value="starter" className="space-y-6">
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Highlighted starters</h2>
+                <Badge variant="outline">Curated</Badge>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {featuredStarterProjects.map((template) => (
+                  <TemplateCard
+                    key={template.id}
+                    template={template}
+                    featured
+                    onPreview={handlePreview}
+                  />
+                ))}
+              </div>
+            </section>
+
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">All starter kits</h2>
+                <span className="text-sm text-muted-foreground">
+                  {filteredStarterProjects.length} templates
+                </span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {filteredStarterProjects.map((template) => (
+                  <TemplateCard key={template.id} template={template} onPreview={handlePreview} />
+                ))}
+              </div>
+              {filteredStarterProjects.length === 0 && (
+                <Card>
+                  <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                    No starter kits match your filters just yet.
+                  </CardContent>
+                </Card>
+              )}
+            </section>
+          </TabsContent>
+
+          <TabsContent value="community" className="space-y-6">
+            {communityError && (
+              <Card>
+                <CardContent className="py-6">
+                  <div className="flex flex-col items-center gap-3 text-sm text-muted-foreground">
+                    <p>{communityError}</p>
+                    <Button variant="outline" size="sm" onClick={loadCommunityTemplates} disabled={isLoadingCommunity}>
+                      <RefreshCcw className="mr-2 h-4 w-4" />
+                      Try again
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredCommunityTemplates.map((template) => (
+                <TemplateCard key={template.id} template={template} onPreview={handlePreview} />
+              ))}
+            </div>
+
+            {!communityError && !isLoadingCommunity && filteredCommunityTemplates.length === 0 && (
+              <Card>
+                <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                  No public templates for this language yet. Be the first to share one!
+                </CardContent>
+              </Card>
+            )}
+
+            {isLoadingCommunity && (
+              <Card>
+                <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                  Loading community templates...
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
+      </main>
+
       {selectedTemplate && (
-        <TemplatePreview
-          template={selectedTemplate}
-          onClose={() => setSelectedTemplate(null)}
-        />
+        <TemplatePreview template={selectedTemplate} onClose={handleClosePreview} />
       )}
     </div>
   );
 }
+
+

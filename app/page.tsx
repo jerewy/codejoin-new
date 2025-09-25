@@ -343,7 +343,7 @@ export default function LandingPage() {
                 <div className="relative rounded-[28px] border border-border/60 bg-background/90 p-2 shadow-2xl backdrop-blur-sm">
                   <CodeDemo />
                 </div>
-                <div className="animate-float absolute -bottom-12 left-1/2 hidden w-max -translate-x-1/2 translate-y-1/2 items-center gap-3 rounded-full border border-border/70 bg-background/90 px-6 py-3 shadow-lg backdrop-blur lg:flex">
+                <div className="animate-float absolute -bottom-12 left-1/2 hidden w-max -translate-x-1/2 translate-y-1/2 items-center gap-3 rounded-full border border-border/70 bg-background/90 px-6 py-3 shadow-lg backdrop-blur lg:flex sm:mr-5">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <Video className="h-5 w-5" />
                   </div>
