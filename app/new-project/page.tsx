@@ -35,6 +35,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { TemplateNode } from "@/lib/types";
+import { PageHeader } from "@/components/PageHeader";
 
 const projectTemplates = [
   // --- Core Programming Languages (Backend Supported) ---
@@ -393,48 +394,26 @@ export default function NewProjectPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur">
-        <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-              </Button>
-            </Link>
-            <Separator orientation="vertical" className="h-6" />
-            <div className="flex items-center gap-2">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 32 32"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M8 6C8 4.89543 8.89543 4 10 4H22C23.1046 4 24 4.89543 24 6V26C24 27.1046 23.1046 28 22 28H10C8.89543 28 8 27.1046 8 26V6Z"
-                  fill="#FF5722"
-                />
-                <path
-                  d="M14 10L18 14M18 10L14 14"
-                  stroke="#0D47A1"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M14 18L18 22M18 18L14 22"
-                  stroke="#0D47A1"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-              <span className="text-lg font-bold text-primary">CodeJoin</span>
-            </div>
-          </div>
-          <h1 className="text-xl font-semibold">Create New Project</h1>
-          <div className="w-32" /> {/* Spacer for centering */}
-        </div>
-      </header>
+      <PageHeader
+        leading={
+          <Link href="/dashboard">
+            <Button variant="ghost" size="sm" className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+          </Link>
+        }
+        startContent={
+          <>
+            <Separator orientation="vertical" className="hidden h-6 sm:block" />
+            <span className="hidden text-sm font-medium text-muted-foreground sm:inline">
+              Project setup
+            </span>
+          </>
+        }
+        title="Create a new project"
+        description="Start from a template, import from GitHub, or configure everything manually."
+      />
 
       <div className="container py-8 max-w-4xl">
         <div className="space-y-8">

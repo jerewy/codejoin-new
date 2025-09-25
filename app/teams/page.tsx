@@ -48,6 +48,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { PageHeader } from "@/components/PageHeader";
 
 const teams = [
   {
@@ -195,110 +196,59 @@ export default function TeamsPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur">
-        <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center">
-              <svg
-                width="32"
-                height="32"
-                viewBox="0 0 32 32"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="mr-2"
-              >
-                <path
-                  d="M8 6C8 4.89543 8.89543 4 10 4H22C23.1046 4 24 4.89543 24 6V26C24 27.1046 23.1046 28 22 28H10C8.89543 28 8 27.1046 8 26V6Z"
-                  fill="#FF5722"
-                />
-                <path
-                  d="M14 10L18 14M18 10L14 14"
-                  stroke="#0D47A1"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M14 18L18 22M18 18L14 22"
-                  stroke="#0D47A1"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-              <span className="text-xl font-bold text-primary">CodeJoin</span>
-            </div>
+      <PageHeader
+        title="Teams"
+        description="Organize your collaborators, assign roles, and keep every project team aligned in CodeJoin."
+        startContent={
+          <div className="hidden items-center gap-2 text-sm font-medium text-muted-foreground sm:flex">
+            <Users className="h-4 w-4" />
+            Collaboration hub
           </div>
-          <nav className="hidden md:flex items-center gap-6">
-            <Link
-              href="/dashboard"
-              className="text-sm font-medium hover:underline underline-offset-4"
-            >
-              Dashboard
-            </Link>
-            <Link
-              href="/templates"
-              className="text-sm font-medium hover:underline underline-offset-4"
-            >
-              Templates
-            </Link>
-            <Link href="/teams" className="text-sm font-medium text-primary">
-              Teams
-            </Link>
-            <Link
-              href="/settings"
-              className="text-sm font-medium hover:underline underline-offset-4"
-            >
-              Settings
-            </Link>
-          </nav>
-          <div className="flex items-center gap-4">
-            <Dialog open={isCreateTeamOpen} onOpenChange={setIsCreateTeamOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Team
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create New Team</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="team-name">Team Name</Label>
-                    <Input
-                      id="team-name"
-                      placeholder="Enter team name"
-                      value={newTeamName}
-                      onChange={(e) => setNewTeamName(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="team-description">Description</Label>
-                    <Textarea
-                      id="team-description"
-                      placeholder="Describe your team's purpose"
-                      value={newTeamDescription}
-                      onChange={(e) => setNewTeamDescription(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setIsCreateTeamOpen(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button onClick={handleCreateTeam} disabled={!newTeamName}>
-                      Create Team
-                    </Button>
-                  </div>
+        }
+        actions={
+          <Dialog open={isCreateTeamOpen} onOpenChange={setIsCreateTeamOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-2">
+                <Plus className="h-4 w-4" />
+                Create Team
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create New Team</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="team-name">Team Name</Label>
+                  <Input
+                    id="team-name"
+                    placeholder="Enter team name"
+                    value={newTeamName}
+                    onChange={(e) => setNewTeamName(e.target.value)}
+                  />
                 </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </div>
-      </header>
+                <div className="space-y-2">
+                  <Label htmlFor="team-description">Description</Label>
+                  <Textarea
+                    id="team-description"
+                    placeholder="Describe your team's purpose"
+                    value={newTeamDescription}
+                    onChange={(e) => setNewTeamDescription(e.target.value)}
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setIsCreateTeamOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleCreateTeam} disabled={!newTeamName}>
+                    Create Team
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        }
+      />
 
       <div className="flex-1 container py-6">
         <div className="grid gap-6 lg:grid-cols-4">
