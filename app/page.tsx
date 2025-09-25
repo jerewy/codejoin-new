@@ -232,6 +232,7 @@ export default function LandingPage() {
       <main className="flex-1">
         {/* Hero Section */}
         <section className="relative overflow-hidden py-20 md:py-28">
+
           <div className="absolute inset-0 -z-20 overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-b from-background via-background to-muted/40" />
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,87,34,0.18),_transparent_60%)]" />
@@ -262,6 +263,7 @@ export default function LandingPage() {
                     Ship better code together in real-time.
                   </h1>
                   <p className="max-w-[620px] text-base text-muted-foreground md:text-lg">
+
                     Build alongside your team with synchronized editors, contextual chat, and instant previews. CodeJoin keeps every participant in flow with AI pair programming and buttery smooth collaboration.
                   </p>
                 </ScrollReveal>
@@ -305,6 +307,7 @@ export default function LandingPage() {
                     </ScrollReveal>
                   ))}
                 </div>
+
                 <ScrollReveal className="flex items-center gap-2 text-sm text-muted-foreground" delay={480}>
                   <Github className="h-4 w-4" />
                   <span>Over 2,000+ developers already using CodeJoin</span>
@@ -338,6 +341,7 @@ export default function LandingPage() {
         <section id="features" className="relative py-16 md:py-20">
           <div className="absolute inset-0 -z-10 bg-gradient-to-b from-muted/40 via-transparent to-background" />
           <div className="container relative px-4 md:px-6">
+
             <ScrollReveal className="flex flex-col items-center text-center">
               <Badge
                 variant="secondary"
@@ -349,6 +353,7 @@ export default function LandingPage() {
                 Everything you need to collaborate without friction
               </h2>
               <p className="mt-4 max-w-3xl text-balance text-muted-foreground md:text-lg">
+
                 Spin up pair-programming sessions, sync knowledge, and deliver production-ready code faster with a toolkit that brings your workflow into one canvas.
               </p>
             </ScrollReveal>
@@ -373,6 +378,7 @@ export default function LandingPage() {
                 Start collaborating in minutes
               </h2>
               <p className="mt-4 max-w-2xl text-balance text-muted-foreground md:text-lg">
+
                 Launch a workspace, invite your team, and let CodeJoin orchestrate the rest—from synchronized cursors to shared previews.
               </p>
             </ScrollReveal>
@@ -380,6 +386,7 @@ export default function LandingPage() {
               <div className="pointer-events-none absolute inset-x-10 top-[60px] hidden h-px bg-gradient-to-r from-transparent via-border to-transparent md:block" />
               <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
                 {howItWorksSteps.map((step, index) => (
+
                   <ScrollReveal
                     key={step.title}
                     delay={index * 140}
@@ -450,6 +457,7 @@ export default function LandingPage() {
 
         {/* CTA Section */}
         <section className="relative overflow-hidden py-16 md:py-20">
+
           <div className="absolute inset-0 -z-10 overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-r from-primary/15 via-transparent to-purple-500/10" />
             <div className="pointer-events-none absolute inset-0 opacity-35 animate-gradient-slow bg-[radial-gradient(circle_at_center,_rgba(255,87,34,0.35),_rgba(99,102,241,0.25),_transparent_70%)]" />
