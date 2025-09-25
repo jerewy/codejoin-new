@@ -40,7 +40,7 @@ export function PageHeader({
         <div className="flex items-center gap-3">
           {leading}
           {!hideLogo && (
-            <Link href="/dashboard" className="flex items-center gap-2 text-foreground">
+            <Link href="/dashboard" className="flex items-center gap-2 text-primary">
               <LogoMark className="h-6 w-6" />
               <span className="text-sm font-semibold">CodeJoin</span>
             </Link>
