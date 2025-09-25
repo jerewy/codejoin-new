@@ -35,23 +35,17 @@ export function ForgotPasswordCard() {
   if (isSubmitted) {
     return (
       <Card className="border border-white/10 bg-background/95 shadow-lg">
-        <CardHeader className="space-y-3 text-center">
+        <CardHeader className="space-y-2 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15">
             <CheckCircle2 className="h-7 w-7 text-emerald-400" />
           </div>
-          <CardTitle className="text-2xl">Check your inbox</CardTitle>
+          <CardTitle className="text-2xl font-semibold">Check your email</CardTitle>
           <CardDescription>
-            We just sent a secure link to <span className="font-medium text-slate-100">{email}</span>. Follow the instructions to reset your password.
+            We sent a reset link to <span className="font-medium text-slate-100">{email}</span>.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4 text-sm text-muted-foreground">
-          <p>
-            Didn't receive anything yet? Double-check your spam folder or try sending the reset email again.
-          </p>
-          <p>
-            Need help? <a href="/support" className="font-medium text-primary hover:text-primary/80">Contact support</a>
-            {" "}for direct assistance.
-          </p>
+        <CardContent className="text-center text-sm text-muted-foreground">
+          If it doesn't arrive soon, check your spam folder or resend the email.
         </CardContent>
         <CardFooter className="flex flex-col gap-3 sm:flex-row">
           <Button
@@ -77,14 +71,12 @@ export function ForgotPasswordCard() {
 
   return (
     <Card className="border border-white/10 bg-background/95 shadow-lg">
-      <CardHeader className="space-y-3 text-center">
+      <CardHeader className="space-y-2 text-center">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
           <Mail className="h-6 w-6 text-primary" />
         </div>
-        <CardTitle className="text-2xl">Forgot your password?</CardTitle>
-        <CardDescription>
-          Enter the email associated with your CodeJoin account and we'll send you a secure link to create a new password.
-        </CardDescription>
+        <CardTitle className="text-2xl font-semibold">Reset password</CardTitle>
+        <CardDescription>Enter your email address to receive a reset link.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">

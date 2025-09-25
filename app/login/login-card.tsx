@@ -59,14 +59,9 @@ export default function LoginCard() {
 
   return (
     <Card className="border border-white/10 bg-background/95 shadow-lg">
-      <CardHeader className="space-y-3 text-center">
-        <div className="inline-flex items-center justify-center rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
-          Log back in
-        </div>
-        <CardTitle className="text-2xl">Sign in to CodeJoin</CardTitle>
-        <CardDescription>
-          Access your collaborative workspace with your email and password or continue with your provider of choice.
-        </CardDescription>
+      <CardHeader className="space-y-2 text-center">
+        <CardTitle className="text-2xl font-semibold">Sign in</CardTitle>
+        <CardDescription>Continue with email or a connected provider.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Social Logins */}

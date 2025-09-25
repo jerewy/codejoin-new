@@ -81,14 +81,12 @@ export function ResetPasswordCard() {
   if (success) {
     return (
       <Card className="border border-white/10 bg-background/95 shadow-lg">
-        <CardHeader className="space-y-3 text-center">
+        <CardHeader className="space-y-2 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15">
             <ShieldCheck className="h-7 w-7 text-emerald-400" />
           </div>
-          <CardTitle className="text-2xl">Password updated</CardTitle>
-          <CardDescription>
-            Your CodeJoin credentials have been refreshed. We'll take you back to the sign-in screen shortly.
-          </CardDescription>
+          <CardTitle className="text-2xl font-semibold">Password updated</CardTitle>
+          <CardDescription>You're all set. We'll take you back to sign in.</CardDescription>
         </CardHeader>
         <CardFooter className="justify-center">
           <Button asChild variant="outline" className="gap-2">
@@ -104,14 +102,12 @@ export function ResetPasswordCard() {
 
   return (
     <Card className="border border-white/10 bg-background/95 shadow-lg">
-      <CardHeader className="space-y-3 text-center">
+      <CardHeader className="space-y-2 text-center">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
           <ShieldCheck className="h-6 w-6 text-primary" />
         </div>
-        <CardTitle className="text-2xl">Create a new password</CardTitle>
-        <CardDescription>
-          Choose a secure password to protect your projects. You'll be signed out on other devices when this update is complete.
-        </CardDescription>
+        <CardTitle className="text-2xl font-semibold">Create a new password</CardTitle>
+        <CardDescription>Enter and confirm your new password to finish.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {error && (

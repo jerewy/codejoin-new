@@ -153,14 +153,9 @@ export default function SignupCard() {
 
   return (
     <Card className="border border-white/10 bg-background/95 shadow-lg">
-      <CardHeader className="space-y-3 text-center">
-        <div className="inline-flex items-center justify-center rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
-          Start collaborating
-        </div>
-        <CardTitle className="text-2xl">Create your CodeJoin account</CardTitle>
-        <CardDescription>
-          Set up your profile, invite teammates, and launch a ready-to-code workspace in minutes.
-        </CardDescription>
+      <CardHeader className="space-y-2 text-center">
+        <CardTitle className="text-2xl font-semibold">Create account</CardTitle>
+        <CardDescription>Sign up with email or your preferred provider.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Social Login Buttons */}
