@@ -12,7 +12,6 @@ export type SidebarNavItem = {
   title: string;
   href: string;
   icon: LucideIcon;
-  description?: string;
   badge?: string;
 };
 
@@ -27,13 +26,11 @@ export const sidebarNavSections: SidebarNavSection[] = [
     items: [
       {
         title: "Dashboard",
-        description: "Project overview & insights",
         href: "/dashboard",
         icon: LayoutDashboard,
       },
       {
         title: "AI Assistant",
-        description: "Chat, voice & code automations",
         href: "/ai-assistant",
         icon: Bot,
         badge: "Beta",
@@ -45,13 +42,11 @@ export const sidebarNavSections: SidebarNavSection[] = [
     items: [
       {
         title: "New Project",
-        description: "Spin up a collaborative space",
         href: "/new-project",
         icon: FolderPlus,
       },
       {
         title: "Templates",
-        description: "Start from curated blueprints",
         href: "/templates-section",
         icon: Layers,
       },
@@ -62,13 +57,11 @@ export const sidebarNavSections: SidebarNavSection[] = [
     items: [
       {
         title: "Teams",
-        description: "Manage invites & permissions",
         href: "/teams",
         icon: Users,
       },
       {
         title: "Settings",
-        description: "Workspace preferences",
         href: "/settings",
         icon: Settings,
       },
