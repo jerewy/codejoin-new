@@ -1,6 +1,13 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode
+} from 'react'
 import { io, Socket } from 'socket.io-client'
 
 interface SocketContextType {
@@ -86,32 +93,32 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
         setIsConnected(false)
       })
 
-    // Listen for collaborator events
-    socketInstance.on('collaborator-joined', (data) => {
-      setCollaborators(prev => {
-        const exists = prev.find(c => c.socketId === data.socketId)
-        if (exists) return prev
+      // Listen for collaborator events
+      socketInstance.on('collaborator-joined', (data) => {
+        setCollaborators(prev => {
+          const exists = prev.find(c => c.socketId === data.socketId)
+          if (exists) return prev
 
-        return [...prev, {
-          userId: data.userId,
-          userName: data.userName,
-          userAvatar: data.userAvatar,
-          socketId: data.socketId,
-          lastActivity: new Date()
-        }]
+          return [...prev, {
+            userId: data.userId,
+            userName: data.userName,
+            userAvatar: data.userAvatar,
+            socketId: data.socketId,
+            lastActivity: new Date()
+          }]
+        })
       })
-    })
 
-    socketInstance.on('collaborator-left', (data) => {
-      setCollaborators(prev => prev.filter(c => c.socketId !== data.socketId))
-    })
+      socketInstance.on('collaborator-left', (data) => {
+        setCollaborators(prev => prev.filter(c => c.socketId !== data.socketId))
+      })
 
-    socketInstance.on('collaborators-list', (data) => {
-      setCollaborators(data.map((collab: any) => ({
-        ...collab,
-        lastActivity: new Date(collab.lastActivity)
-      })))
-    })
+      socketInstance.on('collaborators-list', (data) => {
+        setCollaborators(data.map((collab: any) => ({
+          ...collab,
+          lastActivity: new Date(collab.lastActivity)
+        })))
+      })
 
       setSocket(socketInstance)
     } catch (error) {
@@ -126,46 +133,49 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
     }
   }, [])
 
-  const joinProject = (projectId: string, userData: { userId: string; userName: string; userAvatar?: string }) => {
-    if (socket) {
-      socket.emit('join-project', {
-        projectId,
-        userId: userData.userId,
-        userName: userData.userName,
-        userAvatar: userData.userAvatar
-      })
-    }
-  }
+  const joinProject = useCallback(
+    (projectId: string, userData: { userId: string; userName: string; userAvatar?: string }) => {
+      if (socket) {
+        socket.emit('join-project', {
+          projectId,
+          userId: userData.userId,
+          userName: userData.userName,
+          userAvatar: userData.userAvatar
+        })
+      }
+    },
+    [socket]
+  )
 
-  const leaveProject = (projectId: string) => {
+  const leaveProject = useCallback((projectId: string) => {
     if (socket) {
       socket.leave(projectId)
     }
-  }
+  }, [socket])
 
-  const emitFileChange = (data: { projectId: string; fileId: string; content: string; userId: string; operation: string }) => {
+  const emitFileChange = useCallback((data: { projectId: string; fileId: string; content: string; userId: string; operation: string }) => {
     if (socket) {
       socket.emit('file-change', data)
     }
-  }
+  }, [socket])
 
-  const emitCursorPosition = (data: { projectId: string; fileId: string; position: any; userId: string }) => {
+  const emitCursorPosition = useCallback((data: { projectId: string; fileId: string; position: any; userId: string }) => {
     if (socket) {
       socket.emit('cursor-position', data)
     }
-  }
+  }, [socket])
 
-  const emitFileSelect = (data: { projectId: string; fileId: string; userId: string }) => {
+  const emitFileSelect = useCallback((data: { projectId: string; fileId: string; userId: string }) => {
     if (socket) {
       socket.emit('file-select', data)
     }
-  }
+  }, [socket])
 
-  const emitExecutionResult = (data: { projectId: string; fileId: string; result: any; userId: string }) => {
+  const emitExecutionResult = useCallback((data: { projectId: string; fileId: string; result: any; userId: string }) => {
     if (socket) {
       socket.emit('execution-result', data)
     }
-  }
+  }, [socket])
 
   return (
     <SocketContext.Provider value={{
