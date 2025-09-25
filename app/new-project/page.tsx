@@ -31,13 +31,24 @@ import {
   Bot,
   Zap,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { TemplateNode } from "@/lib/types";
 import { PageHeader } from "@/components/PageHeader";
 
-const projectTemplates = [
+type ProjectTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  icon: LucideIcon;
+  tags: readonly string[];
+  color: string;
+  structure: readonly TemplateNode[];
+};
+
+const projectTemplates: readonly ProjectTemplate[] = [
   // --- Core Programming Languages (Backend Supported) ---
   {
     id: "javascript",
@@ -249,7 +260,7 @@ const projectTemplates = [
       },
     ],
   },
-] as const;
+];
 
 const languageOptions = [
   // --- All 11 Backend Supported Languages ---
