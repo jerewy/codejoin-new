@@ -271,7 +271,6 @@ function TerminalPanel({
     if (success === false || (typeof exitCode === "number" && exitCode !== 0)) {
       return <XCircle className="h-3 w-3 text-red-400" />;
     }
-
     if (exitCode === null) {
       return <AlertTriangle className="h-3 w-3 text-yellow-400" />;
     }
