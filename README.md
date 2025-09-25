@@ -167,7 +167,7 @@ const response = await fetch('http://localhost:3001/api/execute', {
 
 ### ✅ Completed (Session 2025-09-23)
 - **Backend Code Execution**: Fully working with Docker containers
-- **22 Programming Languages Supported**: Python, Java, JavaScript, C++, C, Go, Rust, etc.
+- **11 Programming Languages Supported**: Python, Java, JavaScript, C++, C, Go, Rust, etc.
 - **Security Features**: Container isolation, resource limits, no network access
 - **API Integration**: RESTful API with authentication (`X-API-Key: test123`)
 - **Performance**: Fast execution (Python ~350ms, Java ~930ms)
