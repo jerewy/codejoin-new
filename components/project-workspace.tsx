@@ -72,6 +72,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Link from "next/link";
+import { useToast } from "@/hooks/use-toast";
 import { type ProjectNode } from "@/app/project/[id]/page";
 import {
   type Collaborator,
@@ -93,8 +94,9 @@ import { ProjectNodeFromDB } from "@/lib/types";
 interface ExecutionResult {
   output: string;
   error?: string;
-  exitCode: number;
+  exitCode: number | null;
   executionTime: number;
+  success?: boolean;
 }
 
 // Define problem interface
@@ -261,12 +263,20 @@ function TerminalPanel({
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
-  const getStatusIcon = (exitCode: number) => {
-    return exitCode === 0 ? (
-      <CheckCircle className="h-3 w-3 text-green-400" />
-    ) : (
-      <XCircle className="h-3 w-3 text-red-400" />
-    );
+  const getStatusIcon = (exitCode: number | null, success?: boolean) => {
+    if (success === true || exitCode === 0) {
+      return <CheckCircle className="h-3 w-3 text-green-400" />;
+    }
+
+    if (success === false || (typeof exitCode === "number" && exitCode !== 0)) {
+      return <XCircle className="h-3 w-3 text-red-400" />;
+    }
+
+    if (exitCode === null) {
+      return <AlertTriangle className="h-3 w-3 text-yellow-400" />;
+    }
+
+    return <AlertTriangle className="h-3 w-3 text-yellow-400" />;
   };
 
   return (
@@ -312,13 +322,15 @@ function TerminalPanel({
           <div key={`exec-${index}`} className="mb-4">
             {/* Execution header */}
             <div className="flex items-center gap-2 mb-2 text-[#569cd6]">
-              {getStatusIcon(execution.exitCode)}
+              {getStatusIcon(execution.exitCode, execution.success)}
               <span className="text-xs text-[#4ec9b0]">
                 [Execution {index + 1}]
               </span>
               <span className="text-xs text-[#cccccc]">
-                {formatExecutionTime(execution.executionTime)} • Exit{" "}
-                {execution.exitCode}
+                {formatExecutionTime(execution.executionTime)} • Exit {" "}
+                {execution.success === true && execution.exitCode === null
+                  ? "—"
+                  : execution.exitCode ?? "—"}
               </span>
             </div>
 
@@ -492,6 +504,7 @@ export default function ProjectWorkspace({
 }: ProjectWorkspaceProps) {
   // Socket integration for real-time collaboration
   const { joinProject, isConnected, collaborators } = useSocket();
+  const { toast } = useToast();
 
   const [isVideoCallActive, setIsVideoCallActive] = useState(false);
   const [isMicOn, setIsMicOn] = useState(true);
@@ -618,37 +631,50 @@ export default function ProjectWorkspace({
   };
 
   // Handle execution results from CodeEditor
-  const handleExecutionResult = (result: ExecutionResult) => {
-    setConsoleOutputs((prev) => [...prev, result]);
+  const handleExecutionResult = (rawResult: ExecutionResult) => {
+    const hasNumericExitCode =
+      typeof rawResult.exitCode === "number" && Number.isFinite(rawResult.exitCode);
+    const didSucceed = rawResult.success ?? (hasNumericExitCode && rawResult.exitCode === 0);
+    const normalizedExitCode = hasNumericExitCode ? rawResult.exitCode : null;
+
+    const normalizedResult: ExecutionResult = {
+      ...rawResult,
+      exitCode: normalizedExitCode,
+      success: didSucceed,
+    };
+
+    setConsoleOutputs((prev) => [...prev, normalizedResult]);
     setActiveBottomTab("terminal");
 
     // Show user feedback based on execution result
-    if (result.exitCode === 0) {
-      // Success feedback
-      if (result.output) {
-        // Code executed successfully with output
-        console.log(
-          `✓ Code executed successfully in ${result.executionTime}ms`
-        );
-      } else {
-        // Code executed successfully but no output
-        console.log(
-          `✓ Code executed successfully (no output) in ${result.executionTime}ms`
-        );
-      }
+    if (didSucceed) {
+      const successMessage = normalizedResult.output
+        ? `✓ Code executed successfully in ${normalizedResult.executionTime}ms`
+        : `✓ Code executed successfully (no output) in ${normalizedResult.executionTime}ms`;
+      console.log(successMessage);
     } else {
-      // Error feedback
-      console.error(`✗ Execution failed (exit code ${result.exitCode})`);
+      const fallbackMessage =
+        normalizedResult.error?.trim() ||
+        (normalizedExitCode === null
+          ? "Execution failed before an exit code was returned."
+          : `Execution failed (exit code ${normalizedExitCode}).`);
+
+      console.warn(`[Code Execution] ${fallbackMessage}`);
+      toast({
+        variant: "destructive",
+        title: "Code execution failed",
+        description: fallbackMessage,
+      });
     }
 
-    // Add syntax errors to problems panel
-    if (result.error) {
+    // Add syntax errors to problems panel only when execution fails
+    if (!didSucceed && normalizedResult.error) {
       const newProblem: Problem = {
         id: Date.now().toString(),
         file: currentFile?.name || "unknown",
         line: 1,
         column: 1,
-        message: result.error,
+        message: normalizedResult.error,
         severity: "error",
         source: "runtime",
       };
