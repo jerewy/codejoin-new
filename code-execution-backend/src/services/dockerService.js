@@ -190,10 +190,36 @@ class DockerService {
     let output = '';
     let error = '';
     let exitCode = 0;
+    let stdinStream = null;
 
     try {
+      try {
+        stdinStream = await container.attach({
+          stream: true,
+          stdin: true,
+          stdout: false,
+          stderr: false
+        });
+      } catch (attachError) {
+        logger.warn(`Failed to attach to container stdin: ${attachError.message}`);
+      }
+
       // Start container and wait for completion
       await container.start();
+
+      if (stdinStream) {
+        try {
+          if (typeof input === 'string' && input.length > 0) {
+            const normalizedInput = input.endsWith('\n') ? input : `${input}\n`;
+            stdinStream.end(normalizedInput);
+          } else {
+            stdinStream.end();
+          }
+        } catch (streamError) {
+          logger.warn(`Failed to write input to container: ${streamError.message}`);
+          stdinStream.destroy();
+        }
+      }
 
       // Set up timeout promise
       const timeoutPromise = new Promise((resolve) => {
@@ -235,6 +261,14 @@ class DockerService {
     } catch (e) {
       error = `Container execution error: ${e.message}`;
       exitCode = 1;
+    } finally {
+      if (stdinStream) {
+        try {
+          stdinStream.destroy();
+        } catch (_) {
+          // Ignore cleanup errors
+        }
+      }
     }
 
     const executionTime = Date.now() - startTime;
@@ -397,3 +431,4 @@ class DockerService {
 }
 
 module.exports = DockerService;
+

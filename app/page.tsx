@@ -25,7 +25,7 @@ export default function LandingPage() {
     { value: "8k+", label: "Live coding sessions every day" },
     { value: "120k", label: "Lines synchronized each minute" },
     { value: "4.9/5", label: "Average team satisfaction" },
-    { value: "60+", label: "Languages & frameworks supported" },
+    { value: "11", label: "Languages & frameworks supported" },
   ];
 
   const heroHighlights = [
@@ -46,15 +46,18 @@ export default function LandingPage() {
   const howItWorksSteps = [
     {
       title: "Create a workspace",
-      description: "Sign up and launch a new collaborative environment in seconds.",
+      description:
+        "Sign up and launch a new collaborative environment in seconds.",
     },
     {
       title: "Invite collaborators",
-      description: "Share a secure link with teammates, clients, or students instantly.",
+      description:
+        "Share a secure link with teammates, clients, or students instantly.",
     },
     {
       title: "Code, preview & ship",
-      description: "Build together with synced editors, live previews, and AI assistance.",
+      description:
+        "Build together with synced editors, live previews, and AI assistance.",
     },
   ];
 
@@ -68,27 +71,32 @@ export default function LandingPage() {
     {
       icon: <Zap className="h-5 w-5" />,
       title: "Live preview",
-      description: "Render UI instantly with hot reload so everyone sees changes as they happen.",
+      description:
+        "Render UI instantly with hot reload so everyone sees changes as they happen.",
     },
     {
       icon: <Users className="h-5 w-5" />,
       title: "AI-powered suggestions",
-      description: "Lean on CodeJoin Copilot for autocomplete, refactors, and contextual code reviews.",
+      description:
+        "Lean on CodeJoin Copilot for autocomplete, refactors, and contextual code reviews.",
     },
     {
       icon: <Video className="h-5 w-5" />,
       title: "Integrated video calls",
-      description: "Stay in sync with built-in huddles, whiteboards, and screen handoffs.",
+      description:
+        "Stay in sync with built-in huddles, whiteboards, and screen handoffs.",
     },
     {
       icon: <Github className="h-5 w-5" />,
       title: "GitHub-native",
-      description: "Connect repositories, sync branches, and open PRs without leaving the workspace.",
+      description:
+        "Connect repositories, sync branches, and open PRs without leaving the workspace.",
     },
     {
       icon: <ArrowRight className="h-5 w-5" />,
       title: "Polyglot support",
-      description: "Pair program across JavaScript, Python, Go, Rust, and dozens more languages.",
+      description:
+        "Pair program across JavaScript, Python, Go, Rust, and dozens more languages.",
     },
   ];
 
@@ -232,7 +240,6 @@ export default function LandingPage() {
       <main className="flex-1">
         {/* Hero Section */}
         <section className="relative overflow-hidden py-20 md:py-28">
-
           <div className="absolute inset-0 -z-20 overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-b from-background via-background to-muted/40" />
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,87,34,0.18),_transparent_60%)]" />
@@ -263,8 +270,10 @@ export default function LandingPage() {
                     Ship better code together in real-time.
                   </h1>
                   <p className="max-w-[620px] text-base text-muted-foreground md:text-lg">
-
-                    Build alongside your team with synchronized editors, contextual chat, and instant previews. CodeJoin keeps every participant in flow with AI pair programming and buttery smooth collaboration.
+                    Build alongside your team with synchronized editors,
+                    contextual chat, and instant previews. CodeJoin keeps every
+                    participant in flow with AI pair programming and buttery
+                    smooth collaboration.
                   </p>
                 </ScrollReveal>
                 <ScrollReveal
@@ -277,7 +286,11 @@ export default function LandingPage() {
                     </Button>
                   </Link>
                   <Link href="#demo" className="w-full min-[420px]:w-auto">
-                    <Button size="lg" variant="outline" className="w-full gap-1.5">
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="w-full gap-1.5"
+                    >
                       <PlayCircle className="h-5 w-5" />
                       Watch a demo
                     </Button>
@@ -302,13 +315,20 @@ export default function LandingPage() {
                       delay={300 + index * 100}
                       className="rounded-2xl border border-border/70 bg-background/70 p-4 shadow-sm backdrop-blur"
                     >
-                      <div className="text-2xl font-semibold text-foreground">{stat.value}</div>
-                      <p className="text-xs uppercase tracking-wider text-muted-foreground">{stat.label}</p>
+                      <div className="text-2xl font-semibold text-foreground">
+                        {stat.value}
+                      </div>
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                        {stat.label}
+                      </p>
                     </ScrollReveal>
                   ))}
                 </div>
 
-                <ScrollReveal className="flex items-center gap-2 text-sm text-muted-foreground" delay={480}>
+                <ScrollReveal
+                  className="flex items-center gap-2 text-sm text-muted-foreground"
+                  delay={480}
+                >
                   <Github className="h-4 w-4" />
                   <span>Over 2,000+ developers already using CodeJoin</span>
                 </ScrollReveal>
@@ -328,8 +348,12 @@ export default function LandingPage() {
                     <Video className="h-5 w-5" />
                   </div>
                   <div className="text-left text-sm leading-tight">
-                    <p className="font-semibold text-foreground">Interactive sandbox</p>
-                    <p className="text-muted-foreground">Share sessions in a single click</p>
+                    <p className="font-semibold text-foreground">
+                      Interactive sandbox
+                    </p>
+                    <p className="text-muted-foreground">
+                      Share sessions in a single click
+                    </p>
                   </div>
                 </div>
               </ScrollReveal>
@@ -341,7 +365,6 @@ export default function LandingPage() {
         <section id="features" className="relative py-16 md:py-20">
           <div className="absolute inset-0 -z-10 bg-gradient-to-b from-muted/40 via-transparent to-background" />
           <div className="container relative px-4 md:px-6">
-
             <ScrollReveal className="flex flex-col items-center text-center">
               <Badge
                 variant="secondary"
@@ -353,13 +376,18 @@ export default function LandingPage() {
                 Everything you need to collaborate without friction
               </h2>
               <p className="mt-4 max-w-3xl text-balance text-muted-foreground md:text-lg">
-
-                Spin up pair-programming sessions, sync knowledge, and deliver production-ready code faster with a toolkit that brings your workflow into one canvas.
+                Spin up pair-programming sessions, sync knowledge, and deliver
+                production-ready code faster with a toolkit that brings your
+                workflow into one canvas.
               </p>
             </ScrollReveal>
             <div className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
               {features.map((feature, index) => (
-                <ScrollReveal key={feature.title} delay={index * 120} className="h-full">
+                <ScrollReveal
+                  key={feature.title}
+                  delay={index * 120}
+                  className="h-full"
+                >
                   <FeatureCard {...feature} className="h-full" />
                 </ScrollReveal>
               ))}
@@ -368,25 +396,31 @@ export default function LandingPage() {
         </section>
 
         {/* How It Works Section */}
-        <section id="how-it-works" className="relative bg-muted/50 py-16 md:py-20">
+        <section
+          id="how-it-works"
+          className="relative bg-muted/50 py-16 md:py-20"
+        >
           <div className="container relative px-4 md:px-6">
             <ScrollReveal className="flex flex-col items-center text-center">
-              <Badge variant="secondary" className="mb-4 border border-border/70 bg-background/80 text-muted-foreground">
+              <Badge
+                variant="secondary"
+                className="mb-4 border border-border/70 bg-background/80 text-muted-foreground"
+              >
                 How it works
               </Badge>
               <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
                 Start collaborating in minutes
               </h2>
               <p className="mt-4 max-w-2xl text-balance text-muted-foreground md:text-lg">
-
-                Launch a workspace, invite your team, and let CodeJoin orchestrate the rest—from synchronized cursors to shared previews.
+                Launch a workspace, invite your team, and let CodeJoin
+                orchestrate the rest—from synchronized cursors to shared
+                previews.
               </p>
             </ScrollReveal>
             <div className="relative mx-auto mt-12 max-w-5xl">
               <div className="pointer-events-none absolute inset-x-10 top-[60px] hidden h-px bg-gradient-to-r from-transparent via-border to-transparent md:block" />
               <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
                 {howItWorksSteps.map((step, index) => (
-
                   <ScrollReveal
                     key={step.title}
                     delay={index * 140}
@@ -396,7 +430,9 @@ export default function LandingPage() {
                       0{index + 1}
                     </span>
                     <h3 className="mt-6 text-xl font-semibold">{step.title}</h3>
-                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{step.description}</p>
+                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                      {step.description}
+                    </p>
                     <div className="pointer-events-none absolute bottom-0 right-0 h-20 w-20 translate-x-10 translate-y-10 rounded-full bg-primary/5 transition-transform duration-300 group-hover:translate-x-6 group-hover:translate-y-6" />
                   </ScrollReveal>
                 ))}
@@ -410,19 +446,27 @@ export default function LandingPage() {
           <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(255,87,34,0.15),_transparent_60%)]" />
           <div className="container relative px-4 md:px-6">
             <ScrollReveal className="flex flex-col items-center text-center">
-              <Badge variant="secondary" className="mb-4 border border-primary/20 bg-primary/10 text-primary">
+              <Badge
+                variant="secondary"
+                className="mb-4 border border-primary/20 bg-primary/10 text-primary"
+              >
                 Pricing
               </Badge>
               <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
                 Simple, transparent pricing
               </h2>
               <p className="mt-4 max-w-2xl text-balance text-muted-foreground md:text-lg">
-                Get started for free, then scale with flexible seats and billing that grows with your team.
+                Get started for free, then scale with flexible seats and billing
+                that grows with your team.
               </p>
             </ScrollReveal>
             <div className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-3">
               {pricingPlans.map((plan, index) => (
-                <ScrollReveal key={plan.title} delay={index * 160} className="h-full">
+                <ScrollReveal
+                  key={plan.title}
+                  delay={index * 160}
+                  className="h-full"
+                >
                   <PricingCard {...plan} />
                 </ScrollReveal>
               ))}
@@ -431,23 +475,34 @@ export default function LandingPage() {
         </section>
 
         {/* Testimonials Section */}
-        <section id="testimonials" className="relative overflow-hidden bg-muted/50 py-16 md:py-20">
+        <section
+          id="testimonials"
+          className="relative overflow-hidden bg-muted/50 py-16 md:py-20"
+        >
           <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,_rgba(255,87,34,0.12),_transparent_55%)]" />
           <div className="container relative px-4 md:px-6">
             <ScrollReveal className="flex flex-col items-center text-center">
-              <Badge variant="secondary" className="mb-4 border border-border/70 bg-background/80 text-muted-foreground">
+              <Badge
+                variant="secondary"
+                className="mb-4 border border-border/70 bg-background/80 text-muted-foreground"
+              >
                 Testimonials
               </Badge>
               <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
                 Loved by distributed product teams
               </h2>
               <p className="mt-4 max-w-3xl text-balance text-muted-foreground md:text-lg">
-                Engineers, educators, and startups rely on CodeJoin to stay aligned, deliver faster, and keep collaboration fun.
+                Engineers, educators, and startups rely on CodeJoin to stay
+                aligned, deliver faster, and keep collaboration fun.
               </p>
             </ScrollReveal>
             <div className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
               {testimonials.map((testimonial, index) => (
-                <ScrollReveal key={testimonial.author} delay={index * 140} className="h-full">
+                <ScrollReveal
+                  key={testimonial.author}
+                  delay={index * 140}
+                  className="h-full"
+                >
                   <Testimonial {...testimonial} />
                 </ScrollReveal>
               ))}
@@ -457,21 +512,25 @@ export default function LandingPage() {
 
         {/* CTA Section */}
         <section className="relative overflow-hidden py-16 md:py-20">
-
           <div className="absolute inset-0 -z-10 overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-r from-primary/15 via-transparent to-purple-500/10" />
             <div className="pointer-events-none absolute inset-0 opacity-35 animate-gradient-slow bg-[radial-gradient(circle_at_center,_rgba(255,87,34,0.35),_rgba(99,102,241,0.25),_transparent_70%)]" />
           </div>
           <div className="container relative px-4 md:px-6">
             <ScrollReveal className="overflow-hidden rounded-3xl border border-border/70 bg-background/80 p-10 text-center shadow-lg backdrop-blur">
-              <Badge variant="outline" className="mb-4 border-primary/30 bg-primary/10 text-primary">
+              <Badge
+                variant="outline"
+                className="mb-4 border-primary/30 bg-primary/10 text-primary"
+              >
                 Ready to build together?
               </Badge>
               <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
                 Ready to start coding together?
               </h2>
               <p className="mx-auto mt-4 max-w-2xl text-balance text-muted-foreground md:text-lg">
-                Join thousands of developers already pairing in CodeJoin. Spin up a session in seconds and keep your team in the same flow state.
+                Join thousands of developers already pairing in CodeJoin. Spin
+                up a session in seconds and keep your team in the same flow
+                state.
               </p>
               <div className="mt-8 flex flex-col items-center justify-center gap-3 min-[420px]:flex-row">
                 <Link href="/signup" className="w-full min-[420px]:w-auto">
