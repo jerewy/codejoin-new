@@ -1,24 +1,79 @@
-import { LayoutDashboard, Layers, Users, Settings } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  LayoutDashboard,
+  Bot,
+  FolderPlus,
+  Layers,
+  Users,
+  Settings,
+} from "lucide-react";
 
-export const sidebarNavItems = [
+export type SidebarNavItem = {
+  title: string;
+  href: string;
+  icon: LucideIcon;
+  description?: string;
+  badge?: string;
+};
+
+export type SidebarNavSection = {
+  title: string;
+  items: SidebarNavItem[];
+};
+
+export const sidebarNavSections: SidebarNavSection[] = [
   {
-    title: "Dashboard",
-    href: "/dashboard",
-    icon: LayoutDashboard,
+    title: "Workspace",
+    items: [
+      {
+        title: "Dashboard",
+        description: "Project overview & insights",
+        href: "/dashboard",
+        icon: LayoutDashboard,
+      },
+      {
+        title: "AI Assistant",
+        description: "Chat, voice & code automations",
+        href: "/ai-assistant",
+        icon: Bot,
+        badge: "Beta",
+      },
+    ],
   },
   {
-    title: "Templates",
-    href: "/templates-section",
-    icon: Layers,
+    title: "Creation",
+    items: [
+      {
+        title: "New Project",
+        description: "Spin up a collaborative space",
+        href: "/new-project",
+        icon: FolderPlus,
+      },
+      {
+        title: "Templates",
+        description: "Start from curated blueprints",
+        href: "/templates-section",
+        icon: Layers,
+      },
+    ],
   },
   {
-    title: "Teams",
-    href: "/teams",
-    icon: Users,
-  },
-  {
-    title: "Settings",
-    href: "/settings",
-    icon: Settings,
+    title: "Collaboration",
+    items: [
+      {
+        title: "Teams",
+        description: "Manage invites & permissions",
+        href: "/teams",
+        icon: Users,
+      },
+      {
+        title: "Settings",
+        description: "Workspace preferences",
+        href: "/settings",
+        icon: Settings,
+      },
+    ],
   },
 ];
+
+export const sidebarNavItems = sidebarNavSections.flatMap((section) => section.items);
