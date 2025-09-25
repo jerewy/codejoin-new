@@ -17,8 +17,8 @@ import {
 } from "lucide-react";
 import TemplateCard from "@/components/template-card";
 import TemplatePreview from "@/components/template-preview";
-import NavLinks from "@/components/nav-links";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function TemplatesPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -133,31 +133,34 @@ export default function TemplatesPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur">
-        <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-2">
-            <SidebarTrigger />
-            <Code className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold">Templates</h1>
+      <PageHeader
+        leading={<SidebarTrigger />}
+        startContent={
+          <div className="hidden items-center gap-2 text-sm font-medium text-muted-foreground sm:flex">
+            <Code className="h-4 w-4" />
+            Template library
           </div>
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        }
+        title="Templates"
+        description="Browse curated starter kits for web, mobile, and backend projects. Preview, customize, and launch in minutes."
+        actions={
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search templates..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 w-64"
+                className="pl-10"
               />
             </div>
-            <Button>
-              <Download className="h-4 w-4 mr-2" />
-              Upload Template
+            <Button className="w-full sm:w-auto">
+              <Download className="h-4 w-4" />
+              <span className="ml-2">Upload Template</span>
             </Button>
           </div>
-        </div>
-      </header>
+        }
+      />
 
       <div className="flex-1 container py-6">
         {/* Featured Templates */}

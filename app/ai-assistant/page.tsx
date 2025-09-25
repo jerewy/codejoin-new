@@ -24,6 +24,8 @@ import AIChat from "@/components/ai-chat"
 import VoiceAssistant from "@/components/voice-assistant"
 import CodeAnalyzer from "@/components/code-analyzer"
 import AITemplates from "@/components/ai-templates"
+import { PageHeader } from "@/components/PageHeader"
+import { SidebarTrigger } from "@/components/ui/sidebar"
 
 export default function AIAssistantPage() {
   const [isVoiceActive, setIsVoiceActive] = useState(false)
@@ -72,19 +74,25 @@ export default function AIAssistantPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur">
-        <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Brain className="h-6 w-6 text-primary" />
-              <h1 className="text-xl font-bold">AI Assistant</h1>
-              <Badge variant="outline" className="bg-primary/10 text-primary">
-                Powered by GPT-4 & ElevenLabs
-              </Badge>
-            </div>
+      <PageHeader
+        leading={<SidebarTrigger />}
+        startContent={
+          <div className="hidden items-center gap-2 text-sm font-medium text-muted-foreground sm:flex">
+            <Brain className="h-4 w-4" />
+            Intelligent workspace
           </div>
-          <div className="flex items-center gap-2">
+        }
+        title="AI Assistant"
+        description={
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>Collaborate with real-time AI for planning, coding, and debugging.</span>
+            <Badge variant="outline" className="bg-primary/10 text-primary">
+              Powered by GPT-4 & ElevenLabs
+            </Badge>
+          </div>
+        }
+        actions={
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
             <Button
               variant={isVoiceActive ? "destructive" : "default"}
               onClick={() => setIsVoiceActive(!isVoiceActive)}
@@ -93,15 +101,17 @@ export default function AIAssistantPage() {
               {isVoiceActive ? <PhoneOff className="h-4 w-4" /> : <Phone className="h-4 w-4" />}
               {isVoiceActive ? "End Voice Call" : "Start Voice Call"}
             </Button>
-            <Button variant="outline" size="icon" onClick={() => setIsMicOn(!isMicOn)}>
-              {isMicOn ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
-            </Button>
-            <Button variant="outline" size="icon" onClick={() => setIsSpeakerOn(!isSpeakerOn)}>
-              {isSpeakerOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-            </Button>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="icon" onClick={() => setIsMicOn(!isMicOn)}>
+                {isMicOn ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+              </Button>
+              <Button variant="outline" size="icon" onClick={() => setIsSpeakerOn(!isSpeakerOn)}>
+                {isSpeakerOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+              </Button>
+            </div>
           </div>
-        </div>
-      </header>
+        }
+      />
 
       <div className="flex-1 container py-6">
         <div className="grid gap-6 lg:grid-cols-4">
