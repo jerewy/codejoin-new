@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import Editor, { OnMount } from "@monaco-editor/react";
 import { ProjectNodeFromDB } from "@/lib/types";
 
@@ -609,16 +609,16 @@ export default function CodeEditor({
   };
 
   // Helper function to safely handle content with special characters
-  const sanitizeContent = (content: string): string => {
+  const sanitizeContent = useCallback((content: string): string => {
     // Remove or replace problematic characters that can cause issues
     return content
-      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '') // Remove control characters
-      .replace(/\u2028/g, '\\u2028') // Escape line separator
-      .replace(/\u2029/g, '\\u2029'); // Escape paragraph separator
-  };
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "") // Remove control characters
+      .replace(/\u2028/g, "\\u2028") // Escape line separator
+      .replace(/\u2029/g, "\\u2029"); // Escape paragraph separator
+  }, []);
 
-  const executeCode = async () => {
-    if (!file?.content || !onExecute || isExecuting) return;
+  const executeCode = useCallback(async () => {
+    if (!file || !onExecute || isExecuting) return;
 
     onExecutionStart?.();
     const startTime = Date.now();
@@ -632,7 +632,7 @@ export default function CodeEditor({
 
       const result = await codeExecutionAPI.executeCode({
         language: detectedLanguage,
-        code: sanitizeContent(file.content),
+        code: sanitizeContent(file.content ?? ""),
         timeout: 30000, // 30 second timeout
       });
 
@@ -659,7 +659,14 @@ export default function CodeEditor({
     } finally {
       onExecutionStop?.();
     }
-  };
+  }, [
+    file,
+    isExecuting,
+    onExecute,
+    onExecutionStart,
+    onExecutionStop,
+    sanitizeContent,
+  ]);
 
   // Listen for execution events from workspace Run button
   useEffect(() => {

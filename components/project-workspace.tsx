@@ -263,16 +263,19 @@ function TerminalPanel({
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
-  const getStatusIcon = (exitCode: number | null) => {
-    if (exitCode === 0) {
+  const getStatusIcon = (exitCode: number | null, success?: boolean) => {
+    if (success === true || exitCode === 0) {
       return <CheckCircle className="h-3 w-3 text-green-400" />;
     }
 
+    if (success === false || (typeof exitCode === "number" && exitCode !== 0)) {
+      return <XCircle className="h-3 w-3 text-red-400" />;
+    }
     if (exitCode === null) {
       return <AlertTriangle className="h-3 w-3 text-yellow-400" />;
     }
 
-    return <XCircle className="h-3 w-3 text-red-400" />;
+    return <AlertTriangle className="h-3 w-3 text-yellow-400" />;
   };
 
   return (
@@ -318,13 +321,15 @@ function TerminalPanel({
           <div key={`exec-${index}`} className="mb-4">
             {/* Execution header */}
             <div className="flex items-center gap-2 mb-2 text-[#569cd6]">
-              {getStatusIcon(execution.exitCode)}
+              {getStatusIcon(execution.exitCode, execution.success)}
               <span className="text-xs text-[#4ec9b0]">
                 [Execution {index + 1}]
               </span>
               <span className="text-xs text-[#cccccc]">
-                {formatExecutionTime(execution.executionTime)} • Exit{" "}
-                {execution.exitCode ?? "—"}
+                {formatExecutionTime(execution.executionTime)} • Exit {" "}
+                {execution.success === true && execution.exitCode === null
+                  ? "—"
+                  : execution.exitCode ?? "—"}
               </span>
             </div>
 
@@ -626,30 +631,26 @@ export default function ProjectWorkspace({
 
   // Handle execution results from CodeEditor
   const handleExecutionResult = (rawResult: ExecutionResult) => {
-    const normalizedExitCode =
-      typeof rawResult.exitCode === "number" && Number.isFinite(rawResult.exitCode)
-        ? rawResult.exitCode
-        : null;
+    const hasNumericExitCode =
+      typeof rawResult.exitCode === "number" && Number.isFinite(rawResult.exitCode);
+    const didSucceed = rawResult.success ?? (hasNumericExitCode && rawResult.exitCode === 0);
+    const normalizedExitCode = hasNumericExitCode ? rawResult.exitCode : null;
 
     const normalizedResult: ExecutionResult = {
       ...rawResult,
       exitCode: normalizedExitCode,
+      success: didSucceed,
     };
 
     setConsoleOutputs((prev) => [...prev, normalizedResult]);
     setActiveBottomTab("terminal");
 
     // Show user feedback based on execution result
-    if (normalizedExitCode === 0) {
-      if (normalizedResult.output) {
-        console.log(
-          `✓ Code executed successfully in ${normalizedResult.executionTime}ms`
-        );
-      } else {
-        console.log(
-          `✓ Code executed successfully (no output) in ${normalizedResult.executionTime}ms`
-        );
-      }
+    if (didSucceed) {
+      const successMessage = normalizedResult.output
+        ? `✓ Code executed successfully in ${normalizedResult.executionTime}ms`
+        : `✓ Code executed successfully (no output) in ${normalizedResult.executionTime}ms`;
+      console.log(successMessage);
     } else {
       const fallbackMessage =
         normalizedResult.error?.trim() ||
@@ -665,8 +666,8 @@ export default function ProjectWorkspace({
       });
     }
 
-    // Add syntax errors to problems panel
-    if (normalizedResult.error) {
+    // Add syntax errors to problems panel only when execution fails
+    if (!didSucceed && normalizedResult.error) {
       const newProblem: Problem = {
         id: Date.now().toString(),
         file: currentFile?.name || "unknown",
