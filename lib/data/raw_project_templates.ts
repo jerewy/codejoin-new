@@ -210,4 +210,4 @@ const projectTemplates = [
       },
     ],
   },
-]
+];
