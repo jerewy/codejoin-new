@@ -5,13 +5,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 import { AppLayout } from "@/components/app-layout";
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
 import { RouteChangeIndicator } from "@/components/route-change-indicator";
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 import { SocketProvider } from "@/lib/socket";
 
 const inter = Inter({ subsets: ["latin"] });
