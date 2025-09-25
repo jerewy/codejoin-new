@@ -13,7 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Eye, EyeOff, Github, Mail, Check, X } from "lucide-react";
+import { Eye, EyeOff, Check, X, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { LoginGithub } from "@/components/login-github";
 import { LoginGoogle } from "@/components/login-google";
@@ -152,33 +152,35 @@ export default function SignupCard() {
   );
 
   return (
-    <Card>
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl text-center">Sign up</CardTitle>
-        <CardDescription className="text-center">
-          Create your account to start collaborating
-        </CardDescription>
+    <Card className="border border-white/10 bg-background/95 shadow-lg">
+      <CardHeader className="space-y-2 text-center">
+        <CardTitle className="text-2xl font-semibold">Create account</CardTitle>
+        <CardDescription>Sign up with email or your preferred provider.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-6">
         {/* Social Login Buttons */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-3">
           <LoginGithub />
           <LoginGoogle />
         </div>
 
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <Separator className="w-full" />
+            <Separator className="w-full bg-white/10" />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">
-              Or continue with
+            <span className="rounded-full bg-background px-3 py-1 text-muted-foreground">
+              Or sign up with email
             </span>
           </div>
         </div>
 
         {/* Show error if any */}
-        {error && <p className="text-sm text-red-500 text-center">{error}</p>}
+        {error && (
+          <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            {error}
+          </div>
+        )}
 
         {/* Registration Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -188,7 +190,7 @@ export default function SignupCard() {
               id="name"
               name="name"
               type="text"
-              placeholder="Enter your full name"
+              placeholder="Alex Johnson"
               value={formData.name}
               onChange={handleInputChange}
               required
@@ -202,14 +204,14 @@ export default function SignupCard() {
               name="email"
               type="email"
               autoComplete="username"
-              placeholder="Enter your email"
+              placeholder="name@company.com"
               value={formData.email}
               onChange={handleInputChange}
               required
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             <Label htmlFor="password">Password</Label>
             <div className="relative">
               <Input
@@ -217,7 +219,7 @@ export default function SignupCard() {
                 name="password"
                 autoComplete="new-password"
                 type={showPassword ? "text" : "password"}
-                placeholder="Create a password"
+                placeholder="Create a secure password"
                 value={formData.password}
                 onChange={handleInputChange}
                 required
@@ -226,7 +228,7 @@ export default function SignupCard() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                className="absolute right-0 top-0 h-full px-3 py-2 text-muted-foreground hover:bg-transparent"
                 onClick={() => setShowPassword(!showPassword)}
               >
                 {showPassword ? (
@@ -239,8 +241,8 @@ export default function SignupCard() {
 
             {/* Password Requirements */}
             {formData.password && (
-              <div className="space-y-1 p-3 bg-muted/50 rounded-md">
-                <p className="text-sm font-medium">Password requirements:</p>
+              <div className="space-y-2 rounded-lg border border-white/10 bg-muted/30 p-4 text-sm">
+                <p className="font-medium text-slate-200">Password requirements</p>
                 <ValidationItem
                   isValid={passwordValidation.minLength}
                   text="At least 8 characters"
@@ -273,7 +275,7 @@ export default function SignupCard() {
                 name="confirmPassword"
                 type={showConfirmPassword ? "text" : "password"}
                 autoComplete="new-password"
-                placeholder="Confirm your password"
+                placeholder="Repeat your password"
                 value={formData.confirmPassword}
                 onChange={handleInputChange}
                 required
@@ -282,7 +284,7 @@ export default function SignupCard() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                className="absolute right-0 top-0 h-full px-3 py-2 text-muted-foreground hover:bg-transparent"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
               >
                 {showConfirmPassword ? (
@@ -294,29 +296,36 @@ export default function SignupCard() {
             </div>
             {formData.confirmPassword &&
               formData.password !== formData.confirmPassword && (
-                <p className="text-sm text-red-600">Passwords don't match</p>
+                <p className="text-sm text-red-500">Passwords don't match</p>
               )}
           </div>
 
           <Button
             type="submit"
-            className="w-full"
+            className="w-full bg-gradient-to-r from-primary to-primary/80 text-white shadow-md transition hover:from-primary/90 hover:to-primary"
             disabled={
               isLoading ||
               !isPasswordValid() ||
               formData.password !== formData.confirmPassword
             }
           >
-            {isLoading ? "Creating account..." : "Create account"}
+            {isLoading ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Creating account
+              </span>
+            ) : (
+              "Create account"
+            )}
           </Button>
         </form>
       </CardContent>
       <CardFooter>
-        <p className="text-center text-sm text-muted-foreground w-full">
+        <p className="w-full text-center text-sm text-muted-foreground">
           Already have an account?{" "}
           <Link
             href="/login"
-            className="text-primary hover:underline font-medium"
+            className="font-medium text-primary transition hover:text-primary/80"
           >
             Sign in
           </Link>
