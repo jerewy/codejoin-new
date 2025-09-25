@@ -44,10 +44,11 @@ import ProjectCard from "@/components/project-card";
 import RecentActivity from "@/components/recent-activity";
 import QuickStats from "@/components/quick-stats";
 import dynamic from "next/dynamic";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/lib/supabaseClient";
 import { Project, Activity, RawActivity } from "@/lib/types";
 import { toast } from "@/hooks/use-toast";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { PageHeader } from "@/components/PageHeader";
 
 const STATUS_OPTIONS = ["active", "planning", "completed", "archived"] as const;
 
@@ -484,65 +485,29 @@ export default function DashboardPage() {
     return matchesSearch && matchesFilter;
   });
 
+  const activeProjectsCount = projects.filter((p) => p.status === "active").length;
+  const collaborativeProjectsCount = projects.filter((p) => p.collaborators > 1).length;
+
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur">
-        <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-2">
-            <SidebarTrigger />
-            <div className="flex items-center">
-              <svg
-                width="32"
-                height="32"
-                viewBox="0 0 32 32"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="mr-2"
-              >
-                <path
-                  d="M8 6C8 4.89543 8.89543 4 10 4H22C23.1046 4 24 4.89543 24 6V26C24 27.1046 23.1046 28 22 28H10C8.89543 28 8 27.1046 8 26V6Z"
-                  fill="#FF5722"
-                />
-                <path
-                  d="M14 10L18 14M18 10L14 14"
-                  stroke="#0D47A1"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M14 18L18 22M18 18L14 22"
-                  stroke="#0D47A1"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-              <span className="text-xl font-bold text-primary">CodeJoin</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link href="./new-project">
-              <Button>
+      <PageHeader
+        leading={<SidebarTrigger />}
+        trailing={
+          <>
+            <Link href="/new-project">
+              <Button size="sm">
                 <Plus className="h-4 w-4 mr-2" />
                 New Project
               </Button>
             </Link>
             <UserDropdown />
-          </div>
-        </div>
-      </header>
+          </>
+        }
+        title={userName ? `Welcome back, ${userName}!` : "Welcome back!"}
+        description={`You have ${activeProjectsCount} active projects and ${collaborativeProjectsCount} collaborative projects.`}
+      />
 
       <div className="flex-1 container py-6">
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Welcome back, {userName}!</h1>
-          <p className="text-muted-foreground">
-            You have {projects.filter((p) => p.status === "active").length}{" "}
-            active projects and{" "}
-            {projects.filter((p) => p.collaborators > 1).length} collaborative
-            projects.
-          </p>
-        </div>
 
         {/* Quick Stats */}
         <QuickStats projects={projects} />
