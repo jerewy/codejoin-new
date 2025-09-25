@@ -15,7 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { LoginGoogle } from "@/components/login-google";
 import { LoginGithub } from "@/components/login-github";
 import { useRouter } from "next/navigation";
@@ -58,33 +58,40 @@ export default function LoginCard() {
   };
 
   return (
-    <Card>
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl text-center">Sign in</CardTitle>
-        <CardDescription className="text-center">
-          Enter your email and password to access your account
+    <Card className="border border-white/10 bg-background/95 shadow-lg">
+      <CardHeader className="space-y-3 text-center">
+        <div className="inline-flex items-center justify-center rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
+          Log back in
+        </div>
+        <CardTitle className="text-2xl">Sign in to CodeJoin</CardTitle>
+        <CardDescription>
+          Access your collaborative workspace with your email and password or continue with your provider of choice.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-6">
         {/* Social Logins */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-3">
           <LoginGithub />
           <LoginGoogle />
         </div>
 
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <Separator className="w-full" />
+            <Separator className="w-full bg-white/10" />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">
-              Or continue with
+            <span className="rounded-full bg-background px-3 py-1 text-muted-foreground">
+              Or continue with email
             </span>
           </div>
         </div>
 
         {/* Show error if any */}
-        {error && <p className="text-sm text-red-500 text-center">{error}</p>}
+        {error && (
+          <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            {error}
+          </div>
+        )}
 
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -94,7 +101,7 @@ export default function LoginCard() {
               id="email"
               name="email"
               type="email"
-              placeholder="Enter your email"
+              placeholder="name@company.com"
               value={formData.email}
               onChange={handleInputChange}
               required
@@ -102,11 +109,13 @@ export default function LoginCard() {
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between text-sm">
+              <Label htmlFor="password" className="text-sm">
+                Password
+              </Label>
               <Link
                 href="/forgot-password"
-                className="text-sm text-primary hover:underline"
+                className="font-medium text-primary transition hover:text-primary/80"
               >
                 Forgot password?
               </Link>
@@ -116,7 +125,7 @@ export default function LoginCard() {
                 id="password"
                 name="password"
                 type={showPassword ? "text" : "password"}
-                placeholder="Enter your password"
+                placeholder="••••••••"
                 value={formData.password}
                 onChange={handleInputChange}
                 required
@@ -125,7 +134,7 @@ export default function LoginCard() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                className="absolute right-0 top-0 h-full px-3 py-2 text-muted-foreground hover:bg-transparent"
                 onClick={() => setShowPassword(!showPassword)}
               >
                 {showPassword ? (
@@ -137,19 +146,30 @@ export default function LoginCard() {
             </div>
           </div>
 
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Signing in..." : "Sign in"}
+          <Button
+            type="submit"
+            className="w-full bg-gradient-to-r from-primary to-primary/80 text-white shadow-md transition hover:from-primary/90 hover:to-primary"
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Signing in
+              </span>
+            ) : (
+              "Sign in"
+            )}
           </Button>
         </form>
       </CardContent>
       <CardFooter>
-        <p className="text-center text-sm text-muted-foreground w-full">
+        <p className="w-full text-center text-sm text-muted-foreground">
           Don't have an account?{" "}
           <Link
             href="/signup"
-            className="text-primary hover:underline font-medium"
+            className="font-medium text-primary transition hover:text-primary/80"
           >
-            Sign up
+            Create one now
           </Link>
         </p>
       </CardFooter>
