@@ -8,6 +8,7 @@ import {
 import { AppSidebar } from "@/components/app-sidebar";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { Button } from "@/components/button";
+import Link from "next/link";
 import { useSelectedLayoutSegment } from "next/navigation";
 import { useState, useEffect } from "react";
 
@@ -70,7 +71,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             You must be logged in to access dashboard.
           </p>
           <Button asChild>
-            <a href="/login">Log In</a>
+            <Link href="/login">Log In</Link>
           </Button>
         </div>
       </div>
