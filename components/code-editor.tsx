@@ -33,8 +33,9 @@ const SUPPORTED_LANGUAGES = [
 interface ExecutionResult {
   output: string;
   error?: string;
-  exitCode: number;
+  exitCode: number | null;
   executionTime: number;
+  success?: boolean;
 }
 
 interface CodeEditorProps {
@@ -638,15 +639,20 @@ export default function CodeEditor({
       onExecute({
         output: result.output,
         error: result.error,
-        exitCode: result.exitCode,
+        exitCode:
+          typeof result.exitCode === "number" && Number.isFinite(result.exitCode)
+            ? result.exitCode
+            : null,
         executionTime: result.executionTime,
+        success: result.success,
       });
     } catch (error: any) {
       const executionResult: ExecutionResult = {
         output: "",
         error: error.message || "Failed to execute code",
-        exitCode: 1,
+        exitCode: null,
         executionTime: Date.now() - startTime,
+        success: false,
       };
 
       onExecute(executionResult);

@@ -72,6 +72,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Link from "next/link";
+import { useToast } from "@/hooks/use-toast";
 import { type ProjectNode } from "@/app/project/[id]/page";
 import {
   type Collaborator,
@@ -93,8 +94,9 @@ import { ProjectNodeFromDB } from "@/lib/types";
 interface ExecutionResult {
   output: string;
   error?: string;
-  exitCode: number;
+  exitCode: number | null;
   executionTime: number;
+  success?: boolean;
 }
 
 // Define problem interface
@@ -261,12 +263,16 @@ function TerminalPanel({
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
-  const getStatusIcon = (exitCode: number) => {
-    return exitCode === 0 ? (
-      <CheckCircle className="h-3 w-3 text-green-400" />
-    ) : (
-      <XCircle className="h-3 w-3 text-red-400" />
-    );
+  const getStatusIcon = (exitCode: number | null) => {
+    if (exitCode === 0) {
+      return <CheckCircle className="h-3 w-3 text-green-400" />;
+    }
+
+    if (exitCode === null) {
+      return <AlertTriangle className="h-3 w-3 text-yellow-400" />;
+    }
+
+    return <XCircle className="h-3 w-3 text-red-400" />;
   };
 
   return (
@@ -318,7 +324,7 @@ function TerminalPanel({
               </span>
               <span className="text-xs text-[#cccccc]">
                 {formatExecutionTime(execution.executionTime)} • Exit{" "}
-                {execution.exitCode}
+                {execution.exitCode ?? "—"}
               </span>
             </div>
 
@@ -492,6 +498,7 @@ export default function ProjectWorkspace({
 }: ProjectWorkspaceProps) {
   // Socket integration for real-time collaboration
   const { joinProject, isConnected, collaborators } = useSocket();
+  const { toast } = useToast();
 
   const [isVideoCallActive, setIsVideoCallActive] = useState(false);
   const [isMicOn, setIsMicOn] = useState(true);
@@ -618,37 +625,54 @@ export default function ProjectWorkspace({
   };
 
   // Handle execution results from CodeEditor
-  const handleExecutionResult = (result: ExecutionResult) => {
-    setConsoleOutputs((prev) => [...prev, result]);
+  const handleExecutionResult = (rawResult: ExecutionResult) => {
+    const normalizedExitCode =
+      typeof rawResult.exitCode === "number" && Number.isFinite(rawResult.exitCode)
+        ? rawResult.exitCode
+        : null;
+
+    const normalizedResult: ExecutionResult = {
+      ...rawResult,
+      exitCode: normalizedExitCode,
+    };
+
+    setConsoleOutputs((prev) => [...prev, normalizedResult]);
     setActiveBottomTab("terminal");
 
     // Show user feedback based on execution result
-    if (result.exitCode === 0) {
-      // Success feedback
-      if (result.output) {
-        // Code executed successfully with output
+    if (normalizedExitCode === 0) {
+      if (normalizedResult.output) {
         console.log(
-          `✓ Code executed successfully in ${result.executionTime}ms`
+          `✓ Code executed successfully in ${normalizedResult.executionTime}ms`
         );
       } else {
-        // Code executed successfully but no output
         console.log(
-          `✓ Code executed successfully (no output) in ${result.executionTime}ms`
+          `✓ Code executed successfully (no output) in ${normalizedResult.executionTime}ms`
         );
       }
     } else {
-      // Error feedback
-      console.error(`✗ Execution failed (exit code ${result.exitCode})`);
+      const fallbackMessage =
+        normalizedResult.error?.trim() ||
+        (normalizedExitCode === null
+          ? "Execution failed before an exit code was returned."
+          : `Execution failed (exit code ${normalizedExitCode}).`);
+
+      console.warn(`[Code Execution] ${fallbackMessage}`);
+      toast({
+        variant: "destructive",
+        title: "Code execution failed",
+        description: fallbackMessage,
+      });
     }
 
     // Add syntax errors to problems panel
-    if (result.error) {
+    if (normalizedResult.error) {
       const newProblem: Problem = {
         id: Date.now().toString(),
         file: currentFile?.name || "unknown",
         line: 1,
         column: 1,
-        message: result.error,
+        message: normalizedResult.error,
         severity: "error",
         source: "runtime",
       };

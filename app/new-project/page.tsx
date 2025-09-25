@@ -38,6 +38,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { TemplateNode } from "@/lib/types";
 import { starterProjects } from "@/lib/data/starter-projects";
 import { PageHeader } from "@/components/PageHeader";
+import { useToast } from "@/hooks/use-toast";
 
 type ProjectTemplate = {
   id: string;
@@ -280,6 +281,7 @@ const languageOptions = [
 
 export default function NewProjectPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const [projectName, setProjectName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("");
@@ -295,14 +297,29 @@ export default function NewProjectPage() {
   const addTag = () => {
     // Check if the tag limit has been reached
     if (tags.length >= MAX_TAGS) {
-      alert(`You can only add a maximum of ${MAX_TAGS} tags.`); // Or use a toast notification
+      toast({
+        variant: "destructive",
+        title: "Tag limit reached",
+        description: `You can only add up to ${MAX_TAGS} tags.`,
+      });
       return; // Stop the function
     }
 
-    if (newTag.trim() && !tags.includes(newTag.trim())) {
-      setTags([...tags, newTag.trim()]);
-      setNewTag("");
+    const trimmedTag = newTag.trim();
+    if (!trimmedTag) {
+      return;
     }
+
+    if (tags.includes(trimmedTag)) {
+      toast({
+        title: "Duplicate tag",
+        description: `\"${trimmedTag}\" is already added.`,
+      });
+      return;
+    }
+
+    setTags([...tags, trimmedTag]);
+    setNewTag("");
   };
 
   const removeTag = (tagToRemove: string) => {
@@ -374,9 +391,15 @@ export default function NewProjectPage() {
       router.push(`/project/${newProject.id}`);
     } catch (error: unknown) {
       console.error("Error creating project:", error);
-      if (error instanceof Error) {
-        alert(error.message);
-      }
+      const description =
+        error instanceof Error
+          ? error.message
+          : "We couldn't create your project. Please try again.";
+      toast({
+        variant: "destructive",
+        title: "Failed to create project",
+        description,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -392,13 +415,36 @@ export default function NewProjectPage() {
     router.push(`/project/imported-${Date.now()}`);
   };
 
-  const handleTemplateSelect = (templateId: string) => {
+  const handleTemplateSelect = (templateId: string | null) => {
+    if (!templateId) {
+      setSelectedTemplate("");
+      setProjectName("");
+      setDescription("");
+      setTags([]);
+      setLanguage("javascript");
+      return;
+    }
+
     const template = starterProjects.find((t) => t.id === templateId);
-    if (!template) return;
+
+    if (!template) {
+      setSelectedTemplate("");
+      setProjectName("");
+      setDescription("");
+      setTags([]);
+      setLanguage("javascript");
+      toast({
+        variant: "destructive",
+        title: "Template not found",
+        description: "We couldn't load that template. Please choose another one.",
+      });
+      return;
+    }
 
     setSelectedTemplate(template.id);
     setProjectName(template.name);
     setDescription(template.description);
+    setLanguage(template.language.toLowerCase() || template.id);
 
     // Create a new, mutable copy of the readonly tags array
     setTags([...template.tags]);
@@ -467,7 +513,7 @@ export default function NewProjectPage() {
                   className="h-auto p-4 flex flex-col items-center gap-2"
                   onClick={() => {
                     setImportMethod("blank");
-                    handleTemplateSelect("blank");
+                    handleTemplateSelect(null);
                   }}
                 >
                   <Plus className="h-8 w-8" />
