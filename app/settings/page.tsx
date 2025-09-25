@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState, FormEvent } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +43,21 @@ import { useTheme } from "next-themes";
 import NavLinks from "@/components/nav-links";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
+type ProfileFormState = {
+  name: string;
+  email: string;
+  bio: string;
+  location: string;
+  website: string;
+};
+
+const createEmptyProfile = (): ProfileFormState => ({
+  name: "",
+  email: "",
+  bio: "",
+  location: "",
+  website: "",
+});
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [notifications, setNotifications] = useState({
@@ -625,3 +642,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+
