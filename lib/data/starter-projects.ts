@@ -1,4 +1,31 @@
-const projectTemplates = [
+import { Code, Database } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+import type { TemplateNode } from "@/lib/types";
+
+export type StarterProject = {
+  id: string;
+  name: string;
+  description: string;
+  icon: LucideIcon;
+  tags: string[];
+  color: string;
+  structure: TemplateNode[];
+  difficulty: "Beginner" | "Intermediate" | "Advanced";
+  author: string;
+  rating: number;
+  downloads: number;
+  thumbnail?: string | null;
+  featured?: boolean;
+  language: string;
+};
+
+type BaseStarterProject = Pick<
+  StarterProject,
+  "id" | "name" | "description" | "icon" | "tags" | "color" | "structure"
+>;
+
+const baseStarterProjects: BaseStarterProject[] = [
   // --- Core Programming Languages (Backend Supported) ---
   {
     id: "javascript",
@@ -210,4 +237,64 @@ const projectTemplates = [
       },
     ],
   },
-];
+]
+
+const templateMetadata: Record<string, Partial<StarterProject>> = {
+  javascript: { difficulty: "Beginner", featured: true, rating: 4.8, downloads: 1680 },
+  typescript: { difficulty: "Intermediate", featured: true, rating: 4.7, downloads: 1420 },
+  python: { difficulty: "Beginner", featured: true, rating: 4.9, downloads: 1980 },
+  java: { difficulty: "Intermediate", rating: 4.6, downloads: 1210 },
+  csharp: { difficulty: "Intermediate", rating: 4.6, downloads: 990 },
+  go: { difficulty: "Intermediate", rating: 4.6, downloads: 880 },
+  rust: { difficulty: "Advanced", rating: 4.7, downloads: 760 },
+  swift: { difficulty: "Intermediate", rating: 4.5, downloads: 690 },
+  cpp: { difficulty: "Advanced", rating: 4.6, downloads: 830 },
+  c: { difficulty: "Advanced", rating: 4.5, downloads: 720 },
+  sql: { difficulty: "Beginner", rating: 4.8, downloads: 1750 },
+};
+
+const DEFAULT_METADATA = {
+  author: "CodeJoin Starter Team",
+  difficulty: "Intermediate" as const,
+  rating: 4.7,
+  downloads: 900,
+  featured: false,
+  thumbnail: null,
+};
+
+const clampRating = (value: number) => {
+  if (value < 4.3) {
+    return 4.3;
+  }
+
+  if (value > 4.9) {
+    return 4.9;
+  }
+
+  return Number(value.toFixed(1));
+};
+
+export const starterProjects: StarterProject[] = baseStarterProjects.map((template, index) => {
+  const meta = templateMetadata[template.id] ?? {};
+  const rating = meta.rating ?? clampRating(4.5 + (index % 5) * 0.1);
+  const downloads = meta.downloads ?? DEFAULT_METADATA.downloads + index * 137;
+
+  return {
+    ...template,
+    language: template.name,
+    author: meta.author ?? DEFAULT_METADATA.author,
+    difficulty: meta.difficulty ?? DEFAULT_METADATA.difficulty,
+    rating,
+    downloads,
+    featured: meta.featured ?? index < 3,
+    thumbnail: meta.thumbnail ?? DEFAULT_METADATA.thumbnail,
+  };
+});
+
+export const featuredStarterProjects = starterProjects.filter((project) => project.featured);
+
+export const starterProjectLanguages = starterProjects.map((project) => ({
+  id: project.id,
+  name: project.name,
+  difficulty: project.difficulty,
+}));

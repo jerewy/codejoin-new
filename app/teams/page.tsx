@@ -46,9 +46,11 @@ import {
   Copy,
   ExternalLink,
   X,
+  ArrowLeft,
 } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 
 const teams = [
   {
@@ -199,6 +201,7 @@ export default function TeamsPage() {
       <PageHeader
         title="Teams"
         description="Organize your collaborators, assign roles, and keep every project team aligned in CodeJoin."
+        leading={<SidebarTrigger />}
         startContent={
           <div className="hidden items-center gap-2 text-sm font-medium text-muted-foreground sm:flex">
             <Users className="h-4 w-4" />
@@ -237,7 +240,10 @@ export default function TeamsPage() {
                   />
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setIsCreateTeamOpen(false)}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsCreateTeamOpen(false)}
+                  >
                     Cancel
                   </Button>
                   <Button onClick={handleCreateTeam} disabled={!newTeamName}>

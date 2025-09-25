@@ -31,7 +31,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const hasSidebar = isLoggedIn && isProtectedRoute;
 
   // Project pages should always have sidebar closed for focus
-  const isSidebarClosed = segment === "project" || segment === "settings";
+  const isSidebarClosed =
+    segment === "project" ||
+    segment === "settings" ||
+    segment === "new-project";
 
   // Read sidebar state from localStorage on mount
   useEffect(() => {

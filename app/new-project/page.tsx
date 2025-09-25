@@ -36,6 +36,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { TemplateNode } from "@/lib/types";
+import { starterProjects } from "@/lib/data/starter-projects";
 import { PageHeader } from "@/components/PageHeader";
 
 type ProjectTemplate = {
@@ -317,7 +318,7 @@ export default function NewProjectPage() {
       } = await supabase.auth.getUser();
       if (!user) throw new Error("You must be logged in to create a project.");
 
-      const template = projectTemplates.find((t) => t.id === selectedTemplate);
+      const template = starterProjects.find((t) => t.id === selectedTemplate);
 
       const { data: newProject, error: projectError } = await supabase
         .from("projects")
@@ -392,7 +393,7 @@ export default function NewProjectPage() {
   };
 
   const handleTemplateSelect = (templateId: string) => {
-    const template = projectTemplates.find((t) => t.id === templateId);
+    const template = starterProjects.find((t) => t.id === templateId);
     if (!template) return;
 
     setSelectedTemplate(template.id);
@@ -529,7 +530,7 @@ export default function NewProjectPage() {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {projectTemplates.map((template) => {
+                  {starterProjects.map((template) => {
                     const Icon = template.icon;
                     return (
                       <Button
