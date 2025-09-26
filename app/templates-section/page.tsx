@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 import { starterProjects, featuredStarterProjects, starterProjectLanguages } from "@/lib/data/starter-projects";
 import TemplateCard from "@/components/template-card";
 import TemplatePreview from "@/components/template-preview";
@@ -43,6 +43,7 @@ export default function LibraryPage() {
   const [communityTemplates, setCommunityTemplates] = useState<TemplateSummary[]>([]);
   const [isLoadingCommunity, setIsLoadingCommunity] = useState<boolean>(false);
   const [communityError, setCommunityError] = useState<string | null>(null);
+  const supabase = getSupabaseClient();
 
   const languages = useMemo(
     () => [
@@ -82,6 +83,12 @@ export default function LibraryPage() {
     setIsLoadingCommunity(true);
     setCommunityError(null);
 
+    if (!supabase) {
+      setCommunityError("Community templates require Supabase to be configured.");
+      setIsLoadingCommunity(false);
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from("projects")
@@ -118,7 +125,7 @@ export default function LibraryPage() {
     } finally {
       setIsLoadingCommunity(false);
     }
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
     loadCommunityTemplates();

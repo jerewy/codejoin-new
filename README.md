@@ -27,6 +27,17 @@ A real-time collaborative coding platform where students can learn programming t
    http://localhost:3000
    ```
 
+### Supabase Configuration
+
+Marketing and other unauthenticated pages render without any Supabase credentials. To enable sign-up flows, dashboards, and any authenticated experience, create a `.env.local` file with the following variables:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="YOUR_ANON_KEY"
+```
+
+When the variables are not provided, the UI treats visitors as logged out, disables Supabase-driven actions, and surfaces explanatory messages on protected routes. Add the values and restart the dev server to unlock full functionality.
+
 ### Backend Setup (Code Execution Service)
 
 1. **Navigate to backend directory**
@@ -160,6 +171,7 @@ const response = await fetch('http://localhost:3001/api/execute', {
 
 ## 📖 Documentation
 
+- [Handling Missing Supabase Configuration](docs/supabase-missing-config.md) - Background, fixes, and workflows for optional Supabase credentials
 - [Backend Documentation](code-execution-backend/README.md) - Detailed backend setup and API docs
 - [Product Requirements](prd.md) - Complete product specification
 

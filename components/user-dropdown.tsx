@@ -1,6 +1,6 @@
 "use client";
 
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import {
   DropdownMenu,
@@ -14,8 +14,13 @@ import Link from "next/link";
 
 export default function UserDropdown() {
   const router = useRouter();
+  const supabase = getSupabaseClient();
 
   const handleLogout = async () => {
+    if (!supabase) {
+      return;
+    }
+
     const { error } = await supabase.auth.signOut();
     if (!error) {
       router.refresh(); // This triggers revalidation and rerenders layout
