@@ -88,7 +88,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 import { ProjectNodeFromDB } from "@/lib/types";
 
 // Define execution result interface
@@ -690,6 +690,21 @@ export default function ProjectWorkspace({
   const [languageOptions] = useState<LanguageOption[]>(mockLanguageOptions);
 
   const currentFile = nodes.find((f) => f.id === activeNodeId);
+
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return (
+      <div className="flex h-full w-full items-center justify-center rounded-lg border border-dashed border-muted-foreground/40 p-6 text-center">
+        <div>
+          <h2 className="text-lg font-semibold">Authentication unavailable</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Supabase environment variables are not configured. Configure them to access the project workspace.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // Debug logging
   console.log("Active Node ID:", activeNodeId);

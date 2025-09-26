@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { User } from "lucide-react";
 
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,8 +44,18 @@ export default function ProfileSettingsCard() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const supabase = useMemo(() => getSupabaseClient(), []);
 
   const fetchProfile = useCallback(async () => {
+    if (!supabase) {
+      setProfile(createEmptyProfile());
+      setInitialEmail("");
+      setUserId(null);
+      setErrorMessage("Authentication is currently unavailable.");
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -128,13 +138,16 @@ export default function ProfileSettingsCard() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [supabase, toast]);
 
   useEffect(() => {
     fetchProfile();
   }, [fetchProfile]);
 
   useEffect(() => {
+    if (!supabase) {
+      return;
+    }
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         if (session?.user) {
@@ -151,11 +164,21 @@ export default function ProfileSettingsCard() {
     return () => {
       listener?.subscription?.unsubscribe();
     };
-  }, [fetchProfile]);
+  }, [fetchProfile, supabase]);
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
+
+      if (!supabase) {
+        toast({
+          variant: "destructive",
+          title: "Authentication unavailable",
+          description:
+            "Supabase environment variables are not configured. Please contact an administrator.",
+        });
+        return;
+      }
 
       if (!userId) {
         toast({
@@ -224,10 +247,10 @@ export default function ProfileSettingsCard() {
         setIsSaving(false);
       }
     },
-    [fetchProfile, initialEmail, profile, toast, userId]
+    [fetchProfile, initialEmail, profile, supabase, toast, userId]
   );
 
-  const isDisabled = isLoading || isSaving || !userId;
+  const isDisabled = isLoading || isSaving || !userId || !supabase;
   const actionLabel = isLoading
     ? "Loading..."
     : isSaving

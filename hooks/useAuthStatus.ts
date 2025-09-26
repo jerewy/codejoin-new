@@ -1,20 +1,32 @@
 // hooks/useAuthStatus.ts
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export function useAuthStatus() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    const session = supabase.auth.getSession().then(({ data }) => {
-      setIsLoggedIn(!!data.session);
+    const client = getSupabaseClient();
+
+    if (!client) {
+      setIsLoggedIn(false);
+      return;
+    }
+
+    let isSubscribed = true;
+
+    client.auth.getSession().then(({ data }) => {
+      if (isSubscribed) {
+        setIsLoggedIn(!!data.session);
+      }
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
       setIsLoggedIn(!!session);
     });
 
     return () => {
+      isSubscribed = false;
       listener?.subscription.unsubscribe();
     };
   }, []);

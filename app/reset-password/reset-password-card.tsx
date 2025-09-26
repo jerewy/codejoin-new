@@ -16,7 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export function ResetPasswordCard() {
   const router = useRouter();
@@ -29,6 +29,8 @@ export function ResetPasswordCard() {
     password: "",
     confirmPassword: "",
   });
+  const supabase = getSupabaseClient();
+  const authUnavailable = !supabase;
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -49,6 +51,13 @@ export function ResetPasswordCard() {
 
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match.");
+      return;
+    }
+
+    if (!supabase) {
+      setError(
+        "Authentication is currently unavailable. Please configure Supabase environment variables."
+      );
       return;
     }
 
@@ -169,7 +178,7 @@ export function ResetPasswordCard() {
           <Button
             type="submit"
             className="w-full bg-gradient-to-r from-primary to-primary/80 text-white shadow-md transition hover:from-primary/90 hover:to-primary"
-            disabled={isLoading}
+            disabled={isLoading || authUnavailable}
           >
             {isLoading ? (
               <span className="inline-flex items-center gap-2">

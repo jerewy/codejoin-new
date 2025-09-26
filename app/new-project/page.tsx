@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 import { TemplateNode } from "@/lib/types";
 import { starterProjects, starterProjectLanguages, type StarterProject } from "@/lib/data/starter-projects";
 import { PageHeader } from "@/components/PageHeader";
@@ -47,6 +47,8 @@ export default function NewProjectPage() {
   const [githubUrl, setGithubUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [language, setLanguage] = useState("javascript");
+  const supabase = getSupabaseClient();
+  const authUnavailable = !supabase;
 
   const MAX_TAGS = 5;
   const addTag = () => {
@@ -82,6 +84,16 @@ export default function NewProjectPage() {
   };
 
   const handleCreateProject = async () => {
+    if (!supabase) {
+      toast({
+        variant: "destructive",
+        title: "Authentication unavailable",
+        description:
+          "Supabase environment variables are not configured. Please set them to create projects.",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -485,7 +497,8 @@ export default function NewProjectPage() {
               disabled={
                 !projectName ||
                 (importMethod === "template" && !selectedTemplate) ||
-                isLoading
+                isLoading ||
+                authUnavailable
               }
               className="min-w-32"
             >

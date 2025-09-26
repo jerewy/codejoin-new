@@ -10,11 +10,14 @@ import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { Button } from "@/components/button";
 import Link from "next/link";
 import { useSelectedLayoutSegment } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const segment = useSelectedLayoutSegment();
   const isLoggedIn = useAuthStatus();
+  const supabaseClient = useMemo(() => getSupabaseClient(), []);
+  const isAuthConfigured = !!supabaseClient;
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Define which routes should have the sidebar
@@ -28,7 +31,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     "teams",
   ];
   const isProtectedRoute = sidebarRoutes.includes(segment || "");
-  const hasSidebar = isLoggedIn && isProtectedRoute;
+  const hasSidebar = isAuthConfigured && isLoggedIn && isProtectedRoute;
 
   // Project pages should always have sidebar closed for focus
   const isSidebarClosed =
@@ -67,17 +70,21 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [isSidebarOpen, isSidebarClosed]);
 
-  if (isProtectedRoute && !isLoggedIn) {
+  if (isProtectedRoute && (!isAuthConfigured || !isLoggedIn)) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-muted">
         <div className="text-center">
           <h1 className="text-2xl font-semibold mb-4">Access Denied</h1>
           <p className="text-muted-foreground mb-6">
-            You must be logged in to access dashboard.
+            {isAuthConfigured
+              ? "You must be logged in to access dashboard."
+              : "Authentication is currently unavailable. Please configure Supabase environment variables."}
           </p>
-          <Button asChild>
-            <Link href="/login">Log In</Link>
-          </Button>
+          {isAuthConfigured ? (
+            <Button asChild>
+              <Link href="/login">Log In</Link>
+            </Button>
+          ) : null}
         </div>
       </div>
     );
