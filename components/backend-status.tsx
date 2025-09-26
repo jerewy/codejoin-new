@@ -18,7 +18,10 @@ interface BackendStatusProps {
   showRefresh?: boolean;
 }
 
-export default function BackendStatus({ className, showRefresh = true }: BackendStatusProps) {
+export default function BackendStatus({
+  className,
+  showRefresh = true,
+}: BackendStatusProps) {
   const [status, setStatus] = useState<BackendStatus>("unknown");
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [isChecking, setIsChecking] = useState(false);
@@ -28,7 +31,7 @@ export default function BackendStatus({ className, showRefresh = true }: Backend
     setStatus("checking");
 
     try {
-      const { codeExecutionAPI } = await import('@/lib/api/codeExecution');
+      const { codeExecutionAPI } = await import("@/lib/api/codeExecution");
       const isAvailable = await codeExecutionAPI.isBackendAvailable();
 
       setStatus(isAvailable ? "online" : "offline");
@@ -79,9 +82,9 @@ export default function BackendStatus({ className, showRefresh = true }: Backend
   const getStatusText = () => {
     switch (status) {
       case "online":
-        return "Backend Online";
+        return "System Online";
       case "offline":
-        return "Backend Offline";
+        return "System Offline";
       case "checking":
         return "Checking...";
       default:
@@ -91,9 +94,9 @@ export default function BackendStatus({ className, showRefresh = true }: Backend
 
   const getTooltipText = () => {
     const statusText = getStatusText();
-    const lastCheckedText = lastChecked ?
-      `Last checked: ${lastChecked.toLocaleTimeString()}` :
-      "Never checked";
+    const lastCheckedText = lastChecked
+      ? `Last checked: ${lastChecked.toLocaleTimeString()}`
+      : "Never checked";
 
     if (status === "offline") {
       return `${statusText}\n${lastCheckedText}\n\nMake sure Docker is running and start the backend:\ncd code-execution-backend && npm run dev`;
@@ -126,7 +129,9 @@ export default function BackendStatus({ className, showRefresh = true }: Backend
                 disabled={isChecking}
                 className="h-6 w-6 p-0"
               >
-                <RefreshCw className={`h-3 w-3 ${isChecking ? 'animate-spin' : ''}`} />
+                <RefreshCw
+                  className={`h-3 w-3 ${isChecking ? "animate-spin" : ""}`}
+                />
               </Button>
             )}
           </div>

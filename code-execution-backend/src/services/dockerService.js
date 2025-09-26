@@ -54,16 +54,17 @@ class DockerService {
       await this.testConnection();
 
       // Create container with security restrictions
-      container = await this.createSecureContainer(languageConfig, code, containerId);
+      container = await this.createSecureContainer(languageConfig, code, containerId, input);
 
       // Store reference for cleanup
       this.runningContainers.set(containerId, container);
 
       // Start container and capture output
-      const result = await this.runContainer(container, languageConfig, input);
+      const result = await this.runContainer(container, languageConfig);
+      const success = result.exitCode === 0;
 
       return {
-        success: true,
+        success,
         output: result.output,
         error: result.error,
         exitCode: result.exitCode,
@@ -107,19 +108,20 @@ class DockerService {
     }
   }
 
-  async createSecureContainer(languageConfig, code, containerId) {
+  async createSecureContainer(languageConfig, code, containerId, input = '') {
     const fileName = this.getFileName(languageConfig);
     const codeContent = this.prepareCode(code, languageConfig);
+    const normalizedInput = this.normalizeInput(input);
+    const hasInput = normalizedInput.length > 0;
 
-    // Security-focused container configuration
     const containerConfig = {
       Image: languageConfig.image,
       name: `code-exec-${containerId}`,
       AttachStdout: true,
       AttachStderr: true,
       Tty: false,
-      OpenStdin: true,
-      StdinOnce: true,
+      OpenStdin: false,
+      StdinOnce: false,
       NetworkMode: 'none', // No network access
       User: 'nobody', // Run as non-root user
       WorkingDir: '/tmp',
@@ -145,30 +147,36 @@ class DockerService {
       }
     };
 
-    // Set up the execution command - embed code directly to avoid file copying issues
-    // Special handling for SQL which has quote sensitivity issues with here-documents
     if (languageConfig.name === 'SQL') {
-      // Use printf with proper escaping for SQL
       const escapedCode = codeContent
         .replace(/\\/g, '\\\\')
         .replace(/'/g, "'\"'\"'")
         .replace(/\n/g, '\\n')
         .replace(/\t/g, '\\t')
         .replace(/\r/g, '\\r');
+
       containerConfig.Cmd = ['sh', '-c', `printf '${escapedCode}' > /tmp/${fileName} && ${languageConfig.runCommand}`];
     } else {
-      // Use here-document approach for other languages to handle newlines properly
-      const escapedCode = codeContent.replace(/'/g, "'\"'\"'"); // Only escape single quotes for here-doc
+      const commandParts = [];
+      const base64Code = Buffer.from(codeContent, 'utf-8').toString('base64');
+      const base64Input = hasInput ? Buffer.from(normalizedInput, 'utf-8').toString('base64') : null;
+      const runCommand = this.buildRunCommand(languageConfig, fileName, hasInput);
+
+      // Always start by writing the source file into /tmp
+      commandParts.push(`echo '${base64Code}' | base64 -d > /tmp/${fileName}`);
 
       if (languageConfig.type === 'compiled' || languageConfig.type === 'transpiled') {
-        // For compiled/transpiled languages, create file, compile and run
         const compileCmd = languageConfig.compileCommand.replace('/tmp/code', `/tmp/${fileName.split('.')[0]}`);
-        const runCmd = languageConfig.runCommand;
-        containerConfig.Cmd = ['sh', '-c', `cat << 'CODEFILE' > /tmp/${fileName}\n${escapedCode}\nCODEFILE\n${compileCmd} && ${runCmd}`];
-      } else {
-        // For interpreted languages, create file and run
-        containerConfig.Cmd = ['sh', '-c', `cat << 'CODEFILE' > /tmp/${fileName}\n${escapedCode}\nCODEFILE\n${languageConfig.runCommand} /tmp/${fileName}`];
+        commandParts.push(compileCmd);
       }
+
+      if (base64Input) {
+        commandParts.push(`echo '${base64Input}' | base64 -d > /tmp/input.txt`);
+      }
+
+      commandParts.push(runCommand);
+
+      containerConfig.Cmd = ['sh', '-c', commandParts.join(' && ')];
     }
 
     const container = await this.docker.createContainer(containerConfig);
@@ -258,41 +266,14 @@ class DockerService {
     await container.putArchive(pack, { path: '/tmp' });
   }
 
-  async runContainer(container, languageConfig, input) {
+  async runContainer(container, languageConfig) {
     const startTime = Date.now();
     let output = '';
     let error = '';
     let exitCode = 0;
-    let stdinStream = null;
 
     try {
-      try {
-        stdinStream = await container.attach({
-          stream: true,
-          stdin: true,
-          stdout: false,
-          stderr: false
-        });
-      } catch (attachError) {
-        logger.warn(`Failed to attach to container stdin: ${attachError.message}`);
-      }
-
-      // Start container and wait for completion
       await container.start();
-
-      if (stdinStream) {
-        try {
-          if (typeof input === 'string' && input.length > 0) {
-            const normalizedInput = input.endsWith('\n') ? input : `${input}\n`;
-            stdinStream.end(normalizedInput);
-          } else {
-            stdinStream.end();
-          }
-        } catch (streamError) {
-          logger.warn(`Failed to write input to container: ${streamError.message}`);
-          stdinStream.destroy();
-        }
-      }
 
       // Set up timeout promise
       const timeoutPromise = new Promise((resolve) => {
@@ -334,14 +315,6 @@ class DockerService {
     } catch (e) {
       error = `Container execution error: ${e.message}`;
       exitCode = 1;
-    } finally {
-      if (stdinStream) {
-        try {
-          stdinStream.destroy();
-        } catch (_) {
-          // Ignore cleanup errors
-        }
-      }
     }
 
     const executionTime = Date.now() - startTime;
@@ -399,11 +372,38 @@ class DockerService {
     return code;
   }
 
-  getCompileAndRunCommand(languageConfig, fileName) {
-    const compileCmd = languageConfig.compileCommand.replace('/tmp/code', `/tmp/${fileName.split('.')[0]}`);
-    const runCmd = languageConfig.runCommand;
+  buildRunCommand(languageConfig, fileName, hasInput) {
+    if (languageConfig.name === 'SQL') {
+      return languageConfig.runCommand;
+    }
 
-    return `${compileCmd} && ${runCmd}`;
+    if (languageConfig.type === 'interpreted') {
+      const needsSourceArg = !languageConfig.runCommand.includes('/tmp/');
+      const commandWithSource = needsSourceArg
+        ? `${languageConfig.runCommand} /tmp/${fileName}`
+        : languageConfig.runCommand;
+      return hasInput
+        ? `cat /tmp/input.txt | ${commandWithSource}`
+        : commandWithSource;
+    }
+
+    const compiledRunCmd = languageConfig.runCommand;
+    return hasInput
+      ? `cat /tmp/input.txt | ${compiledRunCmd}`
+      : compiledRunCmd;
+  }
+
+  normalizeInput(input) {
+    if (typeof input !== 'string') {
+      return '';
+    }
+
+    const trimmed = input.replace(/\r\n/g, '\n');
+    if (trimmed.length === 0) {
+      return '';
+    }
+
+    return trimmed.endsWith('\n') ? trimmed : `${trimmed}\n`;
   }
 
   parseMemoryLimit(limit) {

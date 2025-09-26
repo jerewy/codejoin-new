@@ -14,7 +14,7 @@ const {
 } = require('./middleware/security');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const DEFAULT_PORT = process.env.PORT || 3001;
 
 // Basic middleware
 app.use(helmet());
@@ -43,16 +43,14 @@ app.use('/api', generalRateLimit);
 
 // API routes
 app.get('/health', executeController.healthCheck);
+app.get('/api/languages', executeController.getLanguages);
+app.get('/api/system', executeController.getSystemInfo);
 
 // Protected routes
 app.use('/api', authenticateApiKey);
 
 // Execute endpoint with stricter rate limiting and validation
 app.post('/api/execute', executeRateLimit, validateInput, executeController.execute);
-
-// Language and system info endpoints
-app.get('/api/languages', executeController.getLanguages);
-app.get('/api/system', executeController.getSystemInfo);
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -65,50 +63,49 @@ app.use('*', (req, res) => {
 // Error handling
 app.use(errorHandler);
 
-// Graceful shutdown handling
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received, starting graceful shutdown');
+function registerShutdownHandlers(server) {
+  const signals = ['SIGTERM', 'SIGINT'];
 
-  const { default: DockerService } = await import('./services/dockerService.js');
-  const dockerService = new DockerService();
+  signals.forEach((signal) => {
+    process.on(signal, async () => {
+      logger.info(`${signal} received, starting graceful shutdown`);
 
-  try {
-    await dockerService.cleanupAll();
-    logger.info('All containers cleaned up');
-  } catch (error) {
-    logger.error('Error during cleanup:', error);
-  }
+      try {
+        const DockerService = require('./services/dockerService');
+        const dockerService = new DockerService();
+        await dockerService.cleanupAll();
+        logger.info('All containers cleaned up');
+      } catch (error) {
+        logger.error('Error during cleanup:', error);
+      } finally {
+        server.close(() => {
+          logger.info('HTTP server closed');
+          process.exit(0);
+        });
+      }
+    });
+  });
+}
 
-  process.exit(0);
-});
+function startServer(port = DEFAULT_PORT) {
+  const server = app.listen(port, () => {
+    logger.info(`Code execution backend started on port ${port}`);
+    logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    logger.info(`Health check: http://localhost:${port}/health`);
+  });
 
-process.on('SIGINT', async () => {
-  logger.info('SIGINT received, starting graceful shutdown');
+  server.on('error', (error) => {
+    logger.error('Server error:', error);
+    process.exit(1);
+  });
 
-  const { default: DockerService } = await import('./services/dockerService.js');
-  const dockerService = new DockerService();
+  registerShutdownHandlers(server);
+  return server;
+}
 
-  try {
-    await dockerService.cleanupAll();
-    logger.info('All containers cleaned up');
-  } catch (error) {
-    logger.error('Error during cleanup:', error);
-  }
-
-  process.exit(0);
-});
-
-// Start server
-const server = app.listen(PORT, () => {
-  logger.info(`Code execution backend started on port ${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`Health check: http://localhost:${PORT}/health`);
-});
-
-// Handle server errors
-server.on('error', (error) => {
-  logger.error('Server error:', error);
-  process.exit(1);
-});
+if (require.main === module) {
+  startServer();
+}
 
 module.exports = app;
+module.exports.start = startServer;

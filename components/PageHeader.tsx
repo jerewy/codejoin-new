@@ -33,21 +33,31 @@ export function PageHeader({
     <header
       className={cn(
         "border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60",
-        className,
+        className
       )}
     >
       <div className="container flex h-16 items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           {leading}
           {!hideLogo && (
-            <Link href="/dashboard" className="flex items-center gap-2 text-primary">
-              <LogoMark className="h-6 w-6" />
-              <span className="text-sm font-semibold">CodeJoin</span>
+            <Link
+              href="/dashboard"
+              className="flex items-center gap-2 text-primary"
+            >
+              <LogoMark />
+              <span className="text-xl font-bold text-primary">CodeJoin</span>
             </Link>
           )}
           {startContent}
         </div>
-        <div className={cn("flex items-center gap-2", !trailing && "min-h-[1.5rem]")}>{trailing}</div>
+        <div
+          className={cn(
+            "flex items-center gap-2",
+            !trailing && "min-h-[1.5rem]"
+          )}
+        >
+          {trailing}
+        </div>
       </div>
       {showSecondaryRow && (
         <div className="border-t">
@@ -55,12 +65,14 @@ export function PageHeader({
             <div
               className={cn(
                 "flex flex-col gap-4",
-                actions && "md:flex-row md:items-center md:justify-between",
+                actions && "md:flex-row md:items-center md:justify-between"
               )}
             >
               <div className="space-y-1">
                 {typeof title === "string" ? (
-                  <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+                  <h1 className="text-2xl font-semibold tracking-tight">
+                    {title}
+                  </h1>
                 ) : (
                   title
                 )}

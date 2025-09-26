@@ -128,11 +128,15 @@ function TerminalPanel({
   userId,
   executionOutputs = [],
   onClearExecutions = () => {},
+  inputBuffer,
+  onInputUpdate,
 }: {
   projectId: string;
   userId: string;
   executionOutputs?: ExecutionResult[];
   onClearExecutions?: () => void;
+  inputBuffer: string;
+  onInputUpdate: (value: string) => void;
 }) {
   const {
     socket,
@@ -171,7 +175,13 @@ function TerminalPanel({
   }, []);
 
   const initializeSession = useCallback(() => {
-    if (!socket || !projectId || !userId || sessionIdRef.current || isStarting) {
+    if (
+      !socket ||
+      !projectId ||
+      !userId ||
+      sessionIdRef.current ||
+      isStarting
+    ) {
       return;
     }
 
@@ -179,7 +189,14 @@ function TerminalPanel({
     setIsStopping(false);
     appendStatusLine("Connecting to CodeJoin sandbox...");
     startTerminalSession({ projectId, userId });
-  }, [appendStatusLine, isStarting, projectId, socket, startTerminalSession, userId]);
+  }, [
+    appendStatusLine,
+    isStarting,
+    projectId,
+    socket,
+    startTerminalSession,
+    userId,
+  ]);
 
   // Auto-scroll when execution output or terminal output changes
   useEffect(() => {
@@ -235,7 +252,9 @@ function TerminalPanel({
 
       if (direction === "up") {
         const newIndex =
-          historyIndex === null ? commandHistory.length - 1 : Math.max(0, historyIndex - 1);
+          historyIndex === null
+            ? commandHistory.length - 1
+            : Math.max(0, historyIndex - 1);
         setHistoryIndex(newIndex);
         setCurrentCommand(commandHistory[newIndex] ?? "");
       } else {
@@ -251,7 +270,11 @@ function TerminalPanel({
   useEffect(() => {
     if (!socket) return;
 
-    const handleTerminalReady = ({ sessionId: readySessionId }: { sessionId: string }) => {
+    const handleTerminalReady = ({
+      sessionId: readySessionId,
+    }: {
+      sessionId: string;
+    }) => {
       sessionIdRef.current = readySessionId;
       setSessionId(readySessionId);
       setIsTerminalReady(true);
@@ -260,13 +283,31 @@ function TerminalPanel({
       appendStatusLine("Connected to sandbox session.");
     };
 
-    const handleTerminalData = ({ sessionId: incomingSessionId, chunk }: { sessionId: string; chunk: string }) => {
-      if (!sessionIdRef.current || incomingSessionId !== sessionIdRef.current) return;
+    const handleTerminalData = ({
+      sessionId: incomingSessionId,
+      chunk,
+    }: {
+      sessionId: string;
+      chunk: string;
+    }) => {
+      if (!sessionIdRef.current || incomingSessionId !== sessionIdRef.current)
+        return;
       appendRawOutput(chunk);
     };
 
-    const handleTerminalError = ({ sessionId: errorSessionId, message }: { sessionId?: string; message: string }) => {
-      if (errorSessionId && sessionIdRef.current && errorSessionId !== sessionIdRef.current) return;
+    const handleTerminalError = ({
+      sessionId: errorSessionId,
+      message,
+    }: {
+      sessionId?: string;
+      message: string;
+    }) => {
+      if (
+        errorSessionId &&
+        sessionIdRef.current &&
+        errorSessionId !== sessionIdRef.current
+      )
+        return;
       appendStatusLine(`Error: ${message}`);
       toast({
         title: "Terminal error",
@@ -289,7 +330,8 @@ function TerminalPanel({
       code?: number | null;
       reason?: string;
     }) => {
-      if (!sessionIdRef.current || exitSessionId !== sessionIdRef.current) return;
+      if (!sessionIdRef.current || exitSessionId !== sessionIdRef.current)
+        return;
 
       const exitMessageParts = ["Terminal session ended"];
       if (typeof code === "number") {
@@ -381,7 +423,9 @@ function TerminalPanel({
         "ls",
         "pwd",
       ];
-      const matches = availableCommands.filter((cmd) => cmd.startsWith(currentCommand));
+      const matches = availableCommands.filter((cmd) =>
+        cmd.startsWith(currentCommand)
+      );
       if (matches.length === 1) {
         setCurrentCommand(matches[0]);
       }
@@ -441,7 +485,9 @@ function TerminalPanel({
             size="sm"
             onClick={sessionId ? handleStopSession : initializeSession}
             className="h-6 w-6 p-0 text-[#cccccc] hover:bg-[#3c3c3c] hover:text-white"
-            title={sessionId ? "Stop terminal session" : "Start terminal session"}
+            title={
+              sessionId ? "Stop terminal session" : "Start terminal session"
+            }
             disabled={sessionId ? isStopping : isStarting || !isConnected}
           >
             {sessionId ? (
@@ -489,7 +535,7 @@ function TerminalPanel({
                 [Execution {index + 1}]
               </span>
               <span className="text-xs text-[#cccccc]">
-                {formatExecutionTime(execution.executionTime)} • Exit {" "}
+                {formatExecutionTime(execution.executionTime)} • Exit{" "}
                 {execution.success === true && execution.exitCode === null
                   ? "—"
                   : execution.exitCode ?? "—"}
@@ -557,12 +603,13 @@ function TerminalPanel({
               autoFocus={isTerminalReady}
             />
             {/* Cursor simulation */}
-            {isInputFocused && !(!isTerminalReady || isStarting || isStopping) && (
-              <div
-                className="absolute top-0 h-4 w-0.5 bg-[#cccccc] animate-pulse"
-                style={{ left: `${currentCommand.length * 0.6}em` }}
-              />
-            )}
+            {isInputFocused &&
+              !(!isTerminalReady || isStarting || isStopping) && (
+                <div
+                  className="absolute top-0 h-4 w-0.5 bg-[#cccccc] animate-pulse"
+                  style={{ left: `${currentCommand.length * 0.6}em` }}
+                />
+              )}
           </div>
         </div>
       </div>
@@ -672,6 +719,7 @@ export default function ProjectWorkspace({
   const [problems, setProblems] = useState<Problem[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [inputBuffer, setInputBuffer] = useState("");
 
   // show/hide Team Chat panel
   const [showChat, setShowChat] = useState(false);
@@ -797,8 +845,10 @@ export default function ProjectWorkspace({
   // Handle execution results from CodeEditor
   const handleExecutionResult = (rawResult: ExecutionResult) => {
     const hasNumericExitCode =
-      typeof rawResult.exitCode === "number" && Number.isFinite(rawResult.exitCode);
-    const didSucceed = rawResult.success ?? (hasNumericExitCode && rawResult.exitCode === 0);
+      typeof rawResult.exitCode === "number" &&
+      Number.isFinite(rawResult.exitCode);
+    const didSucceed =
+      rawResult.success ?? (hasNumericExitCode && rawResult.exitCode === 0);
     const normalizedExitCode = hasNumericExitCode ? rawResult.exitCode : null;
 
     const normalizedResult: ExecutionResult = {
@@ -1412,6 +1462,7 @@ export default function ProjectWorkspace({
                     isExecuting={isExecuting}
                     onExecutionStart={() => setIsExecuting(true)}
                     onExecutionStop={() => setIsExecuting(false)}
+                    executionInput={inputBuffer}
                     onChange={(newContent) => {
                       if (!currentFile) return;
                       // Mark as unsaved when content changes
@@ -1495,6 +1546,8 @@ export default function ProjectWorkspace({
                       userId="user-id-placeholder"
                       executionOutputs={consoleOutputs}
                       onClearExecutions={() => setConsoleOutputs([])}
+                      inputBuffer={inputBuffer}
+                      onInputUpdate={setInputBuffer}
                     />
                   </TabsContent>
 
