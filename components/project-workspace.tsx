@@ -747,8 +747,7 @@ export default function ProjectWorkspace({
         <div>
           <h2 className="text-lg font-semibold">Authentication unavailable</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Supabase environment variables are not configured. Configure them to
-            access the project workspace.
+            Supabase environment variables are not configured. Configure them to access the project workspace.
           </p>
         </div>
       </div>
