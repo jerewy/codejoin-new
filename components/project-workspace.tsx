@@ -175,7 +175,13 @@ function TerminalPanel({
   }, []);
 
   const initializeSession = useCallback(() => {
-    if (!socket || !projectId || !userId || sessionIdRef.current || isStarting) {
+    if (
+      !socket ||
+      !projectId ||
+      !userId ||
+      sessionIdRef.current ||
+      isStarting
+    ) {
       return;
     }
 
@@ -183,7 +189,14 @@ function TerminalPanel({
     setIsStopping(false);
     appendStatusLine("Connecting to CodeJoin sandbox...");
     startTerminalSession({ projectId, userId });
-  }, [appendStatusLine, isStarting, projectId, socket, startTerminalSession, userId]);
+  }, [
+    appendStatusLine,
+    isStarting,
+    projectId,
+    socket,
+    startTerminalSession,
+    userId,
+  ]);
 
   // Auto-scroll when execution output or terminal output changes
   useEffect(() => {
@@ -212,7 +225,6 @@ function TerminalPanel({
     const activeSessionId = sessionIdRef.current;
     if (!activeSessionId) return;
 
-<<<<<<< Updated upstream
     setIsTerminalReady(false);
     setIsStopping(true);
     appendStatusLine("Stopping terminal session...");
@@ -228,195 +240,6 @@ function TerminalPanel({
 
     if (currentCommand.trim().length > 0) {
       setCommandHistory((prev) => [...prev, currentCommand]);
-=======
-    setCommands((prev) => [...prev, `user@codejoin:~$ ${trimmed}`]);
-
-    const lowerTrimmed = trimmed.toLowerCase();
-
-    switch (lowerTrimmed) {
-      case "help":
-        setCommands((prev) => [
-          ...prev,
-          "",
-          "CodeJoin Terminal - Available Commands:",
-          "",
-          "COMMAND         DESCRIPTION",
-          "-------         -----------",
-          "help            Display this help information",
-          "clear           Clear the terminal screen",
-          "executions      Show/manage execution outputs",
-          "input <text>    Queue stdin for the next execution",
-          "",
-          "For more information on a specific command, type 'help <command>'",
-          "",
-        ]);
-        break;
-      case "clear":
-        setCommands([]);
-        break;
-      case "executions":
-        if (executionOutputs.length === 0) {
-          setCommands((prev) => [
-            ...prev,
-            "No code executions yet. Run some code to see results!",
-            "",
-          ]);
-        } else {
-          setCommands((prev) => [
-            ...prev,
-            `Found ${executionOutputs.length} execution result(s). Check the output panel above.`,
-            "",
-          ]);
-        }
-        break;
-      case "executions clear":
-        onClearExecutions();
-        setCommands((prev) => [...prev, "Execution outputs cleared", ""]);
-        break;
-      case "npm start":
-        setCommands((prev) => [
-          ...prev,
-          "Starting CodeJoin development server...",
-          "> next dev",
-          "",
-          "  ▲ Next.js 15.5.2",
-          "  - Local:        http://localhost:3000",
-          "  - Network:      http://192.168.1.100:3000",
-          "",
-          "✓ Ready in 1.2s",
-          "",
-        ]);
-        break;
-      case "npm install":
-        setCommands((prev) => [
-          ...prev,
-          "Installing dependencies...",
-          "",
-          "added 847 packages, and audited 848 packages in 12s",
-          "",
-          "109 packages are looking for funding",
-          "  run `npm fund` for details",
-          "",
-          "found 0 vulnerabilities",
-          "",
-        ]);
-        break;
-      case "docker ps":
-        setCommands((prev) => [
-          ...prev,
-          "CONTAINER ID   IMAGE                    COMMAND       CREATED       STATUS       PORTS     NAMES",
-          'a1b2c3d4e5f6   python:3.11-alpine      "python"     2 min ago     Up 2 min               code-exec-python',
-          'f6e5d4c3b2a1   node:18-alpine          "node"       5 min ago     Up 5 min               code-exec-node',
-          "",
-        ]);
-        break;
-      case "ls":
-      case "ls -la":
-        setCommands((prev) => [
-          ...prev,
-          "total 48",
-          "drwxr-xr-x  12 user  staff   384 Sep 23 20:30 .",
-          "drwxr-xr-x   3 user  staff    96 Sep 23 18:00 ..",
-          "-rw-r--r--   1 user  staff   314 Sep 23 19:41 .gitignore",
-          "-rw-r--r--   1 user  staff  2430 Sep 23 20:15 package.json",
-          "drwxr-xr-x   8 user  staff   256 Sep 23 20:00 app/",
-          "drwxr-xr-x  15 user  staff   480 Sep 23 20:30 components/",
-          "drwxr-xr-x   4 user  staff   128 Sep 23 19:45 lib/",
-          "",
-        ]);
-        break;
-      case "pwd":
-        setCommands((prev) => [...prev, "/workspace/codejoin", ""]);
-        break;
-      default: {
-        if (lowerTrimmed === "input") {
-          setCommands((prev) => [
-            ...prev,
-            inputBuffer
-              ? `Queued program input (${inputBuffer.length} characters): ${inputBuffer.replace(/\n/g, '\\n')}`
-              : "No program input queued. Use 'input <text>' to provide stdin before running your code.",
-            "",
-          ]);
-          break;
-        }
-
-        if (lowerTrimmed === "input clear" || lowerTrimmed === "input --clear") {
-          onInputUpdate("");
-          setCommands((prev) => [...prev, "Cleared queued program input.", ""]);
-          break;
-        }
-
-        if (lowerTrimmed.startsWith("input ")) {
-          const inputTextRaw = trimmed.slice(5).trimStart();
-          if (!inputTextRaw) {
-            setCommands((prev) => [...prev, "Usage: input <text>", ""]);
-          } else {
-            const normalizedInput = inputTextRaw.replace(/\\n/g, "\n");
-            onInputUpdate(normalizedInput);
-            const preview = normalizedInput.replace(/\n/g, "\\n");
-            setCommands((prev) => [
-              ...prev,
-              `Queued program input (${normalizedInput.length} character${normalizedInput.length === 1 ? "" : "s"}): ${preview}`,
-              "This value will be piped to stdin the next time you run your code.",
-              "",
-            ]);
-          }
-          break;
-        }
-
-        if (lowerTrimmed.startsWith("help ")) {
-          const subCommand = trimmed.slice(5);
-          switch (subCommand) {
-            case 'clear':
-              setCommands((prev) => [
-                ...prev,
-                "CLEAR - Clear the terminal screen",
-                "Usage: clear",
-                "Removes all previous commands and output from the terminal.",
-                "",
-              ]);
-              break;
-            case 'input':
-              setCommands((prev) => [
-                ...prev,
-                "INPUT - Queue stdin for your next run",
-                "Usage:",
-                "  input <text>   Queue text to send to stdin",
-                "  input clear    Remove any queued input",
-                "  input          Display currently queued input",
-                "Tip: Use \\n to represent new lines (example: input 2\\n4)",
-                "",
-              ]);
-              break;
-            case 'executions':
-              setCommands((prev) => [
-                ...prev,
-                "EXECUTIONS - Show execution outputs",
-                "Usage: executions [clear]",
-                "Shows the list of code execution results, or clears them if 'clear' is specified.",
-                "",
-              ]);
-              break;
-            default:
-              setCommands((prev) => [
-                ...prev,
-                `Help not available for '${subCommand}'. Type 'help' for all commands.`,
-                "",
-              ]);
-          }
-          break;
-        }
-
-        setCommands((prev) => [
-          ...prev,
-          `'${trimmed}' is not recognized as an internal or external command,`,
-          "operable program or batch file.",
-          "Type 'help' to see available commands.",
-          "",
-        ]);
-        break;
-      }
->>>>>>> Stashed changes
     }
 
     setCurrentCommand("");
@@ -429,7 +252,9 @@ function TerminalPanel({
 
       if (direction === "up") {
         const newIndex =
-          historyIndex === null ? commandHistory.length - 1 : Math.max(0, historyIndex - 1);
+          historyIndex === null
+            ? commandHistory.length - 1
+            : Math.max(0, historyIndex - 1);
         setHistoryIndex(newIndex);
         setCurrentCommand(commandHistory[newIndex] ?? "");
       } else {
@@ -445,7 +270,11 @@ function TerminalPanel({
   useEffect(() => {
     if (!socket) return;
 
-    const handleTerminalReady = ({ sessionId: readySessionId }: { sessionId: string }) => {
+    const handleTerminalReady = ({
+      sessionId: readySessionId,
+    }: {
+      sessionId: string;
+    }) => {
       sessionIdRef.current = readySessionId;
       setSessionId(readySessionId);
       setIsTerminalReady(true);
@@ -454,13 +283,31 @@ function TerminalPanel({
       appendStatusLine("Connected to sandbox session.");
     };
 
-    const handleTerminalData = ({ sessionId: incomingSessionId, chunk }: { sessionId: string; chunk: string }) => {
-      if (!sessionIdRef.current || incomingSessionId !== sessionIdRef.current) return;
+    const handleTerminalData = ({
+      sessionId: incomingSessionId,
+      chunk,
+    }: {
+      sessionId: string;
+      chunk: string;
+    }) => {
+      if (!sessionIdRef.current || incomingSessionId !== sessionIdRef.current)
+        return;
       appendRawOutput(chunk);
     };
 
-    const handleTerminalError = ({ sessionId: errorSessionId, message }: { sessionId?: string; message: string }) => {
-      if (errorSessionId && sessionIdRef.current && errorSessionId !== sessionIdRef.current) return;
+    const handleTerminalError = ({
+      sessionId: errorSessionId,
+      message,
+    }: {
+      sessionId?: string;
+      message: string;
+    }) => {
+      if (
+        errorSessionId &&
+        sessionIdRef.current &&
+        errorSessionId !== sessionIdRef.current
+      )
+        return;
       appendStatusLine(`Error: ${message}`);
       toast({
         title: "Terminal error",
@@ -483,7 +330,8 @@ function TerminalPanel({
       code?: number | null;
       reason?: string;
     }) => {
-      if (!sessionIdRef.current || exitSessionId !== sessionIdRef.current) return;
+      if (!sessionIdRef.current || exitSessionId !== sessionIdRef.current)
+        return;
 
       const exitMessageParts = ["Terminal session ended"];
       if (typeof code === "number") {
@@ -575,7 +423,9 @@ function TerminalPanel({
         "ls",
         "pwd",
       ];
-      const matches = availableCommands.filter((cmd) => cmd.startsWith(currentCommand));
+      const matches = availableCommands.filter((cmd) =>
+        cmd.startsWith(currentCommand)
+      );
       if (matches.length === 1) {
         setCurrentCommand(matches[0]);
       }
@@ -635,7 +485,9 @@ function TerminalPanel({
             size="sm"
             onClick={sessionId ? handleStopSession : initializeSession}
             className="h-6 w-6 p-0 text-[#cccccc] hover:bg-[#3c3c3c] hover:text-white"
-            title={sessionId ? "Stop terminal session" : "Start terminal session"}
+            title={
+              sessionId ? "Stop terminal session" : "Start terminal session"
+            }
             disabled={sessionId ? isStopping : isStarting || !isConnected}
           >
             {sessionId ? (
@@ -683,7 +535,7 @@ function TerminalPanel({
                 [Execution {index + 1}]
               </span>
               <span className="text-xs text-[#cccccc]">
-                {formatExecutionTime(execution.executionTime)} • Exit {" "}
+                {formatExecutionTime(execution.executionTime)} • Exit{" "}
                 {execution.success === true && execution.exitCode === null
                   ? "—"
                   : execution.exitCode ?? "—"}
@@ -736,34 +588,7 @@ function TerminalPanel({
               type="text"
               value={currentCommand}
               onChange={(e) => setCurrentCommand(e.target.value)}
-<<<<<<< Updated upstream
               onKeyDown={handleInputKeyDown}
-=======
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleCommand(currentCommand);
-                } else if (e.key === "Tab") {
-                  e.preventDefault();
-                  // Simple tab completion
-                  const commands = [
-                    "help",
-                    "clear",
-                    "executions",
-                    "input",
-                    "npm",
-                    "docker",
-                    "ls",
-                    "pwd",
-                  ];
-                  const matches = commands.filter((cmd) =>
-                    cmd.startsWith(currentCommand)
-                  );
-                  if (matches.length === 1) {
-                    setCurrentCommand(matches[0]);
-                  }
-                }
-              }}
->>>>>>> Stashed changes
               onFocus={() => setIsInputFocused(true)}
               onBlur={() => setIsInputFocused(false)}
               disabled={!isTerminalReady || isStarting || isStopping}
@@ -778,12 +603,13 @@ function TerminalPanel({
               autoFocus={isTerminalReady}
             />
             {/* Cursor simulation */}
-            {isInputFocused && !(!isTerminalReady || isStarting || isStopping) && (
-              <div
-                className="absolute top-0 h-4 w-0.5 bg-[#cccccc] animate-pulse"
-                style={{ left: `${currentCommand.length * 0.6}em` }}
-              />
-            )}
+            {isInputFocused &&
+              !(!isTerminalReady || isStarting || isStopping) && (
+                <div
+                  className="absolute top-0 h-4 w-0.5 bg-[#cccccc] animate-pulse"
+                  style={{ left: `${currentCommand.length * 0.6}em` }}
+                />
+              )}
           </div>
         </div>
       </div>
@@ -921,7 +747,8 @@ export default function ProjectWorkspace({
         <div>
           <h2 className="text-lg font-semibold">Authentication unavailable</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Supabase environment variables are not configured. Configure them to access the project workspace.
+            Supabase environment variables are not configured. Configure them to
+            access the project workspace.
           </p>
         </div>
       </div>
@@ -1019,8 +846,10 @@ export default function ProjectWorkspace({
   // Handle execution results from CodeEditor
   const handleExecutionResult = (rawResult: ExecutionResult) => {
     const hasNumericExitCode =
-      typeof rawResult.exitCode === "number" && Number.isFinite(rawResult.exitCode);
-    const didSucceed = rawResult.success ?? (hasNumericExitCode && rawResult.exitCode === 0);
+      typeof rawResult.exitCode === "number" &&
+      Number.isFinite(rawResult.exitCode);
+    const didSucceed =
+      rawResult.success ?? (hasNumericExitCode && rawResult.exitCode === 0);
     const normalizedExitCode = hasNumericExitCode ? rawResult.exitCode : null;
 
     const normalizedResult: ExecutionResult = {
