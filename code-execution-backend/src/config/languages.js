@@ -17,9 +17,9 @@ const SUPPORTED_LANGUAGES = {
     image: 'python:3.11-alpine',
     fileExtension: '.py',
     runCommand: 'python',
-    timeout: 10000,
-    memoryLimit: '128m',
-    cpuLimit: 0.5
+    timeout: 30000,
+    memoryLimit: '512m',
+    cpuLimit: 1.0
   },
 
   java: {
@@ -112,11 +112,11 @@ const SUPPORTED_LANGUAGES = {
     type: 'compiled',
     image: 'gcc:latest',
     fileExtension: '.cpp',
-    compileCommand: 'g++ -o /tmp/program /tmp/code.cpp -std=c++17',
+    compileCommand: 'g++ -o /tmp/program /tmp/code.cpp -std=c++17 -O2',
     runCommand: '/tmp/program',
-    timeout: 15000,
-    memoryLimit: '256m',
-    cpuLimit: 0.75
+    timeout: 30000,
+    memoryLimit: '512m',
+    cpuLimit: 1.0
   },
 
   c: {
@@ -124,11 +124,11 @@ const SUPPORTED_LANGUAGES = {
     type: 'compiled',
     image: 'gcc:latest',
     fileExtension: '.c',
-    compileCommand: 'gcc -o /tmp/program /tmp/code.c',
+    compileCommand: 'gcc -o /tmp/program /tmp/code.c -O2',
     runCommand: '/tmp/program',
-    timeout: 15000,
-    memoryLimit: '256m',
-    cpuLimit: 0.75
+    timeout: 30000,
+    memoryLimit: '512m',
+    cpuLimit: 1.0
   }
 };
 

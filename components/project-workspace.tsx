@@ -128,11 +128,15 @@ function TerminalPanel({
   userId,
   executionOutputs = [],
   onClearExecutions = () => {},
+  inputBuffer,
+  onInputUpdate,
 }: {
   projectId: string;
   userId: string;
   executionOutputs?: ExecutionResult[];
   onClearExecutions?: () => void;
+  inputBuffer: string;
+  onInputUpdate: (value: string) => void;
 }) {
   const {
     socket,
@@ -208,6 +212,7 @@ function TerminalPanel({
     const activeSessionId = sessionIdRef.current;
     if (!activeSessionId) return;
 
+<<<<<<< Updated upstream
     setIsTerminalReady(false);
     setIsStopping(true);
     appendStatusLine("Stopping terminal session...");
@@ -223,6 +228,195 @@ function TerminalPanel({
 
     if (currentCommand.trim().length > 0) {
       setCommandHistory((prev) => [...prev, currentCommand]);
+=======
+    setCommands((prev) => [...prev, `user@codejoin:~$ ${trimmed}`]);
+
+    const lowerTrimmed = trimmed.toLowerCase();
+
+    switch (lowerTrimmed) {
+      case "help":
+        setCommands((prev) => [
+          ...prev,
+          "",
+          "CodeJoin Terminal - Available Commands:",
+          "",
+          "COMMAND         DESCRIPTION",
+          "-------         -----------",
+          "help            Display this help information",
+          "clear           Clear the terminal screen",
+          "executions      Show/manage execution outputs",
+          "input <text>    Queue stdin for the next execution",
+          "",
+          "For more information on a specific command, type 'help <command>'",
+          "",
+        ]);
+        break;
+      case "clear":
+        setCommands([]);
+        break;
+      case "executions":
+        if (executionOutputs.length === 0) {
+          setCommands((prev) => [
+            ...prev,
+            "No code executions yet. Run some code to see results!",
+            "",
+          ]);
+        } else {
+          setCommands((prev) => [
+            ...prev,
+            `Found ${executionOutputs.length} execution result(s). Check the output panel above.`,
+            "",
+          ]);
+        }
+        break;
+      case "executions clear":
+        onClearExecutions();
+        setCommands((prev) => [...prev, "Execution outputs cleared", ""]);
+        break;
+      case "npm start":
+        setCommands((prev) => [
+          ...prev,
+          "Starting CodeJoin development server...",
+          "> next dev",
+          "",
+          "  ▲ Next.js 15.5.2",
+          "  - Local:        http://localhost:3000",
+          "  - Network:      http://192.168.1.100:3000",
+          "",
+          "✓ Ready in 1.2s",
+          "",
+        ]);
+        break;
+      case "npm install":
+        setCommands((prev) => [
+          ...prev,
+          "Installing dependencies...",
+          "",
+          "added 847 packages, and audited 848 packages in 12s",
+          "",
+          "109 packages are looking for funding",
+          "  run `npm fund` for details",
+          "",
+          "found 0 vulnerabilities",
+          "",
+        ]);
+        break;
+      case "docker ps":
+        setCommands((prev) => [
+          ...prev,
+          "CONTAINER ID   IMAGE                    COMMAND       CREATED       STATUS       PORTS     NAMES",
+          'a1b2c3d4e5f6   python:3.11-alpine      "python"     2 min ago     Up 2 min               code-exec-python',
+          'f6e5d4c3b2a1   node:18-alpine          "node"       5 min ago     Up 5 min               code-exec-node',
+          "",
+        ]);
+        break;
+      case "ls":
+      case "ls -la":
+        setCommands((prev) => [
+          ...prev,
+          "total 48",
+          "drwxr-xr-x  12 user  staff   384 Sep 23 20:30 .",
+          "drwxr-xr-x   3 user  staff    96 Sep 23 18:00 ..",
+          "-rw-r--r--   1 user  staff   314 Sep 23 19:41 .gitignore",
+          "-rw-r--r--   1 user  staff  2430 Sep 23 20:15 package.json",
+          "drwxr-xr-x   8 user  staff   256 Sep 23 20:00 app/",
+          "drwxr-xr-x  15 user  staff   480 Sep 23 20:30 components/",
+          "drwxr-xr-x   4 user  staff   128 Sep 23 19:45 lib/",
+          "",
+        ]);
+        break;
+      case "pwd":
+        setCommands((prev) => [...prev, "/workspace/codejoin", ""]);
+        break;
+      default: {
+        if (lowerTrimmed === "input") {
+          setCommands((prev) => [
+            ...prev,
+            inputBuffer
+              ? `Queued program input (${inputBuffer.length} characters): ${inputBuffer.replace(/\n/g, '\\n')}`
+              : "No program input queued. Use 'input <text>' to provide stdin before running your code.",
+            "",
+          ]);
+          break;
+        }
+
+        if (lowerTrimmed === "input clear" || lowerTrimmed === "input --clear") {
+          onInputUpdate("");
+          setCommands((prev) => [...prev, "Cleared queued program input.", ""]);
+          break;
+        }
+
+        if (lowerTrimmed.startsWith("input ")) {
+          const inputTextRaw = trimmed.slice(5).trimStart();
+          if (!inputTextRaw) {
+            setCommands((prev) => [...prev, "Usage: input <text>", ""]);
+          } else {
+            const normalizedInput = inputTextRaw.replace(/\\n/g, "\n");
+            onInputUpdate(normalizedInput);
+            const preview = normalizedInput.replace(/\n/g, "\\n");
+            setCommands((prev) => [
+              ...prev,
+              `Queued program input (${normalizedInput.length} character${normalizedInput.length === 1 ? "" : "s"}): ${preview}`,
+              "This value will be piped to stdin the next time you run your code.",
+              "",
+            ]);
+          }
+          break;
+        }
+
+        if (lowerTrimmed.startsWith("help ")) {
+          const subCommand = trimmed.slice(5);
+          switch (subCommand) {
+            case 'clear':
+              setCommands((prev) => [
+                ...prev,
+                "CLEAR - Clear the terminal screen",
+                "Usage: clear",
+                "Removes all previous commands and output from the terminal.",
+                "",
+              ]);
+              break;
+            case 'input':
+              setCommands((prev) => [
+                ...prev,
+                "INPUT - Queue stdin for your next run",
+                "Usage:",
+                "  input <text>   Queue text to send to stdin",
+                "  input clear    Remove any queued input",
+                "  input          Display currently queued input",
+                "Tip: Use \\n to represent new lines (example: input 2\\n4)",
+                "",
+              ]);
+              break;
+            case 'executions':
+              setCommands((prev) => [
+                ...prev,
+                "EXECUTIONS - Show execution outputs",
+                "Usage: executions [clear]",
+                "Shows the list of code execution results, or clears them if 'clear' is specified.",
+                "",
+              ]);
+              break;
+            default:
+              setCommands((prev) => [
+                ...prev,
+                `Help not available for '${subCommand}'. Type 'help' for all commands.`,
+                "",
+              ]);
+          }
+          break;
+        }
+
+        setCommands((prev) => [
+          ...prev,
+          `'${trimmed}' is not recognized as an internal or external command,`,
+          "operable program or batch file.",
+          "Type 'help' to see available commands.",
+          "",
+        ]);
+        break;
+      }
+>>>>>>> Stashed changes
     }
 
     setCurrentCommand("");
@@ -542,7 +736,34 @@ function TerminalPanel({
               type="text"
               value={currentCommand}
               onChange={(e) => setCurrentCommand(e.target.value)}
+<<<<<<< Updated upstream
               onKeyDown={handleInputKeyDown}
+=======
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleCommand(currentCommand);
+                } else if (e.key === "Tab") {
+                  e.preventDefault();
+                  // Simple tab completion
+                  const commands = [
+                    "help",
+                    "clear",
+                    "executions",
+                    "input",
+                    "npm",
+                    "docker",
+                    "ls",
+                    "pwd",
+                  ];
+                  const matches = commands.filter((cmd) =>
+                    cmd.startsWith(currentCommand)
+                  );
+                  if (matches.length === 1) {
+                    setCurrentCommand(matches[0]);
+                  }
+                }
+              }}
+>>>>>>> Stashed changes
               onFocus={() => setIsInputFocused(true)}
               onBlur={() => setIsInputFocused(false)}
               disabled={!isTerminalReady || isStarting || isStopping}
@@ -672,6 +893,7 @@ export default function ProjectWorkspace({
   const [problems, setProblems] = useState<Problem[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [inputBuffer, setInputBuffer] = useState("");
 
   // show/hide Team Chat panel
   const [showChat, setShowChat] = useState(false);
@@ -1412,6 +1634,7 @@ export default function ProjectWorkspace({
                     isExecuting={isExecuting}
                     onExecutionStart={() => setIsExecuting(true)}
                     onExecutionStop={() => setIsExecuting(false)}
+                    executionInput={inputBuffer}
                     onChange={(newContent) => {
                       if (!currentFile) return;
                       // Mark as unsaved when content changes
@@ -1495,6 +1718,8 @@ export default function ProjectWorkspace({
                       userId="user-id-placeholder"
                       executionOutputs={consoleOutputs}
                       onClearExecutions={() => setConsoleOutputs([])}
+                      inputBuffer={inputBuffer}
+                      onInputUpdate={setInputBuffer}
                     />
                   </TabsContent>
 

@@ -5,12 +5,34 @@ const Joi = require('joi');
 
 const dockerService = new DockerService();
 
+const isTestEnv = process.env.NODE_ENV === 'test';
+const DEFAULT_MAX_CODE_SIZE = isTestEnv ? 25000 : 1048576;
+const DEFAULT_MAX_INPUT_SIZE = 10240;
+
+const envCodeLimit = parseInt(process.env.MAX_CODE_SIZE_BYTES || '', 10);
+const MAX_CODE_SIZE_BYTES = Number.isFinite(envCodeLimit)
+  ? (isTestEnv ? Math.min(envCodeLimit, DEFAULT_MAX_CODE_SIZE) : envCodeLimit)
+  : DEFAULT_MAX_CODE_SIZE;
+
+const envInputLimit = parseInt(process.env.MAX_INPUT_SIZE_BYTES || '', 10);
+const MAX_INPUT_SIZE_BYTES = Number.isFinite(envInputLimit) ? envInputLimit : DEFAULT_MAX_INPUT_SIZE;
+
 const executeSchema = Joi.object({
   language: Joi.string().required(),
-  code: Joi.string().max(1048576).required(), // 1MB limit
-  input: Joi.string().max(10240).optional().default(''), // 10KB limit for input
+  code: Joi.string().max(MAX_CODE_SIZE_BYTES).required(),
+  input: Joi.string().max(MAX_INPUT_SIZE_BYTES).allow('').optional().default(''),
   timeout: Joi.number().min(1000).max(30000).optional()
-});
+}).custom((value, helpers) => {
+  if (Buffer.byteLength(value.code || '', 'utf8') > MAX_CODE_SIZE_BYTES) {
+    return helpers.error('any.custom', { message: 'Code exceeds maximum allowed size' });
+  }
+
+  if (Buffer.byteLength(value.input || '', 'utf8') > MAX_INPUT_SIZE_BYTES) {
+    return helpers.error('any.custom', { message: 'Input exceeds maximum allowed size' });
+  }
+
+  return value;
+}, 'execute payload validation');
 
 class ExecuteController {
   async execute(req, res) {
