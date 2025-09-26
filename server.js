@@ -2,6 +2,8 @@
 const { createServer } = require('http')
 const { Server } = require('socket.io')
 const next = require('next')
+const DockerService = require('./code-execution-backend/src/services/dockerService')
+const { getLanguageConfig } = require('./code-execution-backend/src/config/languages')
 
 const dev = process.env.NODE_ENV !== 'production'
 const hostname = 'localhost'
@@ -13,6 +15,7 @@ const handler = app.getRequestHandler()
 // Store active collaborators and document states
 const collaborators = new Map()
 const documentStates = new Map()
+const dockerService = new DockerService()
 
 app.prepare().then(() => {
   const httpServer = createServer(handler)
@@ -28,6 +31,125 @@ app.prepare().then(() => {
 
   io.on('connection', (socket) => {
     console.log('User connected:', socket.id)
+
+    const terminalSessions = new Map()
+
+    const cleanupTerminalSession = async (sessionId, { code = null, reason = null, emitExit = false } = {}) => {
+      const session = terminalSessions.get(sessionId)
+      if (!session || session.cleaning) {
+        return
+      }
+
+      session.cleaning = true
+
+      if (session.stream) {
+        try {
+          session.stream.destroy()
+        } catch (streamError) {
+          console.warn('Failed to destroy terminal stream', streamError.message)
+        }
+      }
+
+      terminalSessions.delete(sessionId)
+
+      try {
+        await dockerService.stopInteractiveContainer(sessionId)
+      } catch (error) {
+        console.warn('Failed to stop terminal session container', error.message)
+      }
+
+      if (emitExit) {
+        socket.emit('terminal:exit', {
+          sessionId,
+          code,
+          reason
+        })
+      }
+    }
+
+    socket.on('terminal:start', async ({ projectId, userId, language }) => {
+      if (!projectId || !userId) {
+        socket.emit('terminal:error', { message: 'projectId and userId are required' })
+        return
+      }
+
+      const languageKey = typeof language === 'string' ? language.toLowerCase() : 'javascript'
+      const languageConfig = getLanguageConfig(languageKey) || getLanguageConfig('javascript')
+
+      try {
+        const { sessionId, stream } = await dockerService.createInteractiveContainer(languageConfig)
+
+        stream.setEncoding('utf-8')
+
+        const sessionData = {
+          stream,
+          cleaning: false
+        }
+
+        terminalSessions.set(sessionId, sessionData)
+
+        stream.on('data', (chunk) => {
+          socket.emit('terminal:data', {
+            sessionId,
+            chunk
+          })
+        })
+
+        stream.on('error', (error) => {
+          socket.emit('terminal:error', {
+            sessionId,
+            message: error.message
+          })
+        })
+
+        dockerService.waitForContainer(sessionId)
+          .then((status) => {
+            cleanupTerminalSession(sessionId, {
+              code: typeof status?.StatusCode === 'number' ? status.StatusCode : null,
+              emitExit: true
+            })
+          })
+          .catch((error) => {
+            cleanupTerminalSession(sessionId, {
+              reason: error.message,
+              emitExit: true
+            })
+          })
+
+        socket.emit('terminal:ready', { sessionId })
+      } catch (error) {
+        console.error('Failed to start terminal session', error)
+        socket.emit('terminal:error', { message: error.message })
+      }
+    })
+
+    socket.on('terminal:input', ({ sessionId, input }) => {
+      if (!sessionId || typeof input !== 'string') {
+        return
+      }
+
+      const session = terminalSessions.get(sessionId)
+      if (!session || session.cleaning || !session.stream) {
+        return
+      }
+
+      try {
+        session.stream.write(input)
+      } catch (error) {
+        socket.emit('terminal:error', {
+          sessionId,
+          message: error.message
+        })
+      }
+    })
+
+    socket.on('terminal:stop', ({ sessionId }) => {
+      if (!sessionId) return
+      cleanupTerminalSession(sessionId, {
+        reason: 'Session stopped by user',
+        emitExit: true
+      })
+    })
 
     // Join project collaboration room
     socket.on('join-project', (data) => {
@@ -131,6 +253,10 @@ app.prepare().then(() => {
     // Handle disconnect
     socket.on('disconnect', () => {
       console.log('User disconnected:', socket.id)
+
+      terminalSessions.forEach((_, sessionId) => {
+        cleanupTerminalSession(sessionId)
+      })
 
       const collaborator = collaborators.get(socket.id)
       if (collaborator) {

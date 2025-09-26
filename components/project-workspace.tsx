@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useSocket, useFileCollaboration } from "@/lib/socket";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +46,7 @@ import {
   History,
   PanelLeftClose,
   PanelLeft,
+  Square,
 } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import CodeEditor from "@/components/code-editor";
@@ -123,139 +124,268 @@ const getFileExtension = (fileName: string): string => {
 
 // VS Code-style Terminal component
 function TerminalPanel({
+  projectId,
+  userId,
   executionOutputs = [],
   onClearExecutions = () => {},
 }: {
+  projectId: string;
+  userId: string;
   executionOutputs?: ExecutionResult[];
   onClearExecutions?: () => void;
 }) {
-  const [commands, setCommands] = useState<string[]>([]);
+  const {
+    socket,
+    isConnected,
+    startTerminalSession,
+    sendTerminalInput,
+    stopTerminalSession,
+  } = useSocket();
+  const { toast } = useToast();
+
+  const [terminalOutput, setTerminalOutput] = useState<string>("");
   const [currentCommand, setCurrentCommand] = useState("");
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [isTerminalReady, setIsTerminalReady] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [commandHistory, setCommandHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number | null>(null);
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const attemptedInitialStart = useRef(false);
 
-  // Auto-scroll to bottom when new execution results arrive
+  const appendRawOutput = useCallback((chunk: string) => {
+    setTerminalOutput((prev) => prev + chunk);
+  }, []);
+
+  const appendStatusLine = useCallback((message: string) => {
+    setTerminalOutput((prev) => {
+      const needsPrefixNewline = prev.length > 0 && !prev.endsWith("\n");
+      const suffix = message.endsWith("\n") ? "" : "\n";
+      return `${prev}${needsPrefixNewline ? "\n" : ""}${message}${suffix}`;
+    });
+  }, []);
+
+  const initializeSession = useCallback(() => {
+    if (!socket || !projectId || !userId || sessionIdRef.current || isStarting) {
+      return;
+    }
+
+    setIsStarting(true);
+    setIsStopping(false);
+    appendStatusLine("Connecting to CodeJoin sandbox...");
+    startTerminalSession({ projectId, userId });
+  }, [appendStatusLine, isStarting, projectId, socket, startTerminalSession, userId]);
+
+  // Auto-scroll when execution output or terminal output changes
   useEffect(() => {
     if (scrollContainerRef.current) {
       const { scrollHeight, clientHeight } = scrollContainerRef.current;
       scrollContainerRef.current.scrollTop = scrollHeight - clientHeight;
     }
-  }, [executionOutputs, commands]);
+  }, [executionOutputs, terminalOutput]);
 
-  // Focus input when terminal is clicked
+  // Start session on initial mount when socket is ready
+  useEffect(() => {
+    if (!socket || !isConnected) return;
+    if (!attemptedInitialStart.current) {
+      attemptedInitialStart.current = true;
+      initializeSession();
+    }
+  }, [initializeSession, isConnected, socket]);
+
+  // Focus input when terminal body is clicked
   const handleTerminalClick = () => {
+    if (!isTerminalReady) return;
     inputRef.current?.focus();
   };
 
-  const handleCommand = (cmd: string) => {
-    const trimmed = cmd.trim();
-    if (!trimmed) return;
+  const handleStopSession = useCallback(() => {
+    const activeSessionId = sessionIdRef.current;
+    if (!activeSessionId) return;
 
-    // Add command with user@codejoin prompt
-    setCommands((prev) => [...prev, `user@codejoin:~$ ${trimmed}`]);
+    setIsTerminalReady(false);
+    setIsStopping(true);
+    appendStatusLine("Stopping terminal session...");
+    stopTerminalSession({ sessionId: activeSessionId });
+  }, [appendStatusLine, stopTerminalSession]);
 
-    switch (trimmed.toLowerCase()) {
-      case "help":
-        setCommands((prev) => [
-          ...prev,
-          "",
-          "CodeJoin Terminal Commands:",
-          "  help            Show this help message",
-          "  clear           Clear terminal history",
-          "  executions      Show execution outputs",
-          "  executions clear Clear execution outputs",
-          "  npm start       Start development server",
-          "  npm install     Install dependencies",
-          "  docker ps       Show running containers",
-          "",
-        ]);
-        break;
-      case "clear":
-        setCommands([]);
-        break;
-      case "executions":
-        if (executionOutputs.length === 0) {
-          setCommands((prev) => [
-            ...prev,
-            "No code executions yet. Run some code to see results!",
-            "",
-          ]);
-        } else {
-          setCommands((prev) => [
-            ...prev,
-            `Found ${executionOutputs.length} execution result(s). Check the output panel above.`,
-            "",
-          ]);
-        }
-        break;
-      case "executions clear":
-        onClearExecutions();
-        setCommands((prev) => [...prev, "Execution outputs cleared", ""]);
-        break;
-      case "npm start":
-        setCommands((prev) => [
-          ...prev,
-          "Starting CodeJoin development server...",
-          "> next dev",
-          "",
-          "  ▲ Next.js 15.5.2",
-          "  - Local:        http://localhost:3000",
-          "  - Network:      http://192.168.1.100:3000",
-          "",
-          "✓ Ready in 1.2s",
-          "",
-        ]);
-        break;
-      case "npm install":
-        setCommands((prev) => [
-          ...prev,
-          "Installing dependencies...",
-          "",
-          "added 847 packages, and audited 848 packages in 12s",
-          "",
-          "109 packages are looking for funding",
-          "  run `npm fund` for details",
-          "",
-          "found 0 vulnerabilities",
-          "",
-        ]);
-        break;
-      case "docker ps":
-        setCommands((prev) => [
-          ...prev,
-          "CONTAINER ID   IMAGE                    COMMAND       CREATED       STATUS       PORTS     NAMES",
-          'a1b2c3d4e5f6   python:3.11-alpine      "python"     2 min ago     Up 2 min               code-exec-python',
-          'f6e5d4c3b2a1   node:18-alpine          "node"       5 min ago     Up 5 min               code-exec-node',
-          "",
-        ]);
-        break;
-      case "ls":
-      case "ls -la":
-        setCommands((prev) => [
-          ...prev,
-          "total 48",
-          "drwxr-xr-x  12 user  staff   384 Sep 23 20:30 .",
-          "drwxr-xr-x   3 user  staff    96 Sep 23 18:00 ..",
-          "-rw-r--r--   1 user  staff   314 Sep 23 19:41 .gitignore",
-          "-rw-r--r--   1 user  staff  2430 Sep 23 20:15 package.json",
-          "drwxr-xr-x   8 user  staff   256 Sep 23 20:00 app/",
-          "drwxr-xr-x  15 user  staff   480 Sep 23 20:30 components/",
-          "drwxr-xr-x   4 user  staff   128 Sep 23 19:45 lib/",
-          "",
-        ]);
-        break;
-      case "pwd":
-        setCommands((prev) => [...prev, "/workspace/codejoin", ""]);
-        break;
-      default:
-        setCommands((prev) => [
-          ...prev,
-          `bash: ${trimmed}: command not found`,
-          "",
-        ]);
+  const handleCommandSubmit = useCallback(() => {
+    const activeSessionId = sessionIdRef.current;
+    if (!activeSessionId) return;
+
+    const payload = currentCommand.length > 0 ? `${currentCommand}\r` : "\r";
+    sendTerminalInput({ sessionId: activeSessionId, input: payload });
+
+    if (currentCommand.trim().length > 0) {
+      setCommandHistory((prev) => [...prev, currentCommand]);
     }
+
     setCurrentCommand("");
+    setHistoryIndex(null);
+  }, [currentCommand, sendTerminalInput]);
+
+  const handleHistoryNavigation = useCallback(
+    (direction: "up" | "down") => {
+      if (commandHistory.length === 0) return;
+
+      if (direction === "up") {
+        const newIndex =
+          historyIndex === null ? commandHistory.length - 1 : Math.max(0, historyIndex - 1);
+        setHistoryIndex(newIndex);
+        setCurrentCommand(commandHistory[newIndex] ?? "");
+      } else {
+        if (historyIndex === null) return;
+        const newIndex = Math.min(commandHistory.length - 1, historyIndex + 1);
+        setHistoryIndex(newIndex);
+        setCurrentCommand(commandHistory[newIndex] ?? "");
+      }
+    },
+    [commandHistory, historyIndex]
+  );
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleTerminalReady = ({ sessionId: readySessionId }: { sessionId: string }) => {
+      sessionIdRef.current = readySessionId;
+      setSessionId(readySessionId);
+      setIsTerminalReady(true);
+      setIsStarting(false);
+      setIsStopping(false);
+      appendStatusLine("Connected to sandbox session.");
+    };
+
+    const handleTerminalData = ({ sessionId: incomingSessionId, chunk }: { sessionId: string; chunk: string }) => {
+      if (!sessionIdRef.current || incomingSessionId !== sessionIdRef.current) return;
+      appendRawOutput(chunk);
+    };
+
+    const handleTerminalError = ({ sessionId: errorSessionId, message }: { sessionId?: string; message: string }) => {
+      if (errorSessionId && sessionIdRef.current && errorSessionId !== sessionIdRef.current) return;
+      appendStatusLine(`Error: ${message}`);
+      toast({
+        title: "Terminal error",
+        description: message,
+        variant: "destructive",
+      });
+      setIsTerminalReady(false);
+      setIsStarting(false);
+      setIsStopping(false);
+      sessionIdRef.current = null;
+      setSessionId(null);
+    };
+
+    const handleTerminalExit = ({
+      sessionId: exitSessionId,
+      code,
+      reason,
+    }: {
+      sessionId: string;
+      code?: number | null;
+      reason?: string;
+    }) => {
+      if (!sessionIdRef.current || exitSessionId !== sessionIdRef.current) return;
+
+      const exitMessageParts = ["Terminal session ended"];
+      if (typeof code === "number") {
+        exitMessageParts.push(`(exit code ${code})`);
+      }
+      if (reason) {
+        exitMessageParts.push(`- ${reason}`);
+      }
+
+      appendStatusLine(exitMessageParts.join(" "));
+      sessionIdRef.current = null;
+      setSessionId(null);
+      setIsTerminalReady(false);
+      setIsStarting(false);
+      setIsStopping(false);
+    };
+
+    socket.on("terminal:ready", handleTerminalReady);
+    socket.on("terminal:data", handleTerminalData);
+    socket.on("terminal:error", handleTerminalError);
+    socket.on("terminal:exit", handleTerminalExit);
+
+    return () => {
+      socket.off("terminal:ready", handleTerminalReady);
+      socket.off("terminal:data", handleTerminalData);
+      socket.off("terminal:error", handleTerminalError);
+      socket.off("terminal:exit", handleTerminalExit);
+    };
+  }, [appendRawOutput, appendStatusLine, socket, toast]);
+
+  // Cleanup active session when component unmounts
+  useEffect(() => {
+    return () => {
+      const activeSessionId = sessionIdRef.current;
+      if (activeSessionId) {
+        stopTerminalSession({ sessionId: activeSessionId });
+      }
+    };
+  }, [stopTerminalSession]);
+
+  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isTerminalReady) return;
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      handleCommandSubmit();
+      return;
+    }
+
+    if (event.ctrlKey && event.key.toLowerCase() === "c") {
+      event.preventDefault();
+      const activeSessionId = sessionIdRef.current;
+      if (activeSessionId) {
+        sendTerminalInput({ sessionId: activeSessionId, input: "\u0003" });
+      }
+      setCurrentCommand("");
+      setHistoryIndex(null);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      handleHistoryNavigation("up");
+      const activeSessionId = sessionIdRef.current;
+      if (activeSessionId) {
+        sendTerminalInput({ sessionId: activeSessionId, input: "\u001b[A" });
+      }
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      handleHistoryNavigation("down");
+      const activeSessionId = sessionIdRef.current;
+      if (activeSessionId) {
+        sendTerminalInput({ sessionId: activeSessionId, input: "\u001b[B" });
+      }
+      return;
+    }
+
+    if (event.key === "Tab") {
+      event.preventDefault();
+      const availableCommands = [
+        "help",
+        "clear",
+        "executions",
+        "npm",
+        "docker",
+        "ls",
+        "pwd",
+      ];
+      const matches = availableCommands.filter((cmd) => cmd.startsWith(currentCommand));
+      if (matches.length === 1) {
+        setCurrentCommand(matches[0]);
+      }
+    }
   };
 
   const formatExecutionTime = (ms: number) => {
@@ -278,6 +408,24 @@ function TerminalPanel({
     return <AlertTriangle className="h-3 w-3 text-yellow-400" />;
   };
 
+  const terminalStatus = isTerminalReady
+    ? "Connected"
+    : isStarting
+    ? "Starting..."
+    : isStopping
+    ? "Stopping..."
+    : isConnected
+    ? "Stopped"
+    : "Offline";
+
+  const statusColor = isTerminalReady
+    ? "text-[#4ec9b0]"
+    : isStarting || isStopping
+    ? "text-yellow-300"
+    : isConnected
+    ? "text-zinc-400"
+    : "text-[#f48771]";
+
   return (
     <div className="h-full flex flex-col bg-[#1e1e1e] text-[#cccccc] font-mono text-sm">
       {/* Terminal Header - VS Code style */}
@@ -285,8 +433,23 @@ function TerminalPanel({
         <div className="flex items-center gap-2">
           <Terminal className="h-4 w-4 text-[#cccccc]" />
           <span className="text-sm text-[#cccccc]">Terminal</span>
+          <span className={`text-xs ${statusColor}`}>{terminalStatus}</span>
         </div>
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={sessionId ? handleStopSession : initializeSession}
+            className="h-6 w-6 p-0 text-[#cccccc] hover:bg-[#3c3c3c] hover:text-white"
+            title={sessionId ? "Stop terminal session" : "Start terminal session"}
+            disabled={sessionId ? isStopping : isStarting || !isConnected}
+          >
+            {sessionId ? (
+              <Square className="h-3 w-3" />
+            ) : (
+              <Play className="h-3 w-3" />
+            )}
+          </Button>
           {executionOutputs.length > 0 && (
             <Button
               variant="ghost"
@@ -301,7 +464,7 @@ function TerminalPanel({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setCommands([])}
+            onClick={() => setTerminalOutput("")}
             className="h-6 w-6 p-0 text-[#cccccc] hover:bg-[#3c3c3c] hover:text-white"
             title="Clear terminal"
           >
@@ -353,17 +516,19 @@ function TerminalPanel({
           </div>
         ))}
 
-        {/* Terminal command history */}
+        {/* Terminal output stream */}
         <div className="space-y-1">
-          {commands.map((cmd, index) => (
-            <div key={`cmd-${index}`} className="leading-relaxed">
-              {cmd.startsWith("user@codejoin:~$") ? (
-                <div className="text-[#4ec9b0]">{cmd}</div>
-              ) : (
-                <div className="text-[#cccccc] pl-0">{cmd}</div>
-              )}
+          {terminalOutput ? (
+            <pre className="text-[#cccccc] whitespace-pre-wrap leading-relaxed">
+              {terminalOutput}
+            </pre>
+          ) : (
+            <div className="text-xs text-zinc-400 italic">
+              {isTerminalReady
+                ? "Session ready. Type a command to begin."
+                : "Terminal output will appear here once the sandbox is ready."}
             </div>
-          ))}
+          )}
         </div>
 
         {/* Current command input line */}
@@ -377,37 +542,22 @@ function TerminalPanel({
               type="text"
               value={currentCommand}
               onChange={(e) => setCurrentCommand(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleCommand(currentCommand);
-                } else if (e.key === "Tab") {
-                  e.preventDefault();
-                  // Simple tab completion
-                  const commands = [
-                    "help",
-                    "clear",
-                    "executions",
-                    "npm",
-                    "docker",
-                    "ls",
-                    "pwd",
-                  ];
-                  const matches = commands.filter((cmd) =>
-                    cmd.startsWith(currentCommand)
-                  );
-                  if (matches.length === 1) {
-                    setCurrentCommand(matches[0]);
-                  }
-                }
-              }}
+              onKeyDown={handleInputKeyDown}
               onFocus={() => setIsInputFocused(true)}
               onBlur={() => setIsInputFocused(false)}
+              disabled={!isTerminalReady || isStarting || isStopping}
               className="w-full bg-transparent border-none outline-none text-[#cccccc] font-mono text-sm"
-              placeholder="Type a command..."
-              autoFocus
+              placeholder={
+                isTerminalReady
+                  ? "Type a command..."
+                  : isStarting
+                  ? "Starting sandbox..."
+                  : "Connect the terminal to start issuing commands"
+              }
+              autoFocus={isTerminalReady}
             />
             {/* Cursor simulation */}
-            {isInputFocused && (
+            {isInputFocused && !(!isTerminalReady || isStarting || isStopping) && (
               <div
                 className="absolute top-0 h-4 w-0.5 bg-[#cccccc] animate-pulse"
                 style={{ left: `${currentCommand.length * 0.6}em` }}
@@ -1326,6 +1476,8 @@ export default function ProjectWorkspace({
                     className="flex-1 overflow-hidden p-0 m-0 h-full"
                   >
                     <TerminalPanel
+                      projectId={projectId}
+                      userId="user-id-placeholder"
                       executionOutputs={consoleOutputs}
                       onClearExecutions={() => setConsoleOutputs([])}
                     />

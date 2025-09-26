@@ -175,6 +175,79 @@ class DockerService {
     return container;
   }
 
+  async createInteractiveContainer(languageConfig) {
+    const sessionId = uuidv4();
+    let container = null;
+
+    try {
+      await this.testConnection();
+
+      const containerConfig = {
+        Image: languageConfig.image,
+        name: `code-terminal-${sessionId}`,
+        AttachStdout: true,
+        AttachStderr: true,
+        AttachStdin: true,
+        Tty: true,
+        OpenStdin: true,
+        StdinOnce: false,
+        NetworkMode: 'none',
+        User: 'nobody',
+        WorkingDir: '/tmp',
+        Env: [
+          'HOME=/tmp',
+          'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+        ],
+        Cmd: ['/bin/sh'],
+        HostConfig: {
+          Memory: this.parseMemoryLimit(languageConfig.memoryLimit || '256m'),
+          CpuQuota: Math.floor((languageConfig.cpuLimit || 0.5) * 100000),
+          CpuPeriod: 100000,
+          PidsLimit: 64,
+          ReadonlyRootfs: false,
+          Tmpfs: {
+            '/tmp': 'rw,exec,nosuid,size=100m',
+            '/var/tmp': 'rw,noexec,nosuid,size=10m'
+          },
+          SecurityOpt: [
+            'no-new-privileges:true'
+          ],
+          CapDrop: ['ALL']
+        }
+      };
+
+      container = await this.docker.createContainer(containerConfig);
+      await container.start();
+
+      const stream = await container.attach({
+        stream: true,
+        stdin: true,
+        stdout: true,
+        stderr: true,
+        tty: true
+      });
+
+      this.runningContainers.set(sessionId, container);
+
+      logger.info('Started interactive terminal container', {
+        sessionId,
+        image: languageConfig.image
+      });
+
+      return { sessionId, stream };
+    } catch (error) {
+      logger.error(`Failed to start interactive container: ${error.message}`, { sessionId });
+      if (container) {
+        try {
+          await container.remove({ force: true });
+        } catch (cleanupError) {
+          logger.warn(`Failed to remove interactive container: ${cleanupError.message}`);
+        }
+      }
+      throw error;
+    }
+  }
+
   async copyCodeToContainer(container, fileName, code) {
     const tar = require('tar-stream');
     const pack = tar.pack();
@@ -378,6 +451,38 @@ class DockerService {
     );
 
     await Promise.allSettled(promises);
+  }
+
+  async stopInteractiveContainer(sessionId) {
+    const container = this.runningContainers.get(sessionId);
+    if (!container) {
+      return;
+    }
+
+    try {
+      await container.stop({ t: 0 });
+    } catch (error) {
+      if (!String(error.message).includes('not running')) {
+        logger.warn(`Failed to stop interactive container: ${error.message}`, { sessionId });
+      }
+    } finally {
+      await this.cleanup(sessionId, container);
+    }
+  }
+
+  async waitForContainer(sessionId) {
+    const container = this.runningContainers.get(sessionId);
+    if (!container) {
+      return null;
+    }
+
+    try {
+      const status = await container.wait();
+      return status;
+    } catch (error) {
+      logger.warn(`Error while waiting for container ${sessionId}: ${error.message}`);
+      throw error;
+    }
   }
 
   async pullImages(languages) {
