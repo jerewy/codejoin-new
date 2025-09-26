@@ -17,7 +17,7 @@ import { Eye, EyeOff, Check, X, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { LoginGithub } from "@/components/login-github";
 import { LoginGoogle } from "@/components/login-google";
-import { supabase } from "@/lib/supabaseClient"; // adjust the path if needed
+import { getSupabaseClient } from "@/lib/supabaseClient"; // adjust the path if needed
 import { useRouter } from "next/navigation";
 
 export default function SignupCard() {
@@ -32,6 +32,8 @@ export default function SignupCard() {
     confirmPassword: "",
   });
   const router = useRouter();
+  const supabase = getSupabaseClient();
+  const authUnavailable = !supabase;
 
   const [passwordValidation, setPasswordValidation] = useState({
     minLength: false,
@@ -52,6 +54,13 @@ export default function SignupCard() {
 
     if (!isPasswordValid()) {
       setError("Please ensure your password meets all requirements.");
+      return;
+    }
+
+    if (!supabase) {
+      setError(
+        "Authentication is currently unavailable. Please configure Supabase environment variables."
+      );
       return;
     }
 
@@ -305,6 +314,7 @@ export default function SignupCard() {
             className="w-full bg-gradient-to-r from-primary to-primary/80 text-white shadow-md transition hover:from-primary/90 hover:to-primary"
             disabled={
               isLoading ||
+              authUnavailable ||
               !isPasswordValid() ||
               formData.password !== formData.confirmPassword
             }

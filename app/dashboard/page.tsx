@@ -44,7 +44,7 @@ import ProjectCard from "@/components/project-card";
 import RecentActivity from "@/components/recent-activity";
 import QuickStats from "@/components/quick-stats";
 import dynamic from "next/dynamic";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 import { Project, Activity, RawActivity } from "@/lib/types";
 import { toast } from "@/hooks/use-toast";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -167,6 +167,23 @@ export default function DashboardPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [openDropdowns, setOpenDropdowns] = useState<Set<string>>(new Set());
   const [pendingProjects, setPendingProjects] = useState<Set<string>>(new Set());
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted">
+        <div className="max-w-md text-center space-y-4">
+          <h1 className="text-2xl font-semibold">Authentication unavailable</h1>
+          <p className="text-muted-foreground">
+            Supabase environment variables are not configured. Configure them to access the dashboard.
+          </p>
+          <Button asChild>
+            <Link href="/">Return home</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     async function getDashboardData() {

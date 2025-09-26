@@ -10,12 +10,13 @@ import {
 } from "@/components/ui/card";
 import { MailCheck, RefreshCcw } from "lucide-react";
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 import { toast } from "@/hooks/use-toast";
 
 export default function VerifyEmailPage() {
   const [email, setEmail] = useState("");
   const [isResending, setIsResending] = useState(false);
+  const supabase = getSupabaseClient();
 
   useEffect(() => {
     const saved = localStorage.getItem("pendingEmail");
@@ -24,6 +25,15 @@ export default function VerifyEmailPage() {
 
   const resendConfirmationEmail = async () => {
     if (!email) return;
+    if (!supabase) {
+      toast({
+        title: "Authentication unavailable",
+        description:
+          "Supabase is not configured. Please set the environment variables to resend verification emails.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     const { error } = await supabase.auth.resend({
       type: "signup",
@@ -70,7 +80,7 @@ export default function VerifyEmailPage() {
           </p>
           <Button
             onClick={resendConfirmationEmail}
-            disabled={isResending}
+            disabled={isResending || !supabase}
             variant="secondary"
             className="w-full flex gap-2 justify-center"
           >

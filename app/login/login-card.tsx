@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +26,8 @@ export default function LoginCard() {
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({ email: "", password: "" });
   const router = useRouter();
+  const supabase = getSupabaseClient();
+  const authUnavailable = !supabase;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,6 +36,13 @@ export default function LoginCard() {
     // Basic validation
     if (!formData.email || !formData.password) {
       setError("Email and password are required.");
+      return;
+    }
+
+    if (!supabase) {
+      setError(
+        "Authentication is currently unavailable. Please configure Supabase environment variables."
+      );
       return;
     }
 
@@ -144,7 +153,7 @@ export default function LoginCard() {
           <Button
             type="submit"
             className="w-full bg-gradient-to-r from-primary to-primary/80 text-white shadow-md transition hover:from-primary/90 hover:to-primary"
-            disabled={isLoading}
+            disabled={isLoading || authUnavailable}
           >
             {isLoading ? (
               <span className="inline-flex items-center gap-2">
