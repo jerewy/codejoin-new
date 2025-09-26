@@ -19,6 +19,9 @@ interface SocketContextType {
   emitCursorPosition: (data: { projectId: string; fileId: string; position: any; userId: string }) => void
   emitFileSelect: (data: { projectId: string; fileId: string; userId: string }) => void
   emitExecutionResult: (data: { projectId: string; fileId: string; result: any; userId: string }) => void
+  startTerminalSession: (data: { projectId: string; userId: string; language?: string }) => void
+  sendTerminalInput: (data: { sessionId: string; input: string }) => void
+  stopTerminalSession: (data: { sessionId: string }) => void
   collaborators: Array<{
     userId: string
     userName: string
@@ -37,6 +40,9 @@ const SocketContext = createContext<SocketContextType>({
   emitCursorPosition: () => {},
   emitFileSelect: () => {},
   emitExecutionResult: () => {},
+  startTerminalSession: () => {},
+  sendTerminalInput: () => {},
+  stopTerminalSession: () => {},
   collaborators: []
 })
 
@@ -177,6 +183,24 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
     }
   }, [socket])
 
+  const startTerminalSession = useCallback((data: { projectId: string; userId: string; language?: string }) => {
+    if (socket) {
+      socket.emit('terminal:start', data)
+    }
+  }, [socket])
+
+  const sendTerminalInput = useCallback((data: { sessionId: string; input: string }) => {
+    if (socket) {
+      socket.emit('terminal:input', data)
+    }
+  }, [socket])
+
+  const stopTerminalSession = useCallback((data: { sessionId: string }) => {
+    if (socket) {
+      socket.emit('terminal:stop', data)
+    }
+  }, [socket])
+
   return (
     <SocketContext.Provider value={{
       socket,
@@ -187,6 +211,9 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       emitCursorPosition,
       emitFileSelect,
       emitExecutionResult,
+      startTerminalSession,
+      sendTerminalInput,
+      stopTerminalSession,
       collaborators
     }}>
       {children}
