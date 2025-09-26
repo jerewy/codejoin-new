@@ -632,28 +632,10 @@ export default function CodeEditor({
       // Detect the language for the current file
       const detectedLanguage = codeExecutionAPI.detectLanguageFromFileName(file.name);
 
-      // Check if code might need input and provide default values for common cases
-      let defaultInput = "";
       const codeContent = sanitizeContent(file.content ?? "");
       const normalizedUserInput = (executionInput ?? "").replace(/\r\n/g, "\n");
-      const hasUserProvidedInput = normalizedUserInput.length > 0;
 
-      // Detect common input patterns and provide reasonable defaults only when
-      // the user hasn't queued custom input from the terminal panel.
-      if (!hasUserProvidedInput) {
-        if (codeContent.includes('scanf')) {
-          // For C programs with scanf, provide some default inputs
-          defaultInput = "5\n10\nHello World\n";
-        } else if (codeContent.includes('input(')) {
-          // For Python programs with input(), provide defaults
-          defaultInput = "5\n10\nHello World\n";
-        } else if (codeContent.includes('Scanner') || codeContent.includes('nextInt()')) {
-          // For Java programs with Scanner
-          defaultInput = "5\n10\nHello World\n";
-        }
-      }
-
-      const effectiveInput = hasUserProvidedInput ? normalizedUserInput : defaultInput;
+      const effectiveInput = normalizedUserInput;
 
       const result = await codeExecutionAPI.executeCode({
         language: detectedLanguage,

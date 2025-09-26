@@ -19,6 +19,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const supabaseClient = useMemo(() => getSupabaseClient(), []);
   const isAuthConfigured = !!supabaseClient;
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   // Define which routes should have the sidebar
   const sidebarRoutes = [
@@ -39,8 +40,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     segment === "settings" ||
     segment === "new-project";
 
-  // Read sidebar state from localStorage on mount
+  // Handle hydration and read sidebar state from localStorage on mount
   useEffect(() => {
+    setIsHydrated(true);
     const savedState = localStorage.getItem("sidebarOpen");
     if (savedState !== null) {
       const savedOpen = JSON.parse(savedState);
@@ -69,6 +71,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       localStorage.setItem("sidebarOpen", JSON.stringify(isSidebarOpen));
     }
   }, [isSidebarOpen, isSidebarClosed]);
+
+  // Show loading during hydration to prevent mismatch
+  if (!isHydrated) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-muted">
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold mb-4">Loading...</h1>
+        </div>
+      </div>
+    );
+  }
 
   if (isProtectedRoute && (!isAuthConfigured || !isLoggedIn)) {
     return (

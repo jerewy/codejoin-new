@@ -204,9 +204,12 @@ class DockerService {
         WorkingDir: '/tmp',
         Env: [
           'HOME=/tmp',
-          'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+          'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+          'PS1=user@codejoin:~$ ',
+          'TERM=xterm',
+          'SHELL=/bin/sh'
         ],
-        Cmd: ['/bin/sh'],
+        Cmd: ['/bin/sh', '-l'],
         HostConfig: {
           Memory: this.parseMemoryLimit(languageConfig.memoryLimit || '256m'),
           CpuQuota: Math.floor((languageConfig.cpuLimit || 0.5) * 100000),

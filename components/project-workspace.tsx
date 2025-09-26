@@ -130,6 +130,7 @@ function TerminalPanel({
   onClearExecutions = () => {},
   inputBuffer,
   onInputUpdate,
+  onExecuteInTerminal,
 }: {
   projectId: string;
   userId: string;
@@ -137,6 +138,7 @@ function TerminalPanel({
   onClearExecutions?: () => void;
   inputBuffer: string;
   onInputUpdate: (value: string) => void;
+  onExecuteInTerminal?: React.MutableRefObject<((file: ProjectNodeFromDB) => Promise<void>) | null>;
 }) {
   const {
     socket,
@@ -161,6 +163,7 @@ function TerminalPanel({
   const inputRef = useRef<HTMLInputElement>(null);
   const sessionIdRef = useRef<string | null>(null);
   const attemptedInitialStart = useRef(false);
+  const hasShownConnectionMessage = useRef(false);
 
   const appendRawOutput = useCallback((chunk: string) => {
     setTerminalOutput((prev) => prev + chunk);
@@ -174,7 +177,7 @@ function TerminalPanel({
     });
   }, []);
 
-  const initializeSession = useCallback(() => {
+  const initializeSession = useCallback((language?: string) => {
     if (
       !socket ||
       !projectId ||
@@ -187,8 +190,11 @@ function TerminalPanel({
 
     setIsStarting(true);
     setIsStopping(false);
-    appendStatusLine("Connecting to CodeJoin sandbox...");
-    startTerminalSession({ projectId, userId });
+    if (!hasShownConnectionMessage.current) {
+      appendStatusLine("Connecting to CodeJoin sandbox...");
+      hasShownConnectionMessage.current = true;
+    }
+    startTerminalSession({ projectId, userId, language });
   }, [
     appendStatusLine,
     isStarting,
@@ -236,6 +242,7 @@ function TerminalPanel({
     if (!activeSessionId) return;
 
     const payload = currentCommand.length > 0 ? `${currentCommand}\r` : "\r";
+    console.log('Sending terminal input:', { sessionId: activeSessionId, input: payload, raw: currentCommand });
     sendTerminalInput({ sessionId: activeSessionId, input: payload });
 
     if (currentCommand.trim().length > 0) {
@@ -280,7 +287,9 @@ function TerminalPanel({
       setIsTerminalReady(true);
       setIsStarting(false);
       setIsStopping(false);
-      appendStatusLine("Connected to sandbox session.");
+      if (hasShownConnectionMessage.current) {
+        appendStatusLine("Connected to sandbox session.");
+      }
     };
 
     const handleTerminalData = ({
@@ -292,6 +301,7 @@ function TerminalPanel({
     }) => {
       if (!sessionIdRef.current || incomingSessionId !== sessionIdRef.current)
         return;
+      console.log('Received terminal data:', { sessionId: incomingSessionId, chunk, length: chunk.length });
       appendRawOutput(chunk);
     };
 
@@ -372,16 +382,142 @@ function TerminalPanel({
     };
   }, [stopTerminalSession]);
 
+  // Execute code directly in the interactive terminal session
+  const executeCodeInTerminal = useCallback(async (file: ProjectNodeFromDB) => {
+    try {
+      // Detect language first
+      const { codeExecutionAPI } = await import('@/lib/api/codeExecution');
+      const detectedLanguage = codeExecutionAPI.detectLanguageFromFileName(file.name);
+
+      // Check if we need to start a session with specific language support
+      const needsSpecificContainer = detectedLanguage === 'c' || detectedLanguage === 'cpp' || detectedLanguage === 'java';
+
+      if (needsSpecificContainer && (!isTerminalReady || !sessionIdRef.current)) {
+        // Start a new terminal session with the appropriate language
+        appendStatusLine(`Starting ${detectedLanguage.toUpperCase()} environment...`);
+        initializeSession(detectedLanguage);
+
+        // Wait for the session to be ready
+        const maxWaitTime = 10000; // 10 seconds
+        const startTime = Date.now();
+
+        const waitForTerminal = () => {
+          return new Promise<void>((resolve, reject) => {
+            const checkReady = () => {
+              if (isTerminalReady && sessionIdRef.current) {
+                resolve();
+              } else if (Date.now() - startTime > maxWaitTime) {
+                reject(new Error("Terminal session timeout"));
+              } else {
+                setTimeout(checkReady, 500);
+              }
+            };
+            checkReady();
+          });
+        };
+
+        await waitForTerminal();
+      } else if (!isTerminalReady || !sessionIdRef.current) {
+        toast({
+          title: "Terminal not ready",
+          description: "Please wait for the terminal to connect before running code.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Clear any existing command
+      setCurrentCommand("");
+
+      // Save the file content to a temp file in the terminal
+      const filename = file.name;
+      const content = file.content ?? "";
+
+      // Create the file in the terminal using a simpler method
+      const lines = content.split('\n');
+
+      // Clear the file first
+      sendTerminalInput({ sessionId: sessionIdRef.current, input: `> ${filename}\r` });
+
+      // Add content line by line to avoid issues with special characters
+      lines.forEach((line, index) => {
+        setTimeout(() => {
+          if (!sessionIdRef.current) return;
+          const escapedLine = line.replace(/'/g, "'\"'\"'"); // Escape single quotes
+          sendTerminalInput({ sessionId: sessionIdRef.current, input: `echo '${escapedLine}' >> ${filename}\r` });
+
+          // Run the program after the last line is added
+          if (index === lines.length - 1) {
+            setTimeout(() => {
+              if (!sessionIdRef.current) return;
+
+              // Run the appropriate command based on language
+              let runCommand = "";
+              switch (detectedLanguage) {
+                case "python":
+                  runCommand = `python3 ${filename} 2>/dev/null || python ${filename}`;
+                  break;
+                case "javascript":
+                  runCommand = `node ${filename}`;
+                  break;
+                case "c":
+                  runCommand = `gcc -o program ${filename} 2>/dev/null && ./program || echo "C compiler not available in this container"`;
+                  break;
+                case "cpp":
+                  runCommand = `g++ -o program ${filename} 2>/dev/null && ./program || echo "C++ compiler not available in this container"`;
+                  break;
+                case "java":
+                  const className = filename.replace('.java', '');
+                  runCommand = `javac ${filename} 2>/dev/null && java ${className} || echo "Java compiler not available in this container"`;
+                  break;
+                case "shell":
+                case "sh":
+                  runCommand = `chmod +x ${filename} && ./${filename}`;
+                  break;
+                default:
+                  runCommand = `echo "Language ${detectedLanguage} not directly supported in terminal. File created as ${filename}"`;
+              }
+
+              sendTerminalInput({ sessionId: sessionIdRef.current, input: `${runCommand}\r` });
+            }, 200);
+          }
+        }, index * 10); // Small delay between lines
+      });
+
+    } catch (error: any) {
+      toast({
+        title: "Execution failed",
+        description: error.message || "Failed to execute code in terminal",
+        variant: "destructive",
+      });
+    }
+  }, [isTerminalReady, sendTerminalInput, toast, appendStatusLine, initializeSession]);
+
+  // Register the execution callback
+  useEffect(() => {
+    if (onExecuteInTerminal) {
+      console.log("Registering terminal execution callback");
+      onExecuteInTerminal.current = executeCodeInTerminal;
+    }
+  }, [onExecuteInTerminal, executeCodeInTerminal]);
+
   const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (!isTerminalReady) return;
 
-    if (event.key === "Enter") {
-      event.preventDefault();
-      handleCommandSubmit();
+    // Handle copy/paste functionality
+    if (event.ctrlKey && event.key.toLowerCase() === "v") {
+      // Allow default paste behavior
       return;
     }
 
     if (event.ctrlKey && event.key.toLowerCase() === "c") {
+      // If there's selected text, allow copy
+      const selection = window.getSelection();
+      if (selection && selection.toString().length > 0) {
+        return; // Allow default copy behavior
+      }
+
+      // Otherwise, send interrupt signal to terminal
       event.preventDefault();
       const activeSessionId = sessionIdRef.current;
       if (activeSessionId) {
@@ -392,23 +528,25 @@ function TerminalPanel({
       return;
     }
 
+    if (event.key === "Enter") {
+      event.preventDefault();
+      handleCommandSubmit();
+      return;
+    }
+
+    // Only send arrow keys for command history if there's no active program waiting for input
+    // We can detect this by checking if the current command is empty and we're at a prompt
     if (event.key === "ArrowUp") {
       event.preventDefault();
       handleHistoryNavigation("up");
-      const activeSessionId = sessionIdRef.current;
-      if (activeSessionId) {
-        sendTerminalInput({ sessionId: activeSessionId, input: "\u001b[A" });
-      }
+      // Don't send arrow key sequences to the terminal to avoid interfering with programs
       return;
     }
 
     if (event.key === "ArrowDown") {
       event.preventDefault();
       handleHistoryNavigation("down");
-      const activeSessionId = sessionIdRef.current;
-      if (activeSessionId) {
-        sendTerminalInput({ sessionId: activeSessionId, input: "\u001b[B" });
-      }
+      // Don't send arrow key sequences to the terminal to avoid interfering with programs
       return;
     }
 
@@ -563,13 +701,16 @@ function TerminalPanel({
         ))}
 
         {/* Terminal output stream */}
-        <div className="space-y-1">
+        <div className="flex-1 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
           {terminalOutput ? (
-            <pre className="text-[#cccccc] whitespace-pre-wrap leading-relaxed">
+            <pre className="text-[#cccccc] whitespace-pre-wrap leading-relaxed font-mono text-sm select-text cursor-text user-select-text"
+                 style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+                 onMouseDown={(e) => e.stopPropagation()}
+                 onMouseUp={(e) => e.stopPropagation()}>
               {terminalOutput}
             </pre>
           ) : (
-            <div className="text-xs text-zinc-400 italic">
+            <div className="text-xs text-zinc-400 italic font-mono">
               {isTerminalReady
                 ? "Session ready. Type a command to begin."
                 : "Terminal output will appear here once the sandbox is ready."}
@@ -578,8 +719,8 @@ function TerminalPanel({
         </div>
 
         {/* Current command input line */}
-        <div className="flex items-center mt-2">
-          <span className="text-[#4ec9b0] mr-2 select-none">
+        <div className="flex items-center mt-2 border-t border-zinc-700 pt-2">
+          <span className="text-[#4ec9b0] mr-2 select-none font-mono text-sm">
             user@codejoin:~$
           </span>
           <div className="flex-1 relative">
@@ -591,25 +732,32 @@ function TerminalPanel({
               onKeyDown={handleInputKeyDown}
               onFocus={() => setIsInputFocused(true)}
               onBlur={() => setIsInputFocused(false)}
+              onPaste={(e) => {
+                // Allow paste to work normally
+                const pastedText = e.clipboardData.getData('text');
+                setCurrentCommand(prev => prev + pastedText);
+                e.preventDefault();
+              }}
               disabled={!isTerminalReady || isStarting || isStopping}
-              className="w-full bg-transparent border-none outline-none text-[#cccccc] font-mono text-sm"
-              placeholder={
-                isTerminalReady
-                  ? "Type a command..."
-                  : isStarting
-                  ? "Starting sandbox..."
-                  : "Connect the terminal to start issuing commands"
-              }
+              className="w-full bg-transparent border-none outline-none text-[#cccccc] font-mono text-sm caret-[#4ec9b0]"
+              placeholder=""
               autoFocus={isTerminalReady}
             />
-            {/* Cursor simulation */}
-            {isInputFocused &&
-              !(!isTerminalReady || isStarting || isStopping) && (
-                <div
-                  className="absolute top-0 h-4 w-0.5 bg-[#cccccc] animate-pulse"
-                  style={{ left: `${currentCommand.length * 0.6}em` }}
-                />
-              )}
+            {isTerminalReady && isInputFocused && (
+              <div
+                className="absolute top-0 w-2 h-5 bg-[#4ec9b0] pointer-events-none animate-blink"
+                style={{
+                  left: `${currentCommand.length * 8.4}px`
+                }}
+              />
+            )}
+            {!isTerminalReady && (
+              <div className="text-xs text-zinc-500 font-mono">
+                {isStarting
+                  ? "Starting sandbox..."
+                  : "Connect the terminal to start issuing commands"}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -718,6 +866,7 @@ export default function ProjectWorkspace({
   const [consoleOutputs, setConsoleOutputs] = useState<ExecutionResult[]>([]);
   const [problems, setProblems] = useState<Problem[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
+  const terminalExecuteCallbackRef = useRef<((file: ProjectNodeFromDB) => Promise<void>) | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [inputBuffer, setInputBuffer] = useState("");
 
@@ -829,10 +978,34 @@ export default function ProjectWorkspace({
       return;
     }
 
-    // For all code files, trigger the CodeEditor execution which uses real backend
-    // This will be handled by the CodeEditor component's executeCode function
-    const event = new CustomEvent("codeEditorExecute");
-    window.dispatchEvent(event);
+    // Check if we should use terminal execution for interactive programs
+    const codeContent = currentFile.content ?? "";
+    const needsInteractiveInput =
+      codeContent.includes('scanf') ||
+      codeContent.includes('input(') ||
+      codeContent.includes('Scanner') ||
+      codeContent.includes('nextInt()') ||
+      codeContent.includes('cin >>') ||
+      codeContent.includes('readline()');
+
+    if (needsInteractiveInput && terminalExecuteCallbackRef.current && typeof terminalExecuteCallbackRef.current === 'function') {
+      // Use terminal execution for programs that need user input
+      setActiveBottomTab("terminal");
+      try {
+        await terminalExecuteCallbackRef.current(currentFile);
+      } catch (error: any) {
+        console.error("Terminal execution error:", error);
+        toast({
+          title: "Execution failed",
+          description: error.message || "Failed to execute code in terminal",
+          variant: "destructive",
+        });
+      }
+    } else {
+      // Use regular CodeEditor execution for programs that don't need interactive input
+      const event = new CustomEvent("codeEditorExecute");
+      window.dispatchEvent(event);
+    }
   };
 
   const handleSendAIMessage = () => {
@@ -841,6 +1014,7 @@ export default function ProjectWorkspace({
       setAiMessage("");
     }
   };
+
 
   // Handle execution results from CodeEditor
   const handleExecutionResult = (rawResult: ExecutionResult) => {
@@ -1548,6 +1722,7 @@ export default function ProjectWorkspace({
                       onClearExecutions={() => setConsoleOutputs([])}
                       inputBuffer={inputBuffer}
                       onInputUpdate={setInputBuffer}
+                      onExecuteInTerminal={terminalExecuteCallbackRef}
                     />
                   </TabsContent>
 
