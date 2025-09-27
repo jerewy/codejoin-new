@@ -1525,3 +1525,7 @@
 {"executionTime":369,"exitCode":0,"language":"python","level":"info","message":"Code execution completed","requestId":"a7f77ab4-5498-4457-a61f-9bd122c3e2dd","service":"code-execution-backend","success":true,"timestamp":"2025-09-26T07:42:05.326Z"}
 {"codeLength":1269,"inputLength":0,"language":"c","level":"info","message":"Code execution request","requestId":"288ff00f-3ecb-4a38-b8f5-e5f20ef830e7","service":"code-execution-backend","timeout":30000,"timestamp":"2025-09-26T07:45:45.651Z"}
 {"executionTime":419,"exitCode":0,"language":"c","level":"info","message":"Code execution completed","requestId":"288ff00f-3ecb-4a38-b8f5-e5f20ef830e7","service":"code-execution-backend","success":true,"timestamp":"2025-09-26T07:45:46.167Z"}
+{"level":"info","message":"Docker service initialized","options":"{\n  \"socketPath\": \"//./pipe/docker_engine\"\n}","platform":"win32","service":"code-execution-backend","timestamp":"2025-09-26T08:41:05.220Z"}
+{"level":"info","message":"Code execution backend started on port 3001","service":"code-execution-backend","timestamp":"2025-09-26T08:41:05.237Z"}
+{"level":"info","message":"Environment: production","service":"code-execution-backend","timestamp":"2025-09-26T08:41:05.238Z"}
+{"level":"info","message":"Health check: http://localhost:3001/health","service":"code-execution-backend","timestamp":"2025-09-26T08:41:05.238Z"}

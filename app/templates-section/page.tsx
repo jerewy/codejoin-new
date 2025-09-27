@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { getSupabaseClient } from "@/lib/supabaseClient";
-import { starterProjects, featuredStarterProjects, starterProjectLanguages } from "@/lib/data/starter-projects";
+import {
+  starterProjects,
+  featuredStarterProjects,
+  starterProjectLanguages,
+} from "@/lib/data/starter-projects";
 import TemplateCard from "@/components/template-card";
 import TemplatePreview from "@/components/template-preview";
 import { Button } from "@/components/ui/button";
@@ -36,11 +40,15 @@ const DEFAULT_TAB = "starter";
 
 export default function LibraryPage() {
   const [activeTab, setActiveTab] = useState<string>(DEFAULT_TAB);
-  const [languageFilter, setLanguageFilter] = useState<string>(DEFAULT_LANGUAGE);
+  const [languageFilter, setLanguageFilter] =
+    useState<string>(DEFAULT_LANGUAGE);
   const [searchTerm, setSearchTerm] = useState<string>("");
-  const [selectedTemplate, setSelectedTemplate] = useState<TemplateSummary | null>(null);
+  const [selectedTemplate, setSelectedTemplate] =
+    useState<TemplateSummary | null>(null);
 
-  const [communityTemplates, setCommunityTemplates] = useState<TemplateSummary[]>([]);
+  const [communityTemplates, setCommunityTemplates] = useState<
+    TemplateSummary[]
+  >([]);
   const [isLoadingCommunity, setIsLoadingCommunity] = useState<boolean>(false);
   const [communityError, setCommunityError] = useState<string | null>(null);
   const supabase = getSupabaseClient();
@@ -53,7 +61,7 @@ export default function LibraryPage() {
         name: language.name,
       })),
     ],
-    [],
+    []
   );
 
   const normalisedSearch = searchTerm.trim().toLowerCase();
@@ -61,7 +69,9 @@ export default function LibraryPage() {
   const filteredStarterProjects = useMemo(() => {
     return starterProjects.filter((template) => {
       const matchesLanguage =
-        languageFilter === DEFAULT_LANGUAGE || template.id === languageFilter || template.language.toLowerCase() === languageFilter.toLowerCase();
+        languageFilter === DEFAULT_LANGUAGE ||
+        template.id === languageFilter ||
+        template.language.toLowerCase() === languageFilter.toLowerCase();
 
       if (!matchesLanguage) {
         return false;
@@ -74,7 +84,9 @@ export default function LibraryPage() {
       return (
         template.name.toLowerCase().includes(normalisedSearch) ||
         template.description.toLowerCase().includes(normalisedSearch) ||
-        template.tags.some((tag) => tag.toLowerCase().includes(normalisedSearch))
+        template.tags.some((tag) =>
+          tag.toLowerCase().includes(normalisedSearch)
+        )
       );
     });
   }, [languageFilter, normalisedSearch]);
@@ -84,7 +96,9 @@ export default function LibraryPage() {
     setCommunityError(null);
 
     if (!supabase) {
-      setCommunityError("Community templates require Supabase to be configured.");
+      setCommunityError(
+        "Community templates require Supabase to be configured."
+      );
       setIsLoadingCommunity(false);
       return;
     }
@@ -92,7 +106,9 @@ export default function LibraryPage() {
     try {
       const { data, error } = await supabase
         .from("projects")
-        .select("id,name,description,language,updated_at,visibility,downloads,rating,tags,owner_name")
+        .select(
+          "id,name,description,language,updated_at,visibility,downloads,rating,tags,owner_name"
+        )
         .eq("visibility", "public")
         .order("updated_at", { ascending: false })
         .limit(40);
@@ -101,11 +117,12 @@ export default function LibraryPage() {
         throw error;
       }
 
-      const rows = ((data ?? []) as CommunityTemplateRow[]);
+      const rows = (data ?? []) as CommunityTemplateRow[];
       const mapped: TemplateSummary[] = rows.map((row) => ({
         id: row.id,
         name: row.name,
-        description: row.description ?? "Public project shared by the community.",
+        description:
+          row.description ?? "Public project shared by the community.",
         category: row.language,
         difficulty: "Community",
         downloads: row.downloads ?? 0,
@@ -120,7 +137,11 @@ export default function LibraryPage() {
 
       setCommunityTemplates(mapped);
     } catch (error) {
-      setCommunityError(error instanceof Error ? error.message : "Failed to load community templates");
+      setCommunityError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load community templates"
+      );
       setCommunityTemplates([]);
     } finally {
       setIsLoadingCommunity(false);
@@ -134,7 +155,8 @@ export default function LibraryPage() {
   const filteredCommunityTemplates = useMemo(() => {
     return communityTemplates.filter((template) => {
       const matchesLanguage =
-        languageFilter === DEFAULT_LANGUAGE || template.language?.toLowerCase() === languageFilter.toLowerCase();
+        languageFilter === DEFAULT_LANGUAGE ||
+        template.language?.toLowerCase() === languageFilter.toLowerCase();
 
       if (!matchesLanguage) {
         return false;
@@ -172,11 +194,11 @@ export default function LibraryPage() {
             <div>
               <h1 className="text-xl font-bold">Code Library</h1>
               <p className="text-sm text-muted-foreground">
-                Starter kits for all 11 supported languages plus community-made projects.
+                Starter kits for all 11 supported languages plus community-made
+                projects.
               </p>
             </div>
           </div>
-          <NavLinks />
         </div>
       </header>
 
@@ -196,7 +218,9 @@ export default function LibraryPage() {
               {languages.map((language) => (
                 <Button
                   key={language.id}
-                  variant={languageFilter === language.id ? "default" : "outline"}
+                  variant={
+                    languageFilter === language.id ? "default" : "outline"
+                  }
                   size="sm"
                   onClick={() => setLanguageFilter(language.id)}
                 >
@@ -210,11 +234,17 @@ export default function LibraryPage() {
             <CardContent className="flex h-full flex-col justify-between gap-3 py-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Sparkles className="h-4 w-4 text-primary" />
-                <span>{starterProjects.length} starter kits curated by the CodeJoin team</span>
+                <span>
+                  {starterProjects.length} starter kits curated by the CodeJoin
+                  team
+                </span>
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Sparkles className="h-4 w-4 text-primary" />
-                <span>{communityTemplates.length} public projects shared by the community</span>
+                <span>
+                  {communityTemplates.length} public projects shared by the
+                  community
+                </span>
               </div>
               <div className="flex justify-end">
                 <Link href="/new-project">
@@ -225,14 +255,23 @@ export default function LibraryPage() {
           </Card>
         </section>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="space-y-6"
+        >
           <div className="flex items-center justify-between">
             <TabsList>
               <TabsTrigger value="starter">Starter Kits</TabsTrigger>
               <TabsTrigger value="community">Community Showcase</TabsTrigger>
             </TabsList>
             {activeTab === "community" && (
-              <Button variant="outline" size="sm" onClick={loadCommunityTemplates} disabled={isLoadingCommunity}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadCommunityTemplates}
+                disabled={isLoadingCommunity}
+              >
                 <RefreshCcw className="mr-2 h-4 w-4" />
                 Refresh
               </Button>
@@ -266,7 +305,11 @@ export default function LibraryPage() {
               </div>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {filteredStarterProjects.map((template) => (
-                  <TemplateCard key={template.id} template={template} onPreview={handlePreview} />
+                  <TemplateCard
+                    key={template.id}
+                    template={template}
+                    onPreview={handlePreview}
+                  />
                 ))}
               </div>
               {filteredStarterProjects.length === 0 && (
@@ -285,7 +328,12 @@ export default function LibraryPage() {
                 <CardContent className="py-6">
                   <div className="flex flex-col items-center gap-3 text-sm text-muted-foreground">
                     <p>{communityError}</p>
-                    <Button variant="outline" size="sm" onClick={loadCommunityTemplates} disabled={isLoadingCommunity}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={loadCommunityTemplates}
+                      disabled={isLoadingCommunity}
+                    >
                       <RefreshCcw className="mr-2 h-4 w-4" />
                       Try again
                     </Button>
@@ -296,17 +344,24 @@ export default function LibraryPage() {
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {filteredCommunityTemplates.map((template) => (
-                <TemplateCard key={template.id} template={template} onPreview={handlePreview} />
+                <TemplateCard
+                  key={template.id}
+                  template={template}
+                  onPreview={handlePreview}
+                />
               ))}
             </div>
 
-            {!communityError && !isLoadingCommunity && filteredCommunityTemplates.length === 0 && (
-              <Card>
-                <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                  No public templates for this language yet. Be the first to share one!
-                </CardContent>
-              </Card>
-            )}
+            {!communityError &&
+              !isLoadingCommunity &&
+              filteredCommunityTemplates.length === 0 && (
+                <Card>
+                  <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                    No public templates for this language yet. Be the first to
+                    share one!
+                  </CardContent>
+                </Card>
+              )}
 
             {isLoadingCommunity && (
               <Card>
@@ -320,10 +375,11 @@ export default function LibraryPage() {
       </main>
 
       {selectedTemplate && (
-        <TemplatePreview template={selectedTemplate} onClose={handleClosePreview} />
+        <TemplatePreview
+          template={selectedTemplate}
+          onClose={handleClosePreview}
+        />
       )}
     </div>
   );
 }
-
-

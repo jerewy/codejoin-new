@@ -31,3 +31,8 @@
 {"image":"node:18-alpine","level":"info","message":"Started interactive terminal container","service":"code-execution-backend","sessionId":"209dc4a2-14e1-4994-8813-5a874e53ef65","timestamp":"2025-09-26T07:34:28.677Z"}
 {"image":"node:18-alpine","level":"info","message":"Started interactive terminal container","service":"code-execution-backend","sessionId":"cf7b9726-f8e5-4fc4-bf4f-5aef4db2ba66","timestamp":"2025-09-26T07:38:01.546Z"}
 {"image":"node:18-alpine","level":"info","message":"Started interactive terminal container","service":"code-execution-backend","sessionId":"797f9689-f523-4806-8bf2-c6ca4b622981","timestamp":"2025-09-26T07:38:50.395Z"}
+{"level":"info","message":"Docker service initialized","options":"{\n  \"socketPath\": \"//./pipe/docker_engine\"\n}","platform":"win32","service":"code-execution-backend","timestamp":"2025-09-26T08:41:31.614Z"}
+{"error":"connect ENOENT //./pipe/docker_engine","level":"error","message":"Docker connection test failed","service":"code-execution-backend","timestamp":"2025-09-26T08:50:23.658Z"}
+{"level":"error","message":"Failed to start interactive container: Docker connection failed: connect ENOENT //./pipe/docker_engine","service":"code-execution-backend","sessionId":"7d65b05d-e536-4c6c-8254-cc6f72f94b3f","timestamp":"2025-09-26T08:50:23.665Z"}
+{"error":"connect ENOENT //./pipe/docker_engine","level":"error","message":"Docker connection test failed","service":"code-execution-backend","timestamp":"2025-09-26T09:02:36.087Z"}
+{"level":"error","message":"Failed to start interactive container: Docker connection failed: connect ENOENT //./pipe/docker_engine","service":"code-execution-backend","sessionId":"3a9cb911-a91e-4467-b1dd-6f64468debf1","timestamp":"2025-09-26T09:02:36.095Z"}

@@ -9,19 +9,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import {
-  ArrowLeft,
-  Plus,
-  X,
-  Github,
-  GitBranch,
-  Folder,
-} from "lucide-react";
+import { ArrowLeft, Plus, X, Github, GitBranch, Folder } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { TemplateNode } from "@/lib/types";
-import { starterProjects, starterProjectLanguages, type StarterProject } from "@/lib/data/starter-projects";
+import {
+  starterProjects,
+  starterProjectLanguages,
+  type StarterProject,
+} from "@/lib/data/starter-projects";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
 
@@ -203,7 +200,8 @@ export default function NewProjectPage() {
       toast({
         variant: "destructive",
         title: "Template not found",
-        description: "We couldn't load that template. Please choose another one.",
+        description:
+          "We couldn't load that template. Please choose another one.",
       });
       return;
     }
@@ -224,7 +222,6 @@ export default function NewProjectPage() {
           <Link href="/dashboard">
             <Button variant="ghost" size="sm" className="gap-2">
               <ArrowLeft className="h-4 w-4" />
-              Back
             </Button>
           </Link>
         }
@@ -237,7 +234,7 @@ export default function NewProjectPage() {
           </>
         }
         title="Create a new project"
-        description="Start from a template, import from GitHub, or configure everything manually."
+        description="Start from a template or configure everything manually."
       />
 
       <div className="container py-8 max-w-4xl">
@@ -520,5 +517,3 @@ export default function NewProjectPage() {
     </div>
   );
 }
-
-

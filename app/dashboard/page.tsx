@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -55,6 +56,62 @@ const STATUS_OPTIONS = ["active", "planning", "completed", "archived"] as const;
 const UserDropdown = dynamic(() => import("@/components/user-dropdown"), {
   ssr: false,
 });
+
+function DashboardSkeleton() {
+  return (
+    <div
+      className="flex min-h-screen flex-col gap-6 bg-background p-6"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-12 w-12 rounded-full" />
+          <div className="space-y-2">
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+        </div>
+        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+          <Skeleton className="h-10 w-full sm:w-72" />
+          <Skeleton className="h-10 w-full sm:w-36" />
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Skeleton key={index} className="h-32 w-full" />
+        ))}
+      </div>
+
+      <div className="grid flex-1 gap-6 lg:grid-cols-[2fr,1fr]">
+        <div className="space-y-4">
+          <Skeleton className="h-6 w-44" />
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <Skeleton key={index} className="h-44 w-full" />
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <Skeleton className="h-6 w-32" />
+          <div className="space-y-4 rounded-lg border border-dashed border-border p-4">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div key={index} className="flex items-start gap-3">
+                <Skeleton className="h-10 w-10 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-full" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface DeleteConfirmationProps {
   isOpen: boolean;
@@ -166,7 +223,9 @@ export default function DashboardPage() {
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [openDropdowns, setOpenDropdowns] = useState<Set<string>>(new Set());
-  const [pendingProjects, setPendingProjects] = useState<Set<string>>(new Set());
+  const [pendingProjects, setPendingProjects] = useState<Set<string>>(
+    new Set()
+  );
   const supabase = getSupabaseClient();
 
   if (!supabase) {
@@ -175,7 +234,8 @@ export default function DashboardPage() {
         <div className="max-w-md text-center space-y-4">
           <h1 className="text-2xl font-semibold">Authentication unavailable</h1>
           <p className="text-muted-foreground">
-            Supabase environment variables are not configured. Configure them to access the dashboard.
+            Supabase environment variables are not configured. Configure them to
+            access the dashboard.
           </p>
           <Button asChild>
             <Link href="/">Return home</Link>
@@ -293,56 +353,59 @@ export default function DashboardPage() {
     setIsDeleting(true);
 
     try {
-      console.log('Attempting to delete project:', projectToDelete.id);
+      console.log("Attempting to delete project:", projectToDelete.id);
 
       // Check if user is authenticated
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
       if (authError || !user) {
-        throw new Error('You must be logged in to delete a project');
+        throw new Error("You must be logged in to delete a project");
       }
 
       // Verify user owns this project
       const { data: projectCheck, error: checkError } = await supabase
-        .from('projects')
-        .select('user_id')
-        .eq('id', projectToDelete.id)
+        .from("projects")
+        .select("user_id")
+        .eq("id", projectToDelete.id)
         .single();
 
       if (checkError) {
-        console.error('Error checking project ownership:', checkError);
-        throw new Error('Failed to verify project ownership');
+        console.error("Error checking project ownership:", checkError);
+        throw new Error("Failed to verify project ownership");
       }
 
       if (projectCheck.user_id !== user.id) {
-        throw new Error('You can only delete your own projects');
+        throw new Error("You can only delete your own projects");
       }
 
       // First, delete all project nodes (files and folders)
       const { error: nodesError } = await supabase
-        .from('project_nodes')
+        .from("project_nodes")
         .delete()
-        .eq('project_id', projectToDelete.id);
+        .eq("project_id", projectToDelete.id);
 
       if (nodesError) {
-        console.error('Error deleting project nodes:', nodesError);
+        console.error("Error deleting project nodes:", nodesError);
         throw nodesError;
       }
 
       // Then delete the project itself
       const { error: projectError } = await supabase
-        .from('projects')
+        .from("projects")
         .delete()
-        .eq('id', projectToDelete.id);
+        .eq("id", projectToDelete.id);
 
       if (projectError) {
-        console.error('Error deleting project:', projectError);
+        console.error("Error deleting project:", projectError);
         throw projectError;
       }
 
-      console.log('Project deleted successfully');
+      console.log("Project deleted successfully");
 
       // Remove project from local state
-      setProjects(projects.filter(p => p.id !== projectToDelete.id));
+      setProjects(projects.filter((p) => p.id !== projectToDelete.id));
 
       // Close dialog and reset state
       setDeleteDialogOpen(false);
@@ -350,10 +413,10 @@ export default function DashboardPage() {
 
       // Show success message
       console.log(`Project "${projectToDelete.name}" deleted successfully`);
-
     } catch (error) {
-      console.error('Error deleting project:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error("Error deleting project:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error occurred";
       alert(`Failed to delete project: ${errorMessage}`);
     } finally {
       setIsDeleting(false);
@@ -362,7 +425,7 @@ export default function DashboardPage() {
 
   // Open delete confirmation dialog
   const openDeleteDialog = (project: Project) => {
-    console.log('Opening delete dialog for project:', project);
+    console.log("Opening delete dialog for project:", project);
     // Close the dropdown first
     setOpenDropdowns(new Set());
     setTimeout(() => {
@@ -373,7 +436,7 @@ export default function DashboardPage() {
 
   // Handle dropdown open state
   const handleDropdownOpenChange = (projectId: string, open: boolean) => {
-    setOpenDropdowns(prev => {
+    setOpenDropdowns((prev) => {
       const next = new Set(prev);
       if (open) {
         next.add(projectId);
@@ -485,7 +548,7 @@ export default function DashboardPage() {
   };
 
   if (loading) {
-    return <div>Loading your dashboard...</div>;
+    return <DashboardSkeleton />;
   }
 
   const filteredProjects = projects.filter((project) => {
@@ -502,8 +565,12 @@ export default function DashboardPage() {
     return matchesSearch && matchesFilter;
   });
 
-  const activeProjectsCount = projects.filter((p) => p.status === "active").length;
-  const collaborativeProjectsCount = projects.filter((p) => p.collaborators > 1).length;
+  const activeProjectsCount = projects.filter(
+    (p) => p.status === "active"
+  ).length;
+  const collaborativeProjectsCount = projects.filter(
+    (p) => p.collaborators > 1
+  ).length;
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -525,7 +592,6 @@ export default function DashboardPage() {
       />
 
       <div className="flex-1 container py-6">
-
         {/* Quick Stats */}
         <QuickStats projects={projects} />
 
@@ -554,7 +620,9 @@ export default function DashboardPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => setSelectedFilter("all")}>
+                      <DropdownMenuItem
+                        onClick={() => setSelectedFilter("all")}
+                      >
                         All Projects
                       </DropdownMenuItem>
                       <DropdownMenuItem
@@ -580,7 +648,9 @@ export default function DashboardPage() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                   <Button
-                    variant={selectedFilter === "starred" ? "default" : "outline"}
+                    variant={
+                      selectedFilter === "starred" ? "default" : "outline"
+                    }
                     size="sm"
                     onClick={() =>
                       setSelectedFilter((current) =>
@@ -689,7 +759,9 @@ export default function DashboardPage() {
                             </span>
                           </Button>
                           <Select
-                            value={(project.status as string | undefined) ?? "active"}
+                            value={
+                              (project.status as string | undefined) ?? "active"
+                            }
                             onValueChange={(value) =>
                               handleStatusChange(project, value)
                             }
@@ -742,27 +814,30 @@ export default function DashboardPage() {
                                   Open
                                 </Link>
                               </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => {
-                              if (typeof navigator !== "undefined" && navigator.share) {
-                                navigator.share({
-                                  title: project.name,
-                                  text:
-                                    project.description ||
-                                    "Check out this project",
-                                  url: `${window.location.origin}/project/${project.id}`,
-                                });
-                              } else if (
-                                typeof navigator !== "undefined" &&
-                                navigator.clipboard
-                              ) {
-                                navigator.clipboard.writeText(
-                                  `${window.location.origin}/project/${project.id}`
-                                );
-                                alert("Project link copied to clipboard!");
-                              }
-                            }}
-                          >
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  if (
+                                    typeof navigator !== "undefined" &&
+                                    navigator.share
+                                  ) {
+                                    navigator.share({
+                                      title: project.name,
+                                      text:
+                                        project.description ||
+                                        "Check out this project",
+                                      url: `${window.location.origin}/project/${project.id}`,
+                                    });
+                                  } else if (
+                                    typeof navigator !== "undefined" &&
+                                    navigator.clipboard
+                                  ) {
+                                    navigator.clipboard.writeText(
+                                      `${window.location.origin}/project/${project.id}`
+                                    );
+                                    alert("Project link copied to clipboard!");
+                                  }
+                                }}
+                              >
                                 <Share2 className="h-4 w-4 mr-2" />
                                 Share
                               </DropdownMenuItem>
@@ -777,7 +852,10 @@ export default function DashboardPage() {
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  console.log('Delete button clicked!', project);
+                                  console.log(
+                                    "Delete button clicked!",
+                                    project
+                                  );
                                   openDeleteDialog(project);
                                 }}
                               >
@@ -882,7 +960,10 @@ export default function DashboardPage() {
                     </p>
                   </div>
                   <Badge variant="outline" className="text-xs">
-                    {projects.reduce((sum, p) => sum + (p.collaborators || 0), 0)}
+                    {projects.reduce(
+                      (sum, p) => sum + (p.collaborators || 0),
+                      0
+                    )}
                   </Badge>
                 </div>
               </CardContent>

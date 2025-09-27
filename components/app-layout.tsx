@@ -6,6 +6,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { LoadingScreen } from "@/components/LoadingScreen";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { Button } from "@/components/button";
 import Link from "next/link";
@@ -75,11 +76,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // Show loading during hydration to prevent mismatch
   if (!isHydrated) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-muted">
-        <div className="text-center">
-          <h1 className="text-2xl font-semibold mb-4">Loading...</h1>
-        </div>
-      </div>
+      <LoadingScreen
+        message="Reconnecting to your workspace…"
+        description="Hang tight while we restore your dashboard state."
+      />
     );
   }
 

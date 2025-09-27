@@ -69,7 +69,7 @@ export function RouteChangeIndicator() {
           )}
         />
         <span className="text-sm font-medium text-muted-foreground">
-          Loading...
+          Syncing your workspace…
         </span>
       </div>
     </div>
