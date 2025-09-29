@@ -238,6 +238,36 @@ function TerminalPanel({
   }, [appendStatusLine, stopTerminalSession]);
 
   const handleCommandSubmit = useCallback(() => {
+    const trimmedCommand = currentCommand.trim();
+    const [commandKeyword, ...restTokens] = trimmedCommand.split(/\s+/);
+    const isInputCommand = commandKeyword?.toLowerCase() === "input";
+
+    if (isInputCommand) {
+      const argumentStartIndex = currentCommand.indexOf(" ");
+      const hasArgument = argumentStartIndex !== -1;
+      const rawValue = hasArgument ? currentCommand.slice(argumentStartIndex + 1) : "";
+      const normalizedValue = rawValue.trim();
+      const argumentKeyword = normalizedValue.split(/\s+/)[0]?.toLowerCase();
+
+      if (!hasArgument || normalizedValue.length === 0) {
+        appendStatusLine("[input] Provide a value or use `input clear` to reset the buffer.");
+      } else if (argumentKeyword === "clear" && restTokens.length === 1) {
+        onInputUpdate("");
+        appendStatusLine("[input] Execution input buffer cleared.");
+      } else {
+        onInputUpdate(rawValue);
+        appendStatusLine(`[input] Execution input buffer set (${rawValue.length} characters).`);
+      }
+
+      if (trimmedCommand.length > 0) {
+        setCommandHistory((prev) => [...prev, currentCommand]);
+      }
+
+      setCurrentCommand("");
+      setHistoryIndex(null);
+      return;
+    }
+
     const activeSessionId = sessionIdRef.current;
     if (!activeSessionId) return;
 
@@ -245,13 +275,18 @@ function TerminalPanel({
     console.log('Sending terminal input:', { sessionId: activeSessionId, input: payload, raw: currentCommand });
     sendTerminalInput({ sessionId: activeSessionId, input: payload });
 
-    if (currentCommand.trim().length > 0) {
+    if (trimmedCommand.length > 0) {
       setCommandHistory((prev) => [...prev, currentCommand]);
     }
 
     setCurrentCommand("");
     setHistoryIndex(null);
-  }, [currentCommand, sendTerminalInput]);
+  }, [
+    appendStatusLine,
+    currentCommand,
+    onInputUpdate,
+    sendTerminalInput,
+  ]);
 
   const handleHistoryNavigation = useCallback(
     (direction: "up" | "down") => {
@@ -560,6 +595,7 @@ function TerminalPanel({
         "docker",
         "ls",
         "pwd",
+        "input",
       ];
       const matches = availableCommands.filter((cmd) =>
         cmd.startsWith(currentCommand)
