@@ -415,6 +415,7 @@ function TerminalPanel({
   type LanguageSupportResult = {
     status: CommandAvailability;
     command?: string;
+    reason?: string;
   };
 
   const ensureLanguageSupport = useCallback(
@@ -426,41 +427,60 @@ function TerminalPanel({
         case "c": {
           const gccStatus = await verifyCommandAvailability(sessionId, "gcc");
           if (gccStatus === "missing") {
+            const reason =
+              "The interactive sandbox does not have GCC installed.";
             appendStatusLine(
               "C compiler not available in this sandbox. Falling back to standard execution."
             );
-          } else if (gccStatus === "unknown") {
+            return { status: gccStatus, command: "gcc", reason };
+          }
+          if (gccStatus === "unknown") {
+            const reason =
+              "Could not confirm GCC availability in the interactive sandbox.";
             appendStatusLine(
               "[warn] Could not confirm GCC availability in the interactive sandbox."
             );
+            return { status: gccStatus, command: "gcc", reason };
           }
           return { status: gccStatus, command: "gcc" };
         }
         case "cpp": {
           const gppStatus = await verifyCommandAvailability(sessionId, "g++");
           if (gppStatus === "missing") {
+            const reason =
+              "The interactive sandbox does not have G++ installed.";
             appendStatusLine(
               "C++ compiler not available in this sandbox. Falling back to standard execution."
             );
-          } else if (gppStatus === "unknown") {
+            return { status: gppStatus, command: "g++", reason };
+          }
+          if (gppStatus === "unknown") {
+            const reason =
+              "Could not confirm G++ availability in the interactive sandbox.";
             appendStatusLine(
               "[warn] Could not confirm G++ availability in the interactive sandbox."
             );
+            return { status: gppStatus, command: "g++", reason };
           }
           return { status: gppStatus, command: "g++" };
         }
         case "java": {
           const javacStatus = await verifyCommandAvailability(sessionId, "javac");
           if (javacStatus === "missing") {
+            const reason =
+              "The interactive sandbox does not have the Java compiler installed.";
             appendStatusLine(
               "Java compiler not available in this sandbox. Falling back to standard execution."
             );
-            return { status: "missing", command: "javac" };
+            return { status: "missing", command: "javac", reason };
           }
           if (javacStatus === "unknown") {
+            const reason =
+              "Could not confirm the Java compiler in the interactive sandbox.";
             appendStatusLine(
               "[warn] Could not confirm the Java compiler in the interactive sandbox."
             );
+            return { status: "unknown", command: "javac", reason };
           }
 
           const javaStatus =
@@ -469,16 +489,23 @@ function TerminalPanel({
               : javacStatus;
 
           if (javaStatus === "missing") {
+            const reason =
+              "The interactive sandbox does not have the Java runtime installed.";
             appendStatusLine(
               "Java runtime not available in this sandbox. Falling back to standard execution."
             );
-          } else if (javaStatus === "unknown") {
+            return { status: javaStatus, command: "java", reason };
+          }
+          if (javaStatus === "unknown") {
+            const reason =
+              "Could not confirm the Java runtime in the interactive sandbox.";
             appendStatusLine(
               "[warn] Could not confirm the Java runtime in the interactive sandbox."
             );
+            return { status: javaStatus, command: "java", reason };
           }
 
-          return { status: javaStatus, command: javaStatus === "missing" ? "java" : "javac" };
+          return { status: javaStatus, command: "javac" };
         }
         default:
           return { status: "available" };
@@ -899,11 +926,15 @@ function TerminalPanel({
             detectedLanguage
           );
 
-          if (languageSupport.status === "missing") {
+          if (languageSupport.status !== "available") {
             const runtimeError = new Error("TERMINAL_RUNTIME_UNAVAILABLE");
-            (runtimeError as Error & { context?: Record<string, unknown> }).context = {
+            (runtimeError as Error & {
+              context?: Record<string, unknown>;
+            }).context = {
               language: detectedLanguage,
               command: languageSupport.command,
+              reason: languageSupport.reason,
+              status: languageSupport.status,
             };
             throw runtimeError;
           }
@@ -1549,7 +1580,14 @@ export default function ProjectWorkspace({
       const terminalExecutor = terminalExecuteCallbackRef.current;
       let shouldFallbackToNonInteractive = false;
       let fallbackReason: string | undefined;
-      let fallbackContext: { language?: string | null; command?: string } | undefined;
+      let fallbackContext:
+        | {
+            language?: string | null;
+            command?: string;
+            reason?: string;
+            status?: "available" | "missing" | "unknown";
+          }
+        | undefined;
 
       if (terminalExecutor) {
         setActiveBottomTab("terminal");
@@ -1572,12 +1610,23 @@ export default function ProjectWorkspace({
             fallbackReason = undefined;
           } else if (errorMessage === "TERMINAL_RUNTIME_UNAVAILABLE") {
             shouldFallbackToNonInteractive = true;
-            fallbackContext = (error as { context?: { language?: string; command?: string } })?.context;
+            fallbackContext = (
+              error as {
+                context?: {
+                  language?: string;
+                  command?: string;
+                  reason?: string;
+                  status?: "available" | "missing" | "unknown";
+                };
+              }
+            )?.context;
             const missingCommand = fallbackContext?.command;
             const languageLabel = fallbackContext?.language
               ? fallbackContext.language.toUpperCase()
               : undefined;
-            const fallbackDetail = missingCommand
+            const fallbackDetail = fallbackContext?.reason
+              ? fallbackContext.reason
+              : missingCommand
               ? `The interactive sandbox does not have ${missingCommand} installed${
                   languageLabel ? ` for ${languageLabel}` : ""
                 }.`
