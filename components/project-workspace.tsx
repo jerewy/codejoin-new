@@ -220,6 +220,9 @@ function TerminalPanel({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const isTerminalReadyRef = useRef(false);
+  const activeLanguageRef = useRef<string | null>(null);
+  const pendingLanguageRef = useRef<string | null>(null);
   const attemptedInitialStart = useRef(false);
   const hasShownConnectionMessage = useRef(false);
 
@@ -252,6 +255,7 @@ function TerminalPanel({
       appendStatusLine("Connecting to CodeJoin sandbox...");
       hasShownConnectionMessage.current = true;
     }
+    pendingLanguageRef.current = language ?? "default";
     startTerminalSession({ projectId, userId, language });
   }, [
     appendStatusLine,
@@ -302,9 +306,12 @@ function TerminalPanel({
     if (!activeSessionId) return;
 
     setIsTerminalReady(false);
+    isTerminalReadyRef.current = false;
     setIsStopping(true);
     appendStatusLine("Stopping terminal session...");
     stopTerminalSession({ sessionId: activeSessionId });
+    activeLanguageRef.current = null;
+    pendingLanguageRef.current = null;
   }, [appendStatusLine, stopTerminalSession]);
 
   const handleCommandSubmit = useCallback(() => {
@@ -390,6 +397,9 @@ function TerminalPanel({
       sessionIdRef.current = readySessionId;
       setSessionId(readySessionId);
       setIsTerminalReady(true);
+      isTerminalReadyRef.current = true;
+      activeLanguageRef.current = pendingLanguageRef.current;
+      pendingLanguageRef.current = null;
       setIsStarting(false);
       setIsStopping(false);
       if (hasShownConnectionMessage.current) {
@@ -430,10 +440,13 @@ function TerminalPanel({
         variant: "destructive",
       });
       setIsTerminalReady(false);
+      isTerminalReadyRef.current = false;
       setIsStarting(false);
       setIsStopping(false);
       sessionIdRef.current = null;
       setSessionId(null);
+      activeLanguageRef.current = null;
+      pendingLanguageRef.current = null;
     };
 
     const handleTerminalExit = ({
@@ -460,8 +473,11 @@ function TerminalPanel({
       sessionIdRef.current = null;
       setSessionId(null);
       setIsTerminalReady(false);
+      isTerminalReadyRef.current = false;
       setIsStarting(false);
       setIsStopping(false);
+      activeLanguageRef.current = null;
+      pendingLanguageRef.current = null;
     };
 
     socket.on("terminal:ready", handleTerminalReady);
@@ -511,6 +527,82 @@ function TerminalPanel({
     });
   }, [appendStatusLine, inputBuffer, sendTerminalInput]);
 
+  const waitForTerminalReady = useCallback(async (timeoutMs = 10000) => {
+    if (isTerminalReadyRef.current && sessionIdRef.current) {
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const start = Date.now();
+      const interval = window.setInterval(() => {
+        if (isTerminalReadyRef.current && sessionIdRef.current) {
+          window.clearInterval(interval);
+          resolve();
+        } else if (Date.now() - start > timeoutMs) {
+          window.clearInterval(interval);
+          reject(new Error("Terminal session timeout"));
+        }
+      }, 120);
+    });
+  }, []);
+
+  const waitForSessionToClose = useCallback(async (timeoutMs = 5000) => {
+    if (!sessionIdRef.current) {
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const start = Date.now();
+      const interval = window.setInterval(() => {
+        if (!sessionIdRef.current) {
+          window.clearInterval(interval);
+          resolve();
+        } else if (Date.now() - start > timeoutMs) {
+          window.clearInterval(interval);
+          reject(new Error("Terminal session stop timeout"));
+        }
+      }, 150);
+    });
+  }, []);
+
+  const ensureTerminalSession = useCallback(
+    async (language: string | null) => {
+      const desiredLanguageKey = language ?? "default";
+      const requiresDedicatedContainer = language !== null;
+      const hasReadySession =
+        Boolean(sessionIdRef.current) && isTerminalReadyRef.current;
+      const languageMismatch =
+        requiresDedicatedContainer &&
+        activeLanguageRef.current !== null &&
+        activeLanguageRef.current !== desiredLanguageKey;
+
+      if (languageMismatch && sessionIdRef.current) {
+        appendStatusLine(
+          `Switching terminal to ${desiredLanguageKey.toUpperCase()} environment...`
+        );
+        handleStopSession();
+        try {
+          await waitForSessionToClose();
+        } catch (error) {
+          console.warn("Timed out waiting for terminal session to stop", error);
+        }
+      }
+
+      if (!hasReadySession || languageMismatch) {
+        initializeSession(language ?? undefined);
+      }
+
+      await waitForTerminalReady();
+    },
+    [
+      appendStatusLine,
+      handleStopSession,
+      initializeSession,
+      waitForSessionToClose,
+      waitForTerminalReady,
+    ]
+  );
+
   const executeCodeInTerminal = useCallback(
     async (file: ProjectNodeFromDB): Promise<boolean> => {
       try {
@@ -525,32 +617,20 @@ function TerminalPanel({
           detectedLanguage === "cpp" ||
           detectedLanguage === "java";
 
-        if (needsSpecificContainer && (!isTerminalReady || !sessionIdRef.current)) {
-          // Start a new terminal session with the appropriate language
-          appendStatusLine(`Starting ${detectedLanguage.toUpperCase()} environment...`);
-          initializeSession(detectedLanguage);
+        const targetLanguage = needsSpecificContainer
+          ? detectedLanguage
+          : null;
 
-          // Wait for the session to be ready
-          const maxWaitTime = 10000; // 10 seconds
-          const startTime = Date.now();
+        if (needsSpecificContainer) {
+          appendStatusLine(
+            `Preparing ${detectedLanguage.toUpperCase()} execution environment...`
+          );
+        }
 
-          const waitForTerminal = () => {
-            return new Promise<void>((resolve, reject) => {
-              const checkReady = () => {
-                if (isTerminalReady && sessionIdRef.current) {
-                  resolve();
-                } else if (Date.now() - startTime > maxWaitTime) {
-                  reject(new Error("Terminal session timeout"));
-                } else {
-                  setTimeout(checkReady, 500);
-                }
-              };
-              checkReady();
-            });
-          };
+        await ensureTerminalSession(targetLanguage);
 
-          await waitForTerminal();
-        } else if (!isTerminalReady || !sessionIdRef.current) {
+        const activeSessionId = sessionIdRef.current;
+        if (!activeSessionId) {
           throw new Error("TERMINAL_NOT_READY");
         }
 
@@ -561,76 +641,87 @@ function TerminalPanel({
         const filename = file.name;
         const content = file.content ?? "";
 
-        // Create the file in the terminal using a simpler method
+        // Create the file in the terminal using a heredoc so special characters are preserved
         const lines = content.split("\n");
 
-        // Clear the file first
+        const directoryPath = filename.includes("/")
+          ? filename.split("/").slice(0, -1).join("/")
+          : null;
+
+        if (directoryPath) {
+          sendTerminalInput({
+            sessionId: activeSessionId,
+            input: `mkdir -p ${directoryPath}\r`,
+          });
+        }
+
         sendTerminalInput({
-          sessionId: sessionIdRef.current,
-          input: `> ${filename}\r`,
+          sessionId: activeSessionId,
+          input: `cat <<'__CODEJOIN__' > ${filename}\r`,
         });
 
-        // Add content line by line to avoid issues with special characters
-        lines.forEach((line, index) => {
-          setTimeout(() => {
-            if (!sessionIdRef.current) return;
-            const escapedLine = line.replace(/'/g, "'\"'\"'"); // Escape single quotes
-            sendTerminalInput({
-              sessionId: sessionIdRef.current,
-              input: `echo '${escapedLine}' >> ${filename}\r`,
-            });
+        lines.forEach((line) => {
+          const sanitizedLine = line.replace(/\r/g, "");
+          sendTerminalInput({
+            sessionId: activeSessionId,
+            input: `${sanitizedLine}\r`,
+          });
+        });
 
-            // Run the program after the last line is added
-            if (index === lines.length - 1) {
-              setTimeout(() => {
-                if (!sessionIdRef.current) return;
+        sendTerminalInput({
+          sessionId: activeSessionId,
+          input: `__CODEJOIN__\r`,
+        });
 
-                // Run the appropriate command based on language
-                let runCommand = "";
-                switch (detectedLanguage) {
-                  case "python":
-                    runCommand = `python3 ${filename} 2>/dev/null || python ${filename}`;
-                    break;
-                  case "javascript":
-                    runCommand = `node ${filename}`;
-                    break;
-                  case "c":
-                    runCommand =
-                      `gcc -o program ${filename} 2>/dev/null && ./program || echo "C compiler not available in this container"`;
-                    break;
-                  case "cpp":
-                    runCommand =
-                      `g++ -o program ${filename} 2>/dev/null && ./program || echo "C++ compiler not available in this container"`;
-                    break;
-                  case "java":
-                    const className = filename.replace(".java", "");
-                    runCommand =
-                      `javac ${filename} 2>/dev/null && java ${className} || echo "Java compiler not available in this container"`;
-                    break;
-                  case "shell":
-                  case "sh":
-                    runCommand = `chmod +x ${filename} && ./${filename}`;
-                    break;
-                  default:
-                    runCommand = `echo "Language ${detectedLanguage} not directly supported in terminal. File created as ${filename}"`;
-                }
-
-                sendTerminalInput({
-                  sessionId: sessionIdRef.current,
-                  input: `${runCommand}\r`,
-                });
-
-                flushBufferedInput();
-              }, 200);
+        // Run the appropriate command based on language
+        let runCommand = "";
+        switch (detectedLanguage) {
+          case "python":
+            runCommand = `python3 ${filename} 2>/dev/null || python ${filename}`;
+            break;
+          case "javascript":
+            runCommand = `node ${filename}`;
+            break;
+          case "c":
+            runCommand =
+              `gcc -o program ${filename} 2>/dev/null && ./program || echo "C compiler not available in this container"`;
+            break;
+          case "cpp":
+            runCommand =
+              `g++ -o program ${filename} 2>/dev/null && ./program || echo "C++ compiler not available in this container"`;
+            break;
+          case "java":
+            {
+              const className = filename.replace(/\.java$/, "");
+              runCommand =
+                `javac ${filename} 2>/dev/null && java ${className} || echo "Java compiler not available in this container"`;
             }
-          }, index * 10); // Small delay between lines
+            break;
+          case "shell":
+          case "sh":
+            runCommand = `chmod +x ${filename} && ./${filename}`;
+            break;
+          default:
+            runCommand = `echo "Language ${detectedLanguage} not directly supported in terminal. File created as ${filename}"`;
+        }
+
+        appendStatusLine(`[run] ${runCommand}`);
+
+        sendTerminalInput({
+          sessionId: activeSessionId,
+          input: `${runCommand}\r`,
         });
+
+        window.setTimeout(() => {
+          flushBufferedInput();
+        }, 150);
 
         return true;
       } catch (error: any) {
         if (error?.message === "TERMINAL_NOT_READY") {
           throw error;
         }
+
         toast({
           title: "Execution failed",
           description: error?.message || "Failed to execute code in terminal",
@@ -640,12 +731,11 @@ function TerminalPanel({
       }
     },
     [
-      isTerminalReady,
       sendTerminalInput,
       toast,
       appendStatusLine,
-      initializeSession,
       flushBufferedInput,
+      ensureTerminalSession,
     ]
   );
 
