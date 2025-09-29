@@ -122,6 +122,62 @@ const getFileExtension = (fileName: string): string => {
   return ext ? `.${ext}` : "";
 };
 
+const stripCommentsAndStrings = (code: string): string => {
+  return code
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/\/\/.*$/gm, " ")
+    .replace(/#.*$/gm, " ")
+    .replace(/"(?:\\.|[^"\\])*"/g, " ")
+    .replace(/'(?:\\.|[^'\\])*'/g, " ")
+    .replace(/`(?:\\.|[^`\\])*`/g, " ");
+};
+
+const shouldUseInteractiveExecution = (
+  fileName: string,
+  codeContent: string
+): boolean => {
+  const extension = getFileExtension(fileName).toLowerCase();
+  const normalizedSource = stripCommentsAndStrings(codeContent);
+
+  if (!normalizedSource.trim()) {
+    return false;
+  }
+
+  const interactivePatterns: RegExp[] = [
+    /\bscanf\s*\(/,
+    /\bgets\s*\(/,
+    /\bfgets\s*\(/,
+    /\binput\s*\(/,
+    /\bnew\s+Scanner\b/,
+    /\bnext(?:Int|Line|Double|Float)\s*\(/,
+    /\bcin\s*>>/,
+    /\breadline\s*\(/,
+  ];
+
+  const interactiveExtensions = new Set([
+    ".c",
+    ".cpp",
+    ".cc",
+    ".cxx",
+    ".py",
+    ".java",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".mjs",
+    ".jsx",
+    ".rb",
+    ".go",
+    ".sh",
+  ]);
+
+  if (!interactiveExtensions.has(extension)) {
+    return false;
+  }
+
+  return interactivePatterns.some((pattern) => pattern.test(normalizedSource));
+};
+
 // VS Code-style Terminal component
 function TerminalPanel({
   projectId,
@@ -432,6 +488,29 @@ function TerminalPanel({
   }, [stopTerminalSession]);
 
   // Execute code directly in the interactive terminal session
+  const flushBufferedInput = useCallback(() => {
+    if (!sessionIdRef.current) return;
+    const pendingInput = inputBuffer.replace(/\r/g, "");
+    if (!pendingInput.trim()) return;
+
+    const lines = pendingInput.split(/\n/);
+    const lineCount = lines.length;
+    appendStatusLine(
+      `[input] Sending ${lineCount} line${lineCount === 1 ? "" : "s"} of buffered input...`
+    );
+
+    lines.forEach((line, index) => {
+      setTimeout(() => {
+        if (!sessionIdRef.current) return;
+        const payload = line.length > 0 ? `${line}\r` : "\r";
+        sendTerminalInput({
+          sessionId: sessionIdRef.current,
+          input: payload,
+        });
+      }, 300 + index * 30);
+    });
+  }, [appendStatusLine, inputBuffer, sendTerminalInput]);
+
   const executeCodeInTerminal = useCallback(
     async (file: ProjectNodeFromDB): Promise<boolean> => {
       try {
@@ -540,6 +619,8 @@ function TerminalPanel({
                   sessionId: sessionIdRef.current,
                   input: `${runCommand}\r`,
                 });
+
+                flushBufferedInput();
               }, 200);
             }
           }, index * 10); // Small delay between lines
@@ -550,7 +631,6 @@ function TerminalPanel({
         if (error?.message === "TERMINAL_NOT_READY") {
           throw error;
         }
-
         toast({
           title: "Execution failed",
           description: error?.message || "Failed to execute code in terminal",
@@ -565,6 +645,7 @@ function TerminalPanel({
       toast,
       appendStatusLine,
       initializeSession,
+      flushBufferedInput,
     ]
   );
 
@@ -1057,13 +1138,10 @@ export default function ProjectWorkspace({
 
     // Check if we should use terminal execution for interactive programs
     const codeContent = currentFile.content ?? "";
-    const needsInteractiveInput =
-      codeContent.includes("scanf") ||
-      codeContent.includes("input(") ||
-      codeContent.includes("Scanner") ||
-      codeContent.includes("nextInt()") ||
-      codeContent.includes("cin >>") ||
-      codeContent.includes("readline()");
+    const needsInteractiveInput = shouldUseInteractiveExecution(
+      currentFile.name,
+      codeContent
+    );
 
     if (needsInteractiveInput) {
       const showInteractiveToast = () => {
