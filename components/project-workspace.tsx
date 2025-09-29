@@ -225,18 +225,224 @@ function TerminalPanel({
   const pendingLanguageRef = useRef<string | null>(null);
   const attemptedInitialStart = useRef(false);
   const hasShownConnectionMessage = useRef(false);
+  const rawOutputBufferRef = useRef("");
 
-  const appendRawOutput = useCallback((chunk: string) => {
-    setTerminalOutput((prev) => prev + chunk);
-  }, []);
+  type TerminalMarkerWatcher = {
+    id: number;
+    successMarker: string;
+    failureMarker?: string;
+    startIndex: number;
+    resolve: (value: boolean) => void;
+    reject: (error: Error) => void;
+    resolved?: boolean;
+  };
 
-  const appendStatusLine = useCallback((message: string) => {
-    setTerminalOutput((prev) => {
-      const needsPrefixNewline = prev.length > 0 && !prev.endsWith("\n");
-      const suffix = message.endsWith("\n") ? "" : "\n";
-      return `${prev}${needsPrefixNewline ? "\n" : ""}${message}${suffix}`;
+  const markerWatchersRef = useRef<TerminalMarkerWatcher[]>([]);
+  const markerWatcherIdRef = useRef(0);
+  const hiddenMarkersRef = useRef<Set<string>>(new Set());
+
+  const processMarkerWatchers = useCallback(() => {
+    if (!markerWatchersRef.current.length) return;
+
+    const buffer = rawOutputBufferRef.current;
+    markerWatchersRef.current.forEach((watcher) => {
+      if (watcher.resolved) return;
+
+      const slice = buffer.slice(watcher.startIndex);
+      if (slice.includes(watcher.successMarker)) {
+        watcher.resolved = true;
+        watcher.resolve(true);
+      } else if (
+        watcher.failureMarker &&
+        slice.includes(watcher.failureMarker)
+      ) {
+        watcher.resolved = true;
+        watcher.resolve(false);
+      }
     });
+
+    markerWatchersRef.current = markerWatchersRef.current.filter(
+      (watcher) => !watcher.resolved
+    );
   }, []);
+
+  const escapeRegExp = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  const sanitizeChunk = useCallback((chunk: string) => {
+    if (hiddenMarkersRef.current.size === 0) {
+      return chunk;
+    }
+
+    let sanitized = chunk;
+    hiddenMarkersRef.current.forEach((marker) => {
+      const pattern = new RegExp(
+        `^.*${escapeRegExp(marker)}.*$`,
+        "gm"
+      );
+      sanitized = sanitized.replace(pattern, "");
+    });
+    return sanitized;
+  }, []);
+
+  const appendRawOutput = useCallback(
+    (chunk: string) => {
+      rawOutputBufferRef.current += chunk;
+      const sanitizedChunk = sanitizeChunk(chunk);
+      if (sanitizedChunk.length === 0) {
+        processMarkerWatchers();
+        return;
+      }
+
+      setTerminalOutput((prev) => {
+        const next = prev + sanitizedChunk;
+        return next;
+      });
+      processMarkerWatchers();
+    },
+    [processMarkerWatchers, sanitizeChunk]
+  );
+
+  const appendStatusLine = useCallback(
+    (message: string) => {
+      setTerminalOutput((prev) => {
+        const needsPrefixNewline = prev.length > 0 && !prev.endsWith("\n");
+        const suffix = message.endsWith("\n") ? "" : "\n";
+        const next = `${prev}${needsPrefixNewline ? "\n" : ""}${message}${suffix}`;
+        return next;
+      });
+      processMarkerWatchers();
+    },
+    [processMarkerWatchers]
+  );
+
+  const clearTerminalOutput = useCallback(() => {
+    const clearedLength = rawOutputBufferRef.current.length;
+    rawOutputBufferRef.current = "";
+    markerWatchersRef.current = markerWatchersRef.current.map((watcher) => ({
+      ...watcher,
+      startIndex: Math.max(0, watcher.startIndex - clearedLength),
+    }));
+    setTerminalOutput("");
+  }, []);
+
+  const waitForTerminalMarker = useCallback(
+    (
+      successMarker: string,
+      failureMarker?: string,
+      timeoutMs = 4000
+    ) => {
+      hiddenMarkersRef.current.add(successMarker);
+      if (failureMarker) {
+        hiddenMarkersRef.current.add(failureMarker);
+      }
+
+      return new Promise<boolean>((resolve, reject) => {
+        const watcherId = markerWatcherIdRef.current++;
+        const startIndex = rawOutputBufferRef.current.length;
+
+        const cleanup = () => {
+          hiddenMarkersRef.current.delete(successMarker);
+          if (failureMarker) {
+            hiddenMarkersRef.current.delete(failureMarker);
+          }
+          markerWatchersRef.current = markerWatchersRef.current.filter(
+            (watcher) => watcher.id !== watcherId
+          );
+        };
+
+        const timeoutId = window.setTimeout(() => {
+          cleanup();
+          reject(new Error("Marker wait timed out"));
+        }, timeoutMs);
+
+        const watcher: TerminalMarkerWatcher = {
+          id: watcherId,
+          successMarker,
+          failureMarker,
+          startIndex,
+          resolve: (value) => {
+            window.clearTimeout(timeoutId);
+            cleanup();
+            resolve(value);
+          },
+          reject: (error) => {
+            window.clearTimeout(timeoutId);
+            cleanup();
+            reject(error);
+          },
+        };
+
+        markerWatchersRef.current.push(watcher);
+        processMarkerWatchers();
+      });
+    },
+    [processMarkerWatchers]
+  );
+
+  const verifyCommandAvailability = useCallback(
+    async (sessionId: string, commandName: string) => {
+      const upperName = commandName.toUpperCase();
+      const successMarker = `__CODEJOIN_${upperName}_OK__`;
+      const failureMarker = `__CODEJOIN_${upperName}_MISSING__`;
+
+      sendTerminalInput({
+        sessionId,
+        input: `if command -v ${commandName} >/dev/null 2>&1; then echo '${successMarker}'; else echo '${failureMarker}'; fi\r`,
+      });
+
+      try {
+        const result = await waitForTerminalMarker(
+          successMarker,
+          failureMarker
+        );
+        return result;
+      } catch (error) {
+        return false;
+      }
+    },
+    [sendTerminalInput, waitForTerminalMarker]
+  );
+
+  const ensureLanguageSupport = useCallback(
+    async (sessionId: string, language: string) => {
+      switch (language) {
+        case "c": {
+          const hasGcc = await verifyCommandAvailability(sessionId, "gcc");
+          if (!hasGcc) {
+            appendStatusLine(
+              "C compiler not available in this sandbox. Falling back to standard execution."
+            );
+          }
+          return hasGcc;
+        }
+        case "cpp": {
+          const hasGpp = await verifyCommandAvailability(sessionId, "g++");
+          if (!hasGpp) {
+            appendStatusLine(
+              "C++ compiler not available in this sandbox. Falling back to standard execution."
+            );
+          }
+          return hasGpp;
+        }
+        case "java": {
+          const hasJavac = await verifyCommandAvailability(sessionId, "javac");
+          const hasJava = hasJavac
+            ? await verifyCommandAvailability(sessionId, "java")
+            : false;
+          if (!hasJavac || !hasJava) {
+            appendStatusLine(
+              "Java tools not available in this sandbox. Falling back to standard execution."
+            );
+          }
+          return hasJavac && hasJava;
+        }
+        default:
+          return true;
+      }
+    },
+    [appendStatusLine, verifyCommandAvailability]
+  );
 
   const initializeSession = useCallback((language?: string) => {
     if (
@@ -439,6 +645,11 @@ function TerminalPanel({
         description: message,
         variant: "destructive",
       });
+      markerWatchersRef.current.forEach((watcher) =>
+        watcher.reject(new Error(message))
+      );
+      markerWatchersRef.current = [];
+      hiddenMarkersRef.current.clear();
       setIsTerminalReady(false);
       isTerminalReadyRef.current = false;
       setIsStarting(false);
@@ -470,6 +681,11 @@ function TerminalPanel({
       }
 
       appendStatusLine(exitMessageParts.join(" "));
+      markerWatchersRef.current.forEach((watcher) =>
+        watcher.reject(new Error(reason || "Terminal session ended"))
+      );
+      markerWatchersRef.current = [];
+      hiddenMarkersRef.current.clear();
       sessionIdRef.current = null;
       setSessionId(null);
       setIsTerminalReady(false);
@@ -634,6 +850,17 @@ function TerminalPanel({
           throw new Error("TERMINAL_NOT_READY");
         }
 
+        if (needsSpecificContainer) {
+          const hasSupport = await ensureLanguageSupport(
+            activeSessionId,
+            detectedLanguage
+          );
+
+          if (!hasSupport) {
+            throw new Error("TERMINAL_RUNTIME_UNAVAILABLE");
+          }
+        }
+
         // Clear any existing command
         setCurrentCommand("");
 
@@ -683,18 +910,15 @@ function TerminalPanel({
             runCommand = `node ${filename}`;
             break;
           case "c":
-            runCommand =
-              `gcc -o program ${filename} 2>/dev/null && ./program || echo "C compiler not available in this container"`;
+            runCommand = `gcc -o program ${filename} 2>/dev/null && ./program`;
             break;
           case "cpp":
-            runCommand =
-              `g++ -o program ${filename} 2>/dev/null && ./program || echo "C++ compiler not available in this container"`;
+            runCommand = `g++ -o program ${filename} 2>/dev/null && ./program`;
             break;
           case "java":
             {
               const className = filename.replace(/\.java$/, "");
-              runCommand =
-                `javac ${filename} 2>/dev/null && java ${className} || echo "Java compiler not available in this container"`;
+              runCommand = `javac ${filename} 2>/dev/null && java ${className}`;
             }
             break;
           case "shell":
@@ -718,7 +942,10 @@ function TerminalPanel({
 
         return true;
       } catch (error: any) {
-        if (error?.message === "TERMINAL_NOT_READY") {
+        if (
+          error?.message === "TERMINAL_NOT_READY" ||
+          error?.message === "TERMINAL_RUNTIME_UNAVAILABLE"
+        ) {
           throw error;
         }
 
@@ -736,6 +963,7 @@ function TerminalPanel({
       appendStatusLine,
       flushBufferedInput,
       ensureTerminalSession,
+      ensureLanguageSupport,
     ]
   );
 
@@ -895,7 +1123,7 @@ function TerminalPanel({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setTerminalOutput("")}
+            onClick={clearTerminalOutput}
             className="h-6 w-6 p-0 text-[#cccccc] hover:bg-[#3c3c3c] hover:text-white"
             title="Clear terminal"
           >
@@ -1233,6 +1461,11 @@ export default function ProjectWorkspace({
       codeContent
     );
 
+    const dispatchNonInteractiveExecution = () => {
+      const event = new CustomEvent("codeEditorExecute");
+      window.dispatchEvent(event);
+    };
+
     if (needsInteractiveInput) {
       const showInteractiveToast = () => {
         toast({
@@ -1243,10 +1476,14 @@ export default function ProjectWorkspace({
         });
       };
 
-      const notifyTerminalUnavailable = () => {
+      const notifyTerminalUnavailable = (message?: string) => {
+        const hasCustomMessage = Boolean(message);
         toast({
-          title: "Terminal not ready",
+          title: hasCustomMessage
+            ? "Interactive sandbox unavailable"
+            : "Terminal not ready",
           description:
+            message ??
             "Open the terminal tab and start a session to run interactive programs.",
           variant: "destructive",
         });
@@ -1254,6 +1491,7 @@ export default function ProjectWorkspace({
 
       const terminalExecutor = terminalExecuteCallbackRef.current;
       let shouldFallbackToNonInteractive = false;
+      let fallbackReason: string | undefined;
 
       if (terminalExecutor) {
         setActiveBottomTab("terminal");
@@ -1270,8 +1508,14 @@ export default function ProjectWorkspace({
 
           shouldFallbackToNonInteractive = true;
         } catch (error) {
-          if ((error as Error)?.message === "TERMINAL_NOT_READY") {
+          const errorMessage = (error as Error)?.message;
+          if (errorMessage === "TERMINAL_NOT_READY") {
             shouldFallbackToNonInteractive = true;
+            fallbackReason = undefined;
+          } else if (errorMessage === "TERMINAL_RUNTIME_UNAVAILABLE") {
+            shouldFallbackToNonInteractive = true;
+            fallbackReason =
+              "The interactive sandbox is missing the required compiler/runtime. Running with the standard executor instead.";
           } else {
             console.error("Failed to execute code in terminal", error);
             return;
@@ -1283,15 +1527,16 @@ export default function ProjectWorkspace({
       }
 
       if (shouldFallbackToNonInteractive) {
-        notifyTerminalUnavailable();
-      } else {
-        showInteractiveToast();
+        notifyTerminalUnavailable(fallbackReason);
+        dispatchNonInteractiveExecution();
         return;
       }
+
+      showInteractiveToast();
+      return;
     }
 
-    const event = new CustomEvent("codeEditorExecute");
-    window.dispatchEvent(event);
+    dispatchNonInteractiveExecution();
   };
 
   const handleSendAIMessage = () => {
