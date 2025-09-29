@@ -380,8 +380,13 @@ function TerminalPanel({
     [processMarkerWatchers]
   );
 
+  type CommandAvailability = "available" | "missing" | "unknown";
+
   const verifyCommandAvailability = useCallback(
-    async (sessionId: string, commandName: string) => {
+    async (
+      sessionId: string,
+      commandName: string
+    ): Promise<CommandAvailability> => {
       const upperName = commandName.toUpperCase();
       const successMarker = `__CODEJOIN_${upperName}_OK__`;
       const failureMarker = `__CODEJOIN_${upperName}_MISSING__`;
@@ -396,49 +401,87 @@ function TerminalPanel({
           successMarker,
           failureMarker
         );
-        return result;
+        return result ? "available" : "missing";
       } catch (error) {
-        return false;
+        appendStatusLine(
+          `[warn] Timed out while checking for ${commandName}. We'll try to run the program anyway.`
+        );
+        return "unknown";
       }
     },
-    [sendTerminalInput, waitForTerminalMarker]
+    [appendStatusLine, sendTerminalInput, waitForTerminalMarker]
   );
 
+  type LanguageSupportResult = {
+    status: CommandAvailability;
+    command?: string;
+  };
+
   const ensureLanguageSupport = useCallback(
-    async (sessionId: string, language: string) => {
+    async (
+      sessionId: string,
+      language: string
+    ): Promise<LanguageSupportResult> => {
       switch (language) {
         case "c": {
-          const hasGcc = await verifyCommandAvailability(sessionId, "gcc");
-          if (!hasGcc) {
+          const gccStatus = await verifyCommandAvailability(sessionId, "gcc");
+          if (gccStatus === "missing") {
             appendStatusLine(
               "C compiler not available in this sandbox. Falling back to standard execution."
             );
+          } else if (gccStatus === "unknown") {
+            appendStatusLine(
+              "[warn] Could not confirm GCC availability in the interactive sandbox."
+            );
           }
-          return hasGcc;
+          return { status: gccStatus, command: "gcc" };
         }
         case "cpp": {
-          const hasGpp = await verifyCommandAvailability(sessionId, "g++");
-          if (!hasGpp) {
+          const gppStatus = await verifyCommandAvailability(sessionId, "g++");
+          if (gppStatus === "missing") {
             appendStatusLine(
               "C++ compiler not available in this sandbox. Falling back to standard execution."
             );
-          }
-          return hasGpp;
-        }
-        case "java": {
-          const hasJavac = await verifyCommandAvailability(sessionId, "javac");
-          const hasJava = hasJavac
-            ? await verifyCommandAvailability(sessionId, "java")
-            : false;
-          if (!hasJavac || !hasJava) {
+          } else if (gppStatus === "unknown") {
             appendStatusLine(
-              "Java tools not available in this sandbox. Falling back to standard execution."
+              "[warn] Could not confirm G++ availability in the interactive sandbox."
             );
           }
-          return hasJavac && hasJava;
+          return { status: gppStatus, command: "g++" };
+        }
+        case "java": {
+          const javacStatus = await verifyCommandAvailability(sessionId, "javac");
+          if (javacStatus === "missing") {
+            appendStatusLine(
+              "Java compiler not available in this sandbox. Falling back to standard execution."
+            );
+            return { status: "missing", command: "javac" };
+          }
+          if (javacStatus === "unknown") {
+            appendStatusLine(
+              "[warn] Could not confirm the Java compiler in the interactive sandbox."
+            );
+          }
+
+          const javaStatus =
+            javacStatus === "available"
+              ? await verifyCommandAvailability(sessionId, "java")
+              : javacStatus;
+
+          if (javaStatus === "missing") {
+            appendStatusLine(
+              "Java runtime not available in this sandbox. Falling back to standard execution."
+            );
+          } else if (javaStatus === "unknown") {
+            appendStatusLine(
+              "[warn] Could not confirm the Java runtime in the interactive sandbox."
+            );
+          }
+
+          return { status: javaStatus, command: javaStatus === "missing" ? "java" : "javac" };
         }
         default:
-          return true;
+          return { status: "available" };
       }
     },
     [appendStatusLine, verifyCommandAvailability]
@@ -851,13 +894,18 @@ function TerminalPanel({
         }
 
         if (needsSpecificContainer) {
-          const hasSupport = await ensureLanguageSupport(
+          const languageSupport = await ensureLanguageSupport(
             activeSessionId,
             detectedLanguage
           );
 
-          if (!hasSupport) {
-            throw new Error("TERMINAL_RUNTIME_UNAVAILABLE");
+          if (languageSupport.status === "missing") {
+            const runtimeError = new Error("TERMINAL_RUNTIME_UNAVAILABLE");
+            (runtimeError as Error & { context?: Record<string, unknown> }).context = {
+              language: detectedLanguage,
+              command: languageSupport.command,
+            };
+            throw runtimeError;
           }
         }
 
@@ -1476,15 +1524,24 @@ export default function ProjectWorkspace({
         });
       };
 
-      const notifyTerminalUnavailable = (message?: string) => {
+      const notifyTerminalUnavailable = (
+        message?: string,
+        context?: { language?: string | null; command?: string | undefined }
+      ) => {
         const hasCustomMessage = Boolean(message);
+        const contextualHint = context?.language
+          ? `Queue the responses with the terminal \`input\` command or via the prompt before running ${context.language.toUpperCase()} code again.`
+          :
+            "If your program needs stdin, queue it with the terminal `input` command before running again.";
         toast({
           title: hasCustomMessage
             ? "Interactive sandbox unavailable"
             : "Terminal not ready",
           description:
-            message ??
-            "Open the terminal tab and start a session to run interactive programs.",
+            (message
+              ? `${message} ${contextualHint}`
+              : `Open the terminal tab and start a session to run interactive programs. ${contextualHint}`
+            ).trim(),
           variant: "destructive",
         });
       };
@@ -1492,6 +1549,7 @@ export default function ProjectWorkspace({
       const terminalExecutor = terminalExecuteCallbackRef.current;
       let shouldFallbackToNonInteractive = false;
       let fallbackReason: string | undefined;
+      let fallbackContext: { language?: string | null; command?: string } | undefined;
 
       if (terminalExecutor) {
         setActiveBottomTab("terminal");
@@ -1514,8 +1572,17 @@ export default function ProjectWorkspace({
             fallbackReason = undefined;
           } else if (errorMessage === "TERMINAL_RUNTIME_UNAVAILABLE") {
             shouldFallbackToNonInteractive = true;
-            fallbackReason =
-              "The interactive sandbox is missing the required compiler/runtime. Running with the standard executor instead.";
+            fallbackContext = (error as { context?: { language?: string; command?: string } })?.context;
+            const missingCommand = fallbackContext?.command;
+            const languageLabel = fallbackContext?.language
+              ? fallbackContext.language.toUpperCase()
+              : undefined;
+            const fallbackDetail = missingCommand
+              ? `The interactive sandbox does not have ${missingCommand} installed${
+                  languageLabel ? ` for ${languageLabel}` : ""
+                }.`
+              : "The interactive sandbox is missing the required compiler/runtime.";
+            fallbackReason = `${fallbackDetail} Running with the standard executor instead.`;
           } else {
             console.error("Failed to execute code in terminal", error);
             return;
@@ -1527,7 +1594,24 @@ export default function ProjectWorkspace({
       }
 
       if (shouldFallbackToNonInteractive) {
-        notifyTerminalUnavailable(fallbackReason);
+        if (
+          fallbackContext?.language &&
+          typeof window !== "undefined" &&
+          !inputBuffer.trim()
+        ) {
+          const promptMessage = [
+            `The interactive ${fallbackContext.language.toUpperCase()} sandbox is unavailable.`,
+            "Enter the stdin your program should read when we rerun it with the standard executor.",
+            "Leave blank to continue without providing input.",
+          ].join("\n\n");
+
+          const userSuppliedInput = window.prompt(promptMessage, "");
+          if (typeof userSuppliedInput === "string") {
+            setInputBuffer(userSuppliedInput);
+          }
+        }
+
+        notifyTerminalUnavailable(fallbackReason, fallbackContext);
         dispatchNonInteractiveExecution();
         return;
       }
