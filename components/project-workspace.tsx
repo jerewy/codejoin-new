@@ -238,6 +238,36 @@ function TerminalPanel({
   }, [appendStatusLine, stopTerminalSession]);
 
   const handleCommandSubmit = useCallback(() => {
+    const trimmedCommand = currentCommand.trim();
+    const [commandKeyword, ...restTokens] = trimmedCommand.split(/\s+/);
+    const isInputCommand = commandKeyword?.toLowerCase() === "input";
+
+    if (isInputCommand) {
+      const argumentStartIndex = currentCommand.indexOf(" ");
+      const hasArgument = argumentStartIndex !== -1;
+      const rawValue = hasArgument ? currentCommand.slice(argumentStartIndex + 1) : "";
+      const normalizedValue = rawValue.trim();
+      const argumentKeyword = normalizedValue.split(/\s+/)[0]?.toLowerCase();
+
+      if (!hasArgument || normalizedValue.length === 0) {
+        appendStatusLine("[input] Provide a value or use `input clear` to reset the buffer.");
+      } else if (argumentKeyword === "clear" && restTokens.length === 1) {
+        onInputUpdate("");
+        appendStatusLine("[input] Execution input buffer cleared.");
+      } else {
+        onInputUpdate(rawValue);
+        appendStatusLine(`[input] Execution input buffer set (${rawValue.length} characters).`);
+      }
+
+      if (trimmedCommand.length > 0) {
+        setCommandHistory((prev) => [...prev, currentCommand]);
+      }
+
+      setCurrentCommand("");
+      setHistoryIndex(null);
+      return;
+    }
+
     const activeSessionId = sessionIdRef.current;
     if (!activeSessionId) return;
 
@@ -245,13 +275,18 @@ function TerminalPanel({
     console.log('Sending terminal input:', { sessionId: activeSessionId, input: payload, raw: currentCommand });
     sendTerminalInput({ sessionId: activeSessionId, input: payload });
 
-    if (currentCommand.trim().length > 0) {
+    if (trimmedCommand.length > 0) {
       setCommandHistory((prev) => [...prev, currentCommand]);
     }
 
     setCurrentCommand("");
     setHistoryIndex(null);
-  }, [currentCommand, sendTerminalInput]);
+  }, [
+    appendStatusLine,
+    currentCommand,
+    onInputUpdate,
+    sendTerminalInput,
+  ]);
 
   const handleHistoryNavigation = useCallback(
     (direction: "up" | "down") => {
@@ -560,6 +595,7 @@ function TerminalPanel({
         "docker",
         "ls",
         "pwd",
+        "input",
       ];
       const matches = availableCommands.filter((cmd) =>
         cmd.startsWith(currentCommand)
@@ -981,31 +1017,30 @@ export default function ProjectWorkspace({
     // Check if we should use terminal execution for interactive programs
     const codeContent = currentFile.content ?? "";
     const needsInteractiveInput =
-      codeContent.includes('scanf') ||
-      codeContent.includes('input(') ||
-      codeContent.includes('Scanner') ||
-      codeContent.includes('nextInt()') ||
-      codeContent.includes('cin >>') ||
-      codeContent.includes('readline()');
+      codeContent.includes("scanf") ||
+      codeContent.includes("input(") ||
+      codeContent.includes("Scanner") ||
+      codeContent.includes("nextInt()") ||
+      codeContent.includes("cin >>") ||
+      codeContent.includes("readline()");
 
-    if (needsInteractiveInput && terminalExecuteCallbackRef.current && typeof terminalExecuteCallbackRef.current === 'function') {
-      // Use terminal execution for programs that need user input
-      setActiveBottomTab("terminal");
-      try {
-        await terminalExecuteCallbackRef.current(currentFile);
-      } catch (error: any) {
-        console.error("Terminal execution error:", error);
+    if (needsInteractiveInput) {
+      if (!inputBuffer.trim()) {
         toast({
-          title: "Execution failed",
-          description: error.message || "Failed to execute code in terminal",
-          variant: "destructive",
+          title: "Program expects input",
+          description:
+            "Provide input via the terminal using `input <value>` or run anyway to execute without preset input.",
+        });
+      } else {
+        toast({
+          title: "Using saved execution input",
+          description: "The buffered value will be passed to the program during execution.",
         });
       }
-    } else {
-      // Use regular CodeEditor execution for programs that don't need interactive input
-      const event = new CustomEvent("codeEditorExecute");
-      window.dispatchEvent(event);
     }
+
+    const event = new CustomEvent("codeEditorExecute");
+    window.dispatchEvent(event);
   };
 
   const handleSendAIMessage = () => {
