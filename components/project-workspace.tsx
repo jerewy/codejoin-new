@@ -1066,19 +1066,14 @@ export default function ProjectWorkspace({
       codeContent.includes("readline()");
 
     if (needsInteractiveInput) {
-      if (!inputBuffer.trim()) {
+      const showInteractiveToast = () => {
         toast({
-          title: "Program expects input",
-          description:
-            "Provide input via the terminal using `input <value>` or run anyway to execute without preset input.",
+          title: "Interactive run started",
+          description: inputBuffer.trim()
+            ? "Buffered input was sent and the terminal is focused for follow-up responses."
+            : "The terminal is focused so you can respond when the program prompts for input.",
         });
-      } else {
-        toast({
-          title: "Using saved execution input",
-          description:
-            "The buffered value will be passed to the program during execution.",
-        });
-      }
+      };
 
       const notifyTerminalUnavailable = () => {
         toast({
@@ -1101,6 +1096,7 @@ export default function ProjectWorkspace({
             window.setTimeout(() => {
               window.dispatchEvent(new CustomEvent("terminalFocusInput"));
             }, 0);
+            showInteractiveToast();
             return;
           }
 
@@ -1121,6 +1117,7 @@ export default function ProjectWorkspace({
       if (shouldFallbackToNonInteractive) {
         notifyTerminalUnavailable();
       } else {
+        showInteractiveToast();
         return;
       }
     }
