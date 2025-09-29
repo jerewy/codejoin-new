@@ -29,3 +29,5 @@ next-env.d.ts
 # error logging
 dev.err
 dev.log
+
+/logs/combined.log
