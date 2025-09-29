@@ -122,6 +122,62 @@ const getFileExtension = (fileName: string): string => {
   return ext ? `.${ext}` : "";
 };
 
+const stripCommentsAndStrings = (code: string): string => {
+  return code
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/\/\/.*$/gm, " ")
+    .replace(/#.*$/gm, " ")
+    .replace(/"(?:\\.|[^"\\])*"/g, " ")
+    .replace(/'(?:\\.|[^'\\])*'/g, " ")
+    .replace(/`(?:\\.|[^`\\])*`/g, " ");
+};
+
+const shouldUseInteractiveExecution = (
+  fileName: string,
+  codeContent: string
+): boolean => {
+  const extension = getFileExtension(fileName).toLowerCase();
+  const normalizedSource = stripCommentsAndStrings(codeContent);
+
+  if (!normalizedSource.trim()) {
+    return false;
+  }
+
+  const interactivePatterns: RegExp[] = [
+    /\bscanf\s*\(/,
+    /\bgets\s*\(/,
+    /\bfgets\s*\(/,
+    /\binput\s*\(/,
+    /\bnew\s+Scanner\b/,
+    /\bnext(?:Int|Line|Double|Float)\s*\(/,
+    /\bcin\s*>>/,
+    /\breadline\s*\(/,
+  ];
+
+  const interactiveExtensions = new Set([
+    ".c",
+    ".cpp",
+    ".cc",
+    ".cxx",
+    ".py",
+    ".java",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".mjs",
+    ".jsx",
+    ".rb",
+    ".go",
+    ".sh",
+  ]);
+
+  if (!interactiveExtensions.has(extension)) {
+    return false;
+  }
+
+  return interactivePatterns.some((pattern) => pattern.test(normalizedSource));
+};
+
 // VS Code-style Terminal component
 function TerminalPanel({
   projectId,
@@ -138,7 +194,9 @@ function TerminalPanel({
   onClearExecutions?: () => void;
   inputBuffer: string;
   onInputUpdate: (value: string) => void;
-  onExecuteInTerminal?: React.MutableRefObject<((file: ProjectNodeFromDB) => Promise<void>) | null>;
+  onExecuteInTerminal?: React.MutableRefObject<
+    ((file: ProjectNodeFromDB) => Promise<boolean>) | null
+  >;
 }) {
   const {
     socket,
@@ -211,6 +269,18 @@ function TerminalPanel({
       scrollContainerRef.current.scrollTop = scrollHeight - clientHeight;
     }
   }, [executionOutputs, terminalOutput]);
+
+  useEffect(() => {
+    const handleFocusRequest = () => {
+      if (!isTerminalReady) return;
+      inputRef.current?.focus();
+    };
+
+    window.addEventListener("terminalFocusInput", handleFocusRequest);
+    return () => {
+      window.removeEventListener("terminalFocusInput", handleFocusRequest);
+    };
+  }, [isTerminalReady]);
 
   // Start session on initial mount when socket is ready
   useEffect(() => {
@@ -418,115 +488,167 @@ function TerminalPanel({
   }, [stopTerminalSession]);
 
   // Execute code directly in the interactive terminal session
-  const executeCodeInTerminal = useCallback(async (file: ProjectNodeFromDB) => {
-    try {
-      // Detect language first
-      const { codeExecutionAPI } = await import('@/lib/api/codeExecution');
-      const detectedLanguage = codeExecutionAPI.detectLanguageFromFileName(file.name);
+  const flushBufferedInput = useCallback(() => {
+    if (!sessionIdRef.current) return;
+    const pendingInput = inputBuffer.replace(/\r/g, "");
+    if (!pendingInput.trim()) return;
 
-      // Check if we need to start a session with specific language support
-      const needsSpecificContainer = detectedLanguage === 'c' || detectedLanguage === 'cpp' || detectedLanguage === 'java';
+    const lines = pendingInput.split(/\n/);
+    const lineCount = lines.length;
+    appendStatusLine(
+      `[input] Sending ${lineCount} line${lineCount === 1 ? "" : "s"} of buffered input...`
+    );
 
-      if (needsSpecificContainer && (!isTerminalReady || !sessionIdRef.current)) {
-        // Start a new terminal session with the appropriate language
-        appendStatusLine(`Starting ${detectedLanguage.toUpperCase()} environment...`);
-        initializeSession(detectedLanguage);
+    lines.forEach((line, index) => {
+      setTimeout(() => {
+        if (!sessionIdRef.current) return;
+        const payload = line.length > 0 ? `${line}\r` : "\r";
+        sendTerminalInput({
+          sessionId: sessionIdRef.current,
+          input: payload,
+        });
+      }, 300 + index * 30);
+    });
+  }, [appendStatusLine, inputBuffer, sendTerminalInput]);
 
-        // Wait for the session to be ready
-        const maxWaitTime = 10000; // 10 seconds
-        const startTime = Date.now();
+  const executeCodeInTerminal = useCallback(
+    async (file: ProjectNodeFromDB): Promise<boolean> => {
+      try {
+        // Detect language first
+        const { codeExecutionAPI } = await import("@/lib/api/codeExecution");
+        const detectedLanguage =
+          codeExecutionAPI.detectLanguageFromFileName(file.name);
 
-        const waitForTerminal = () => {
-          return new Promise<void>((resolve, reject) => {
-            const checkReady = () => {
-              if (isTerminalReady && sessionIdRef.current) {
-                resolve();
-              } else if (Date.now() - startTime > maxWaitTime) {
-                reject(new Error("Terminal session timeout"));
-              } else {
-                setTimeout(checkReady, 500);
-              }
-            };
-            checkReady();
-          });
-        };
+        // Check if we need to start a session with specific language support
+        const needsSpecificContainer =
+          detectedLanguage === "c" ||
+          detectedLanguage === "cpp" ||
+          detectedLanguage === "java";
 
-        await waitForTerminal();
-      } else if (!isTerminalReady || !sessionIdRef.current) {
+        if (needsSpecificContainer && (!isTerminalReady || !sessionIdRef.current)) {
+          // Start a new terminal session with the appropriate language
+          appendStatusLine(`Starting ${detectedLanguage.toUpperCase()} environment...`);
+          initializeSession(detectedLanguage);
+
+          // Wait for the session to be ready
+          const maxWaitTime = 10000; // 10 seconds
+          const startTime = Date.now();
+
+          const waitForTerminal = () => {
+            return new Promise<void>((resolve, reject) => {
+              const checkReady = () => {
+                if (isTerminalReady && sessionIdRef.current) {
+                  resolve();
+                } else if (Date.now() - startTime > maxWaitTime) {
+                  reject(new Error("Terminal session timeout"));
+                } else {
+                  setTimeout(checkReady, 500);
+                }
+              };
+              checkReady();
+            });
+          };
+
+          await waitForTerminal();
+        } else if (!isTerminalReady || !sessionIdRef.current) {
+          throw new Error("TERMINAL_NOT_READY");
+        }
+
+        // Clear any existing command
+        setCurrentCommand("");
+
+        // Save the file content to a temp file in the terminal
+        const filename = file.name;
+        const content = file.content ?? "";
+
+        // Create the file in the terminal using a simpler method
+        const lines = content.split("\n");
+
+        // Clear the file first
+        sendTerminalInput({
+          sessionId: sessionIdRef.current,
+          input: `> ${filename}\r`,
+        });
+
+        // Add content line by line to avoid issues with special characters
+        lines.forEach((line, index) => {
+          setTimeout(() => {
+            if (!sessionIdRef.current) return;
+            const escapedLine = line.replace(/'/g, "'\"'\"'"); // Escape single quotes
+            sendTerminalInput({
+              sessionId: sessionIdRef.current,
+              input: `echo '${escapedLine}' >> ${filename}\r`,
+            });
+
+            // Run the program after the last line is added
+            if (index === lines.length - 1) {
+              setTimeout(() => {
+                if (!sessionIdRef.current) return;
+
+                // Run the appropriate command based on language
+                let runCommand = "";
+                switch (detectedLanguage) {
+                  case "python":
+                    runCommand = `python3 ${filename} 2>/dev/null || python ${filename}`;
+                    break;
+                  case "javascript":
+                    runCommand = `node ${filename}`;
+                    break;
+                  case "c":
+                    runCommand =
+                      `gcc -o program ${filename} 2>/dev/null && ./program || echo "C compiler not available in this container"`;
+                    break;
+                  case "cpp":
+                    runCommand =
+                      `g++ -o program ${filename} 2>/dev/null && ./program || echo "C++ compiler not available in this container"`;
+                    break;
+                  case "java":
+                    const className = filename.replace(".java", "");
+                    runCommand =
+                      `javac ${filename} 2>/dev/null && java ${className} || echo "Java compiler not available in this container"`;
+                    break;
+                  case "shell":
+                  case "sh":
+                    runCommand = `chmod +x ${filename} && ./${filename}`;
+                    break;
+                  default:
+                    runCommand = `echo "Language ${detectedLanguage} not directly supported in terminal. File created as ${filename}"`;
+                }
+
+                sendTerminalInput({
+                  sessionId: sessionIdRef.current,
+                  input: `${runCommand}\r`,
+                });
+
+                flushBufferedInput();
+              }, 200);
+            }
+          }, index * 10); // Small delay between lines
+        });
+
+        return true;
+      } catch (error: any) {
+        if (error?.message === "TERMINAL_NOT_READY") {
+          throw error;
+        }
+
         toast({
-          title: "Terminal not ready",
-          description: "Please wait for the terminal to connect before running code.",
+          title: "Execution failed",
+          description: error?.message || "Failed to execute code in terminal",
           variant: "destructive",
         });
-        return;
+        throw error;
       }
-
-      // Clear any existing command
-      setCurrentCommand("");
-
-      // Save the file content to a temp file in the terminal
-      const filename = file.name;
-      const content = file.content ?? "";
-
-      // Create the file in the terminal using a simpler method
-      const lines = content.split('\n');
-
-      // Clear the file first
-      sendTerminalInput({ sessionId: sessionIdRef.current, input: `> ${filename}\r` });
-
-      // Add content line by line to avoid issues with special characters
-      lines.forEach((line, index) => {
-        setTimeout(() => {
-          if (!sessionIdRef.current) return;
-          const escapedLine = line.replace(/'/g, "'\"'\"'"); // Escape single quotes
-          sendTerminalInput({ sessionId: sessionIdRef.current, input: `echo '${escapedLine}' >> ${filename}\r` });
-
-          // Run the program after the last line is added
-          if (index === lines.length - 1) {
-            setTimeout(() => {
-              if (!sessionIdRef.current) return;
-
-              // Run the appropriate command based on language
-              let runCommand = "";
-              switch (detectedLanguage) {
-                case "python":
-                  runCommand = `python3 ${filename} 2>/dev/null || python ${filename}`;
-                  break;
-                case "javascript":
-                  runCommand = `node ${filename}`;
-                  break;
-                case "c":
-                  runCommand = `gcc -o program ${filename} 2>/dev/null && ./program || echo "C compiler not available in this container"`;
-                  break;
-                case "cpp":
-                  runCommand = `g++ -o program ${filename} 2>/dev/null && ./program || echo "C++ compiler not available in this container"`;
-                  break;
-                case "java":
-                  const className = filename.replace('.java', '');
-                  runCommand = `javac ${filename} 2>/dev/null && java ${className} || echo "Java compiler not available in this container"`;
-                  break;
-                case "shell":
-                case "sh":
-                  runCommand = `chmod +x ${filename} && ./${filename}`;
-                  break;
-                default:
-                  runCommand = `echo "Language ${detectedLanguage} not directly supported in terminal. File created as ${filename}"`;
-              }
-
-              sendTerminalInput({ sessionId: sessionIdRef.current, input: `${runCommand}\r` });
-            }, 200);
-          }
-        }, index * 10); // Small delay between lines
-      });
-
-    } catch (error: any) {
-      toast({
-        title: "Execution failed",
-        description: error.message || "Failed to execute code in terminal",
-        variant: "destructive",
-      });
-    }
-  }, [isTerminalReady, sendTerminalInput, toast, appendStatusLine, initializeSession]);
+    },
+    [
+      isTerminalReady,
+      sendTerminalInput,
+      toast,
+      appendStatusLine,
+      initializeSession,
+      flushBufferedInput,
+    ]
+  );
 
   // Register the execution callback
   useEffect(() => {
@@ -902,7 +1024,8 @@ export default function ProjectWorkspace({
   const [consoleOutputs, setConsoleOutputs] = useState<ExecutionResult[]>([]);
   const [problems, setProblems] = useState<Problem[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
-  const terminalExecuteCallbackRef = useRef<((file: ProjectNodeFromDB) => Promise<void>) | null>(null);
+  const terminalExecuteCallbackRef =
+    useRef<((file: ProjectNodeFromDB) => Promise<boolean>) | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [inputBuffer, setInputBuffer] = useState("");
 
@@ -1016,26 +1139,65 @@ export default function ProjectWorkspace({
 
     // Check if we should use terminal execution for interactive programs
     const codeContent = currentFile.content ?? "";
-    const needsInteractiveInput =
-      codeContent.includes("scanf") ||
-      codeContent.includes("input(") ||
-      codeContent.includes("Scanner") ||
-      codeContent.includes("nextInt()") ||
-      codeContent.includes("cin >>") ||
-      codeContent.includes("readline()");
+    const needsInteractiveInput = shouldUseInteractiveExecution(
+      currentFile.name,
+      codeContent
+    );
 
     if (needsInteractiveInput) {
-      if (!inputBuffer.trim()) {
+      const showInteractiveToast = () => {
         toast({
-          title: "Program expects input",
+          title: "Interactive run started",
+          description: inputBuffer.trim()
+            ? "Buffered input was sent and the terminal is focused for follow-up responses."
+            : "The terminal is focused so you can respond when the program prompts for input.",
+        });
+      };
+
+      const notifyTerminalUnavailable = () => {
+        toast({
+          title: "Terminal not ready",
           description:
-            "Provide input via the terminal using `input <value>` or run anyway to execute without preset input.",
+            "Open the terminal tab and start a session to run interactive programs.",
+          variant: "destructive",
         });
+      };
+
+      const terminalExecutor = terminalExecuteCallbackRef.current;
+      let shouldFallbackToNonInteractive = false;
+
+      if (terminalExecutor) {
+        setActiveBottomTab("terminal");
+        try {
+          const executed = await terminalExecutor(currentFile);
+
+          if (executed !== false) {
+            window.setTimeout(() => {
+              window.dispatchEvent(new CustomEvent("terminalFocusInput"));
+            }, 0);
+            showInteractiveToast();
+            return;
+          }
+
+          shouldFallbackToNonInteractive = true;
+        } catch (error) {
+          if ((error as Error)?.message === "TERMINAL_NOT_READY") {
+            shouldFallbackToNonInteractive = true;
+          } else {
+            console.error("Failed to execute code in terminal", error);
+            return;
+          }
+        }
       } else {
-        toast({
-          title: "Using saved execution input",
-          description: "The buffered value will be passed to the program during execution.",
-        });
+        setActiveBottomTab("terminal");
+        shouldFallbackToNonInteractive = true;
+      }
+
+      if (shouldFallbackToNonInteractive) {
+        notifyTerminalUnavailable();
+      } else {
+        showInteractiveToast();
+        return;
       }
     }
 
