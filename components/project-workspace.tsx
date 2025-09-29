@@ -631,7 +631,6 @@ function TerminalPanel({
         if (error?.message === "TERMINAL_NOT_READY") {
           throw error;
         }
-
         toast({
           title: "Execution failed",
           description: error?.message || "Failed to execute code in terminal",
