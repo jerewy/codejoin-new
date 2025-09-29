@@ -1017,31 +1017,30 @@ export default function ProjectWorkspace({
     // Check if we should use terminal execution for interactive programs
     const codeContent = currentFile.content ?? "";
     const needsInteractiveInput =
-      codeContent.includes('scanf') ||
-      codeContent.includes('input(') ||
-      codeContent.includes('Scanner') ||
-      codeContent.includes('nextInt()') ||
-      codeContent.includes('cin >>') ||
-      codeContent.includes('readline()');
+      codeContent.includes("scanf") ||
+      codeContent.includes("input(") ||
+      codeContent.includes("Scanner") ||
+      codeContent.includes("nextInt()") ||
+      codeContent.includes("cin >>") ||
+      codeContent.includes("readline()");
 
-    if (needsInteractiveInput && terminalExecuteCallbackRef.current && typeof terminalExecuteCallbackRef.current === 'function') {
-      // Use terminal execution for programs that need user input
-      setActiveBottomTab("terminal");
-      try {
-        await terminalExecuteCallbackRef.current(currentFile);
-      } catch (error: any) {
-        console.error("Terminal execution error:", error);
+    if (needsInteractiveInput) {
+      if (!inputBuffer.trim()) {
         toast({
-          title: "Execution failed",
-          description: error.message || "Failed to execute code in terminal",
-          variant: "destructive",
+          title: "Program expects input",
+          description:
+            "Provide input via the terminal using `input <value>` or run anyway to execute without preset input.",
+        });
+      } else {
+        toast({
+          title: "Using saved execution input",
+          description: "The buffered value will be passed to the program during execution.",
         });
       }
-    } else {
-      // Use regular CodeEditor execution for programs that don't need interactive input
-      const event = new CustomEvent("codeEditorExecute");
-      window.dispatchEvent(event);
     }
+
+    const event = new CustomEvent("codeEditorExecute");
+    window.dispatchEvent(event);
   };
 
   const handleSendAIMessage = () => {
