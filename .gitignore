@@ -30,4 +30,6 @@ next-env.d.ts
 dev.err
 dev.log
 
-/logs/combined.log
+/logs
+
+code-executions/logs
