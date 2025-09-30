@@ -30,6 +30,6 @@ next-env.d.ts
 dev.err
 dev.log
 
-/logs
+**/logs/
 
 code-executions-backend/logs

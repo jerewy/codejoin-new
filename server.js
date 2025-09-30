@@ -17,6 +17,28 @@ const collaborators = new Map()
 const documentStates = new Map()
 const dockerService = new DockerService()
 
+const CTRL_C = '\u0003'
+
+function normalizeTerminalInput(input) {
+  if (typeof input !== 'string' || input.length === 0) {
+    return ''
+  }
+
+  if (input === CTRL_C) {
+    return input
+  }
+
+  const normalized = input
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+
+  const withTrailingNewline = normalized.endsWith('\n')
+    ? normalized
+    : `${normalized}\n`
+
+  return withTrailingNewline.replace(/\n/g, '\r\n')
+}
+
 app.prepare().then(() => {
   const httpServer = createServer(handler)
 
@@ -133,8 +155,20 @@ app.prepare().then(() => {
         return
       }
 
+      const payload = normalizeTerminalInput(input)
+      if (!payload) {
+        return
+      }
+
       try {
-        session.stream.write(input)
+        session.stream.write(payload, (writeError) => {
+          if (writeError) {
+            socket.emit('terminal:error', {
+              sessionId,
+              message: writeError.message
+            })
+          }
+        })
       } catch (error) {
         socket.emit('terminal:error', {
           sessionId,
