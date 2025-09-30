@@ -241,6 +241,8 @@ function TerminalPanel({
   const markerWatcherIdRef = useRef(0);
   const hiddenMarkersRef = useRef<Set<string>>(new Set());
 
+  const totalExecutionCountRef = useRef(0);
+
   const processMarkerWatchers = useCallback(() => {
     if (!markerWatchersRef.current.length) return;
 
@@ -836,7 +838,9 @@ function TerminalPanel({
         });
       }, 300 + index * 30);
     });
-  }, [appendStatusLine, inputBuffer, sendTerminalInput]);
+
+    onInputUpdate("");
+  }, [appendStatusLine, inputBuffer, onInputUpdate, sendTerminalInput]);
 
   const waitForTerminalReady = useCallback(async (timeoutMs = 10000) => {
     if (isTerminalReadyRef.current && sessionIdRef.current) {
@@ -951,7 +955,7 @@ function TerminalPanel({
             detectedLanguage
           );
 
-          if (languageSupport.status !== "available") {
+          if (languageSupport.status === "missing") {
             const runtimeError = new Error("TERMINAL_RUNTIME_UNAVAILABLE");
             (runtimeError as Error & {
               context?: Record<string, unknown>;
@@ -962,6 +966,14 @@ function TerminalPanel({
               status: languageSupport.status,
             };
             throw runtimeError;
+          }
+
+          if (languageSupport.status === "unknown") {
+            appendStatusLine(
+              languageSupport.command
+                ? `[warn] Proceeding without confirming ${languageSupport.command} availability.`
+                : "[warn] Proceeding without confirming required runtime availability."
+            );
           }
         }
 
@@ -1149,10 +1161,51 @@ function TerminalPanel({
     }
   };
 
-  const formatExecutionTime = (ms: number) => {
+  const formatExecutionTime = useCallback((ms: number) => {
     if (ms < 1000) return `${ms}ms`;
     return `${(ms / 1000).toFixed(2)}s`;
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!executionOutputs.length) {
+      return;
+    }
+
+    const segments = executionOutputs.map((execution) => {
+      totalExecutionCountRef.current += 1;
+      const ordinal = totalExecutionCountRef.current;
+      const exitLabel =
+        typeof execution.exitCode === "number" ? execution.exitCode : "-";
+      const statusLabel =
+        execution.success === false ||
+        (typeof execution.exitCode === "number" && execution.exitCode !== 0)
+          ? "error"
+          : "ok";
+      const timeLabel = formatExecutionTime(execution.executionTime);
+      const lines: string[] = [
+        `[run #${ordinal}] ${statusLabel} | exit ${exitLabel} | duration ${timeLabel}`,
+      ];
+
+      if (execution.output && execution.output.trim().length > 0) {
+        lines.push(execution.output.trimEnd());
+      }
+
+      if (execution.error && execution.error.trim().length > 0) {
+        lines.push(`[stderr]\n${execution.error.trimEnd()}`);
+      }
+
+      return lines.join("\n");
+    });
+
+    setTerminalOutput((prev) => {
+      const needsPrefixNewline = prev.length > 0 && !prev.endsWith("\n");
+      const block = segments.join("\n\n");
+      const suffix = block.endsWith("\n") ? "" : "\n";
+      return `${prev}${needsPrefixNewline ? "\n" : ""}${block}${suffix}`;
+    });
+
+    onClearExecutions();
+  }, [executionOutputs, formatExecutionTime, onClearExecutions]);
 
   const getStatusIcon = (exitCode: number | null, success?: boolean) => {
     if (success === true || exitCode === 0) {
@@ -1213,17 +1266,6 @@ function TerminalPanel({
               <Play className="h-3 w-3" />
             )}
           </Button>
-          {executionOutputs.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClearExecutions}
-              className="h-6 w-6 p-0 text-[#cccccc] hover:bg-[#3c3c3c] hover:text-white"
-              title="Clear execution outputs"
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
-          )}
           <Button
             variant="ghost"
             size="sm"
@@ -1242,43 +1284,6 @@ function TerminalPanel({
         className="flex-1 overflow-auto p-3 cursor-text"
         onClick={handleTerminalClick}
       >
-        {/* Execution outputs with VS Code styling */}
-        {executionOutputs.map((execution, index) => (
-          <div key={`exec-${index}`} className="mb-4">
-            {/* Execution header */}
-            <div className="flex items-center gap-2 mb-2 text-[#569cd6]">
-              {getStatusIcon(execution.exitCode, execution.success)}
-              <span className="text-xs text-[#4ec9b0]">
-                [Execution {index + 1}]
-              </span>
-              <span className="text-xs text-[#cccccc]">
-                {formatExecutionTime(execution.executionTime)} • Exit{" "}
-                {execution.success === true && execution.exitCode === null
-                  ? "—"
-                  : execution.exitCode ?? "—"}
-              </span>
-            </div>
-
-            {/* Standard output */}
-            {execution.output && (
-              <div className="mb-2">
-                <pre className="text-[#cccccc] whitespace-pre-wrap leading-relaxed">
-                  {execution.output}
-                </pre>
-              </div>
-            )}
-
-            {/* Error output */}
-            {execution.error && (
-              <div className="mb-2">
-                <pre className="text-[#f48771] whitespace-pre-wrap leading-relaxed bg-[#5a1d1d]/20 p-2 rounded border-l-2 border-[#f48771]">
-                  {execution.error}
-                </pre>
-              </div>
-            )}
-          </div>
-        ))}
-
         {/* Terminal output stream */}
         <div className="flex-1 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
           {terminalOutput ? (
