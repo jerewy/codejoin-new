@@ -1,220 +1,108 @@
-# 🖥️ CodeJoin Terminal Upgrade Plan
+# 🖥️ CodeJoin Real Terminal Integration Plan
 
-This document describes how to replace the current simulated terminal with a **real interactive terminal** using `xterm.js` (frontend), `node-pty` (backend), and optionally `dockerode` for sandboxing. It also covers integration with the Monaco editor so files can be executed interactively.
-
----
-
-## 🎯 Goals
-
-- Replace `<pre>` + `<input>` fake terminal with **xterm.js**.
-- Connect to a **real PTY** via WebSocket.
-- Run commands interactively (Python REPL, C programs with `scanf`, etc.).
-- Wire Monaco "Run" button to either:
-  - Non-interactive execution via `/api/execute`, OR
-  - Interactive execution inside terminal.
-- Optionally isolate each session inside Docker.
-
-**Definition of Done:**
-
-- Terminal behaves like VS Code’s integrated terminal.
-- Supports interactive input/output with immediate feedback.
-- Runs multiple languages (Python, Node, C/C++, Java, etc.).
-- CTRL-C and resize work.
-- No synthetic “timeout” warnings; rely on real stderr.
+This plan explains how to evolve CodeJoin's simulated terminal panel into a full xterm.js experience that streams directly from the sandboxed Docker containers managed by our existing Socket.IO + Docker service. The focus is on incrementally upgrading the `ProjectWorkspace` UI and reusing the real-time infrastructure that already powers `/server.js` and `code-execution-backend/src/services/dockerService.ts`.
 
 ---
 
-## 0. Install Dependencies
+## 1. Current State Snapshot
 
-````bash
-# frontend
-npm i xterm xterm-addon-fit xterm-addon-web-links
+- **Frontend** – `components/project-workspace.tsx` renders a faux terminal using `<pre>` output + `<input>` for commands. It already manages session lifecycle, command history, Monaco "Run in terminal" triggers, and Socket.IO event wiring (`terminal:*`).
+- **Server** – `server.js` hosts Next.js and a Socket.IO server. It proxies terminal events to `dockerService.createInteractiveContainer`, normalizes input (handles `CTRL-C`), and tears down sessions.
+- **Sandbox** – `code-execution-backend/src/services/dockerService.ts` starts interactive containers with `AttachStdout/Stderr/Stdin` + `TTY=true`, exposing a Node stream for bi-directional data. The service already sets `TERM=xterm` and `PS1=user@codejoin:~$`.
+- **Gap** – The stream is consumed as UTF-8 text and re-rendered manually. We miss terminal control sequences (colors, cursor movement), resizing, copy/paste fidelity, and advanced input modes (arrow keys, paging tools, etc.).
 
-# backend
-npm i ws node-pty dockerode
+---
 
-## Backend (WebSocket + PTY)
-Create server/terminal.ts:
-```ts
-import { WebSocketServer } from "ws";
-import pty from "node-pty";
+## 2. Goals & Non-Goals
 
-const wss = new WebSocketServer({ port: 3080 });
-console.log("PTY server listening on ws://localhost:3080");
+**Goals**
+1. Replace the faux terminal with a resilient `xterm.js` instance that understands VT sequences, supports mouse selection, and resizes with its container.
+2. Preserve the existing session contract (`terminal:start`, `terminal:ready`, `terminal:data`, `terminal:input`, `terminal:stop`, `terminal:exit`).
+3. Allow Monaco's "Run" and "Run in terminal" flows to continue without changing higher-level APIs.
+4. Ensure sessions keep CodeJoin's security posture (per-language Docker image, non-root user, network disabled).
 
-wss.on("connection", (ws) => {
-  const shell = process.platform === "win32" ? "powershell.exe" : "bash";
-  const p = pty.spawn(shell, [], {
-    name: "xterm-color",
-    cols: 80,
-    rows: 24,
-    cwd: process.cwd(),
-    env: process.env,
-  });
+**Non-Goals**
+- Replacing Socket.IO with a raw WebSocket server.
+- Rewriting Docker orchestration or adding new language images.
+- Delivering collaborative multi-user terminal sharing (future enhancement).
 
-  p.onData((d) => ws.send(d));
-  ws.on("message", (msg) => p.write(msg.toString()));
-  ws.on("close", () => p.kill());
-});
-````
+---
 
-Run with:
-node server/terminal.ts
+## 3. Architecture Decisions
 
-## 2. Frontend (xterm.js)
+| Topic | Decision |
+| --- | --- |
+| Transport | Retain Socket.IO. It already multiplexes project collaboration and terminal events, handles reconnects, and is exposed to the frontend. |
+| Terminal Emulator | Use `xterm`, `xterm-addon-fit`, `xterm-addon-web-links`, and `@xterm/addon-clipboard` for UX parity with VS Code. |
+| Data Flow | Stream Docker stdout/stderr chunks verbatim to xterm. Convert frontend keystrokes to the same payloads we currently ship via `terminal:input`. Reference the [xterm.js VT100 compatibility notes](https://xtermjs.org/docs/) when normalizing control sequences. |
+| Resizing | Emit `terminal:resize` Socket.IO event when `xterm` dimensions change so Docker TTY receives `setWindow`. (Add new event pair.) |
+| File uploads | Reuse current heredoc helper in `ProjectWorkspace` – xterm only replaces the presentation layer. |
 
-Create TerminalPane.tsx
+---
 
-```tsx
-"use client";
-import { useEffect, useRef } from "react";
-import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
-import "xterm/css/xterm.css";
+## 4. Implementation Plan
 
-export default function TerminalPane() {
-  const ref = useRef<HTMLDivElement>(null);
+### Phase A – Dependencies & Scaffolding
 
-  useEffect(() => {
-    const term = new Terminal({ convertEol: true, fontFamily: "monospace" });
-    const fit = new FitAddon();
-    term.loadAddon(fit);
-    term.open(ref.current!);
-    fit.fit();
+1. Add packages: `npm install xterm xterm-addon-fit xterm-addon-web-links @xterm/addon-clipboard` (frontend only).
+2. Ensure global styles import `xterm/css/xterm.css`. Prefer a lazy dynamic import inside the terminal component to avoid SSR issues.
+3. Register dedicated terminal scripts in `package.json`:
+   ```json
+   "scripts": {
+     "term:dev": "node server/terminal.ts",
+     "term:docker": "ts-node server/terminal-docker.ts"
+   }
+   ```
+   This keeps runbooks deterministic for future automation.
+4. Create `components/terminal/TerminalSurface.tsx` (client component) to encapsulate xterm initialization, add-ons, fit handling, selection clipboard, and socket plumbing. Export an imperative API (`focus`, `write`, `dispose`, `sendData`) via `forwardRef` so `ProjectWorkspace` can manage it.
 
-    const ws = new WebSocket("ws://localhost:3080");
-    ws.onmessage = (e) => term.write(e.data);
-    term.onData((d) => ws.send(d));
+### Phase B – Backend Enhancements (Optional but Recommended)
 
-    window.addEventListener("resize", () => fit.fit());
-    return () => ws.close();
-  }, []);
+1. In `server.js`, listen for a new `terminal:resize` event and call `stream.resize(cols, rows)` when `node-pty` is introduced. Because Docker streams currently expose `container.modem.demuxStream`, we need to switch to `pty`-like behavior. Two options:
+   - **Preferred:** Wrap Docker attach stream with [`node-pty`](https://github.com/microsoft/node-pty) running on the host and execute `docker exec -it`. Provides native `resize` and signal support. On Windows hosts, prefer launching `powershell.exe`; Linux/macOS can continue with `bash`/`sh` because `node-pty` maps to `forkpty` while Windows relies on `conhost` semantics.
+   - **Alternate:** Use Docker's `container.resize({ h, w })` API directly. Works with current attach stream, no extra dependency.
+2. Update `dockerService.createInteractiveContainer` to expose a `resize(sessionId, { cols, rows })` helper that proxies to Docker.
+3. Handle `terminal:input` binary payloads (Buffer) to support non-UTF8 keystrokes (arrow keys). With Socket.IO we can send `ArrayBuffer`s directly.
 
-  return <div ref={ref} className="h-full w-full bg-black" />;
-}
-```
+### Phase C – Frontend Integration
 
-## 3. Optional: Docker Isolation
+1. Replace the existing `<pre>` + `<input>` block in `ProjectWorkspace` with the new `TerminalSurface` component. Preserve surrounding layout, toolbar, and status indicators.
+2. Translate existing command queue + history logic:
+   - Send `enter` via xterm when executing buffered commands so prompts stay in sync.
+   - Keep auto-scroll but rely on xterm's viewport.
+   - Maintain `terminalOutput` state only for logging / transcripts. Live rendering handled by xterm.
+3. Update Monaco integration (`handleExecuteInTerminal`) to call the new imperative API instead of manipulating DOM inputs.
+4. Wire up focus events (`window.dispatchEvent("terminalFocusInput")`) to call `terminal.focus()`.
+5. Use the Fit addon to respond to container resize. Recalculate when panels collapse/expand.
 
-```ts
-import Docker from "dockerode";
-const docker = new Docker();
+### Phase D – Observability & UX polish
 
-const container = await docker.createContainer({
-  Image: "python:3.11-alpine",
-  Tty: true,
-  OpenStdin: true,
-  Cmd: ["/bin/sh"],
-  HostConfig: { AutoRemove: true, NetworkMode: "none" },
-});
-await container.start();
-```
+1. Surface terminal errors via toast/toast-like component when Socket.IO emits `terminal:error`.
+2. Add copy shortcut instructions (Ctrl+Shift+C) and configure xterm clipboard add-on.
+3. Mirror the theme colors via `xterm` options (`fontFamily`, `theme` palette) so the terminal matches the VS Code aesthetic in `ProjectWorkspace`.
+4. Ensure accessibility: set `role="presentation"`, provide an aria-label, and maintain focus outline.
 
-Attach stdin/stdout to WebSocket stream.
-You can also pass ?image=gcc:latest in the WS URL to select a language container.
+---
 
-## 4. Connect Monaco
+## 5. Testing & Validation
 
-1. Non-interactive runs → keep using codeExecutionAPI.executeCode (/api/execute).
-2. Interactive runs → save file, then send a command to terminal:
+| Area | Steps |
+| --- | --- |
+| Unit | Verify new terminal component logic (event emitters, cleanup) with React Testing Library + Jest DOM. |
+| Manual |
+- Launch `npm run dev` (frontend) and `npm run dev` inside `code-execution-backend`. Start a project, open terminal, run commands (`ls`, `python3`, `node`).
+- Validate interactive programs (`python` input, `gcc` compilation, `nano`/`vi` arrow keys) behave correctly.
+- Resize terminal panel, split panes, toggle tabs – ensure xterm resizes cleanly.
+- Simulate CTRL+C and ensure container stops.
+| Regression | Confirm `/api/execute` non-interactive path still works. Re-run smoke scripts in `debug-*.js` if needed. |
+| Security | Verify containers remain isolated (no network). Ensure no new env vars leak to client. Containers should auto-remove after exit and memory should be capped (for example, 512 MB via Docker `HostConfig`) to prevent resource leaks. |
 
-```ts
-// Example helper
-function runFile(ws: WebSocket, fileName: string, lang: string) {
-  let cmd = "";
-  switch (lang) {
-    case "python":
-      cmd = `python3 ${fileName}`;
-      break;
-    case "javascript":
-      cmd = `node ${fileName}`;
-      break;
-    case "c":
-      cmd = `gcc ${fileName} -o program && ./program`;
-      break;
-    case "cpp":
-      cmd = `g++ ${fileName} -o program && ./program`;
-      break;
-    case "java":
-      cmd = `javac ${fileName} && java ${fileName.replace(".java", "")}`;
-      break;
-  }
-  ws.send(cmd + "\r");
-}
-```
+---
 
-## 5. Tests
+## 6. Rollout & Follow-Ups
 
-- Python stdin
+1. Ship feature behind a temporary workspace feature flag (`lib/config.ts`) to guard alpha rollouts.
+2. Update onboarding docs (`README`, support runbook) with new terminal UX and troubleshooting steps.
+3. Collect telemetry (counts of start/stop, error rates) by instrumenting Socket.IO events with existing logging utilities.
+4. Future enhancement ideas: multi-user shared terminals, persistent history per project, record/replay transcripts for educators.
 
-```py
-n = input("name? ")
-print("hi", n)
-```
-
-- C compile
-
-```c
-#include <stdio.h>
-int main(){int x; scanf("%d",&x); printf("%d\n", x*2);}
-```
-
-- Java
-
-```java
-class Main { public static void main(String[] a){ System.out.println("OK"); } }
-```
-
-- Ctrl-C works on sleep 30.
-
-## Run everythong
-
-```bash
-# backend code execution API
-cd code-execution-backend && npm run dev   # :3001
-
-# terminal WebSocket
-node server/terminal.ts                   # :3080
-
-# frontend
-npm run dev                               # :3000
-```
-
-## 7: Monaco “Run” wiring (non-interactive vs interactive)
-
-- Keep your existing non-interactive /api/execute path for quick runs (prints to your console panel).
-- If code contains input()/scanf/cin/readline, switch default to terminal run:
-  1. Send heredoc to create the file.
-  2. Send the run command.
-  3. If there’s a buffered executionInput, write each line with \r after the command.
-
-## Non-Goals (for the agent)
-
-- No auth, room, or AI features changes.
-- No refactor of your Monaco custom theme/validation.
-- No Supabase schema changes.
-
-## Deliverables
-
-server/terminal.ts (node-pty version) and server/terminal-docker.ts (dockerode version).
-
-- Updated TerminalPanel that uses xterm.js.
-- Utility to run current Monaco file in terminal (heredoc or FS API).
-- README.md “How to run terminal locally”.
-- A small e2e smoke doc with the manual tests above.
-
-# 1) Start code-execution backend (your existing service)
-
-cd code-execution-backend && npm run dev # :3001
-
-# 2) Start terminal WS server (choose one)
-
-npm run term:dev # node-pty host shell
-
-# or
-
-npm run term:docker # dockerode variant (if you add a script for it)
-
-# 3) Start Next.js
-
-npm run dev # :3000
