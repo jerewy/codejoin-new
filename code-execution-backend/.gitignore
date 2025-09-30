@@ -12,7 +12,8 @@ yarn-error.log*
 .env.production.local
 
 # Logs
-logs/
+logs/*
+!logs/.gitignore
 *.log
 
 # Runtime data
