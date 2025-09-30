@@ -330,8 +330,9 @@ function TerminalPanel({
     (
       successMarker: string,
       failureMarker?: string,
-      timeoutMs = 4000
+      options: { timeoutMs?: number; startIndex?: number } = {}
     ) => {
+      const { timeoutMs = 4000, startIndex } = options;
       hiddenMarkersRef.current.add(successMarker);
       if (failureMarker) {
         hiddenMarkersRef.current.add(failureMarker);
@@ -339,7 +340,11 @@ function TerminalPanel({
 
       return new Promise<boolean>((resolve, reject) => {
         const watcherId = markerWatcherIdRef.current++;
-        const startIndex = rawOutputBufferRef.current.length;
+        const resolvedStartIndex =
+          typeof startIndex === "number"
+            ? Math.max(0, Math.min(startIndex, rawOutputBufferRef.current.length))
+            : rawOutputBufferRef.current.length;
+        let timeoutId: number | null = null;
 
         const cleanup = () => {
           hiddenMarkersRef.current.delete(successMarker);
@@ -351,33 +356,50 @@ function TerminalPanel({
           );
         };
 
-        const timeoutId = window.setTimeout(() => {
+        const resolveAndCleanup = (value: boolean) => {
+          if (typeof timeoutId === "number") {
+            window.clearTimeout(timeoutId);
+          }
           cleanup();
-          reject(new Error("Marker wait timed out"));
-        }, timeoutMs);
+          resolve(value);
+        };
+
+        const rejectAndCleanup = (error: Error) => {
+          if (typeof timeoutId === "number") {
+            window.clearTimeout(timeoutId);
+          }
+          cleanup();
+          reject(error);
+        };
+
+        const existingSlice = rawOutputBufferRef.current.slice(resolvedStartIndex);
+        if (existingSlice.includes(successMarker)) {
+          resolveAndCleanup(true);
+          return;
+        }
+        if (failureMarker && existingSlice.includes(failureMarker)) {
+          resolveAndCleanup(false);
+          return;
+        }
 
         const watcher: TerminalMarkerWatcher = {
           id: watcherId,
           successMarker,
           failureMarker,
-          startIndex,
-          resolve: (value) => {
-            window.clearTimeout(timeoutId);
-            cleanup();
-            resolve(value);
-          },
-          reject: (error) => {
-            window.clearTimeout(timeoutId);
-            cleanup();
-            reject(error);
-          },
+          startIndex: resolvedStartIndex,
+          resolve: resolveAndCleanup,
+          reject: rejectAndCleanup,
         };
 
         markerWatchersRef.current.push(watcher);
-        processMarkerWatchers();
+
+        timeoutId = window.setTimeout(() => {
+          cleanup();
+          reject(new Error("Marker wait timed out"));
+        }, timeoutMs);
       });
     },
-    [processMarkerWatchers]
+    []
   );
 
   type CommandAvailability = "available" | "missing" | "unknown";
@@ -391,6 +413,8 @@ function TerminalPanel({
       const successMarker = `__CODEJOIN_${upperName}_OK__`;
       const failureMarker = `__CODEJOIN_${upperName}_MISSING__`;
 
+      const markerStartIndex = rawOutputBufferRef.current.length;
+
       sendTerminalInput({
         sessionId,
         input: `if command -v ${commandName} >/dev/null 2>&1; then echo '${successMarker}'; else echo '${failureMarker}'; fi\r`,
@@ -399,7 +423,8 @@ function TerminalPanel({
       try {
         const result = await waitForTerminalMarker(
           successMarker,
-          failureMarker
+          failureMarker,
+          { startIndex: markerStartIndex }
         );
         return result ? "available" : "missing";
       } catch (error) {

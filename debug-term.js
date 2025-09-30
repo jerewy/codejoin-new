@@ -35,32 +35,46 @@ const docker = new Docker();
     }
   });
 
-  await container.start();
-  const stream = await container.attach({
-    stream: true,
-    stdin: true,
-    stdout: true,
-    stderr: true,
-    tty: true
-  });
+  // ⏱ Timeout protection
+  const timeout = setTimeout(async () => {
+    console.error("⏰ Timeout! Cleaning up container...");
+    try { await container.kill(); } catch {}
+    try { await container.remove({ force: true }); } catch {}
+    process.exit(1);
+  }, 10000); // 10s
 
-  stream.on('data', (chunk) => {
-    const raw = chunk.toString();
-    console.log('CHUNK RAW:', JSON.stringify(raw));
-  });
-
-  const send = (input) => new Promise((resolve, reject) => {
-    stream.write(input, (err) => {
-      if (err) reject(err); else resolve();
+  try {
+    await container.start();
+    const stream = await container.attach({
+      stream: true,
+      stdin: true,
+      stdout: true,
+      stderr: true,
+      tty: true
     });
-  });
 
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    stream.on('data', (chunk) => {
+      const raw = chunk.toString();
+      console.log('CHUNK RAW:', JSON.stringify(raw));
+    });
 
-  await sleep(1500);
-  await send("if command -v gcc >/dev/null 2>&1; then echo '__CODEJOIN_GCC_OK__'; else echo '__CODEJOIN_GCC_MISSING__'; fi\n");
-  await sleep(2000);
-  await send('exit\n');
-  await container.wait();
-  await container.remove({ force: true });
+    const send = (input) => new Promise((resolve, reject) => {
+      stream.write(input, (err) => {
+        if (err) reject(err); else resolve();
+      });
+    });
+
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    await sleep(1500);
+    await send("if command -v gcc >/dev/null 2>&1; then echo '__CODEJOIN_GCC_OK__'; else echo '__CODEJOIN_GCC_MISSING__'; fi\n");
+    await sleep(2000);
+    await send('exit\n');
+    await container.wait();
+    console.log("✅ Container finished cleanly");
+
+  } finally {
+    clearTimeout(timeout); // cancel timeout if everything finished
+    try { await container.remove({ force: true }); } catch {}
+  }
 })();
