@@ -1668,18 +1668,14 @@ export default function ProjectWorkspace({
       }
 
       if (shouldFallbackToNonInteractive) {
-        if (
-          fallbackContext?.language &&
-          typeof window !== "undefined" &&
-          !inputBuffer.trim()
-        ) {
+        if (fallbackContext?.language && typeof window !== "undefined") {
           const promptMessage = [
             `The interactive ${fallbackContext.language.toUpperCase()} sandbox is unavailable.`,
             "Enter the stdin your program should read when we rerun it with the standard executor.",
             "Leave blank to continue without providing input.",
           ].join("\n\n");
 
-          const userSuppliedInput = window.prompt(promptMessage, "");
+          const userSuppliedInput = window.prompt(promptMessage, inputBuffer);
           if (typeof userSuppliedInput === "string") {
             setInputBuffer(userSuppliedInput);
           }

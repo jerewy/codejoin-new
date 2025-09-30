@@ -30,6 +30,8 @@ next-env.d.ts
 dev.err
 dev.log
 
-**/logs/
+logs/*
+!logs/.gitignore
 
-code-executions-backend/logs
+code-execution-backend/logs/*
+!code-execution-backend/logs/.gitignore
