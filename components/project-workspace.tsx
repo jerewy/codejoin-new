@@ -92,6 +92,7 @@ import {
 } from "@/components/ui/resizable";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { ProjectNodeFromDB } from "@/lib/types";
+import { Input } from "@/components/ui/input";
 
 // Define execution result interface
 interface ExecutionResult {
@@ -1080,8 +1081,9 @@ function TerminalPanel({
               ? command.slice(argumentStartIndex + 1)
               : "";
             const normalizedValue = rawValue.trim();
-            const argumentKeyword =
-              normalizedValue.split(/\s+/)[0]?.toLowerCase();
+            const argumentKeyword = normalizedValue
+              .split(/\s+/)[0]
+              ?.toLowerCase();
 
             writeToTerminal("\r\n");
 
@@ -1089,10 +1091,7 @@ function TerminalPanel({
               appendStatusLine(
                 "[input] Provide a value or use `input clear` to reset the buffer."
               );
-            } else if (
-              argumentKeyword === "clear" &&
-              restTokens.length === 1
-            ) {
+            } else if (argumentKeyword === "clear" && restTokens.length === 1) {
               onInputUpdate("");
               appendStatusLine("[input] Execution input buffer cleared.");
             } else {
