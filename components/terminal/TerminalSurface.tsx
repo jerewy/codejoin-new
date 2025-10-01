@@ -20,6 +20,7 @@ export interface TerminalSurfaceHandle {
   focus: () => void;
   write: (data: string) => void;
   sendData: (input: string, options?: { sessionId?: string }) => void;
+  fit: () => void;
   dispose: () => void;
 }
 
@@ -147,6 +148,28 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
     useEffect(() => {
       emitTerminalResizeRef.current = emitTerminalResize;
     }, [emitTerminalResize]);
+
+    useEffect(() => {
+      if (!containerRef.current || !fitAddonRef.current) return;
+
+      const resizeObserver = new ResizeObserver(() => {
+        fitAddonRef.current!.fit();
+      });
+
+      // Observe terminal container
+      resizeObserver.observe(containerRef.current);
+
+      // Also observe terminal container's parent — this catches size changes from resizing panels
+      const parentElement = containerRef.current.parentElement;
+      if (parentElement) {
+        resizeObserver.observe(parentElement);
+      }
+
+      // Cleanup on unmount
+      return () => {
+        resizeObserver.disconnect();
+      };
+    }, []);
 
     useEffect(() => {
       const terminal = new Terminal({
@@ -413,6 +436,9 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
           if (!sessionId || !input) return;
           sendTerminalInput({ sessionId, input });
         },
+        fit: () => {
+          runFitAndEmit();
+        },
         dispose: () => {
           resizeObserverRef.current?.disconnect();
           inputListenerRef.current?.dispose();
@@ -422,7 +448,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
           fitAddonRef.current = null;
         },
       }),
-      [sendTerminalInput]
+      [runFitAndEmit, sendTerminalInput]
     );
 
     return (

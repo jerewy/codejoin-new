@@ -1241,7 +1241,7 @@ function TerminalPanel({
     : "text-[#f48771]";
 
   return (
-    <div className="h-full flex flex-col bg-[#1e1e1e] text-[#cccccc] font-mono text-sm">
+    <div className="h-full min-h-0 flex flex-col bg-[#1e1e1e] text-[#cccccc] font-mono text-sm">
       {/* Terminal Header - VS Code style */}
       <div className="flex items-center justify-between px-3 py-2 bg-[#2d2d30] border-b border-[#3c3c3c]">
         <div className="flex items-center gap-2">
@@ -1281,8 +1281,11 @@ function TerminalPanel({
       </div>
 
       {/* Terminal Content */}
-      <div className="flex-1 flex flex-col" onClick={handleTerminalClick}>
-        <div className="flex-1 overflow-hidden p-3">
+      <div
+        className="flex-1 flex flex-col min-h-0"
+        onClick={handleTerminalClick}
+      >
+        <div className="flex-1 min-h-0 overflow-hidden p-3">
           <TerminalSurface
             ref={terminalSurfaceRef}
             className="h-full w-full"
@@ -2301,12 +2304,11 @@ export default function ProjectWorkspace({
               collapsible={true}
               defaultSize={30}
               minSize={15} // Increase minimum size
-              maxSize={60} // Add maximum size
-              onResize={(size) => {
-                // Force terminal resize when panel resizes
+              onResize={() => {
+                // Allow the panel to finish resizing before fitting xterm
                 setTimeout(() => {
-                  window.dispatchEvent(new Event("resize"));
-                }, 150);
+                  terminalSurfaceRef.current?.fit();
+                }, 50);
               }}
             >
               <div className="h-full border-t flex flex-col">
