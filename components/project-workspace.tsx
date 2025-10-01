@@ -878,20 +878,26 @@ function TerminalPanel({
         const resolvedModule = module ?? (await loadCodeExecutionModule());
         const response = await resolvedModule.codeExecutionAPI.getSupportedLanguages();
         const keys = new Set<string>();
+        let hasCatalogEntries = false;
 
         if (response.success && Array.isArray(response.languages)) {
           response.languages.forEach((languageConfig) => {
             if (languageConfig?.id) {
               keys.add(languageConfig.id.toLowerCase());
+              hasCatalogEntries = true;
             }
           });
         }
 
-        // Always treat JavaScript as the default fallback runtime.
-        keys.add("javascript");
-
-        supportedLanguageKeysRef.current =
-          keys.size > 0 ? keys : new Set(SAFE_TERMINAL_LANGUAGE_FALLBACKS);
+        if (hasCatalogEntries) {
+          // Always treat JavaScript as the default fallback runtime.
+          keys.add("javascript");
+          supportedLanguageKeysRef.current = keys;
+        } else {
+          supportedLanguageKeysRef.current = new Set(
+            SAFE_TERMINAL_LANGUAGE_FALLBACKS
+          );
+        }
       } catch (error) {
         console.warn("Failed to load supported terminal languages", error);
         supportedLanguageKeysRef.current = new Set(
