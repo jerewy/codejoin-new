@@ -181,6 +181,27 @@ const shouldUseInteractiveExecution = (
   return interactivePatterns.some((pattern) => pattern.test(normalizedSource));
 };
 
+const SAFE_TERMINAL_LANGUAGE_FALLBACKS: string[] = [
+  "javascript",
+  "python",
+  "java",
+  "go",
+  "rust",
+  "c",
+  "cpp",
+  "csharp",
+  "typescript",
+];
+
+const getTrackingLanguageKey = (language?: string | null): string => {
+  if (!language) {
+    return "default";
+  }
+
+  const normalized = language.toLowerCase();
+  return normalized === "javascript" ? "default" : normalized;
+};
+
 // VS Code-style Terminal component
 function TerminalPanel({
   projectId,
@@ -584,7 +605,7 @@ function TerminalPanel({
         appendStatusLine("Connecting to CodeJoin sandbox...");
         hasShownConnectionMessage.current = true;
       }
-      pendingLanguageRef.current = language ?? "default";
+      pendingLanguageRef.current = getTrackingLanguageKey(language);
       startTerminalSession({ projectId, userId, language });
     },
     [
@@ -869,10 +890,13 @@ function TerminalPanel({
         // Always treat JavaScript as the default fallback runtime.
         keys.add("javascript");
 
-        supportedLanguageKeysRef.current = keys;
+        supportedLanguageKeysRef.current =
+          keys.size > 0 ? keys : new Set(SAFE_TERMINAL_LANGUAGE_FALLBACKS);
       } catch (error) {
         console.warn("Failed to load supported terminal languages", error);
-        supportedLanguageKeysRef.current = new Set(["javascript"]);
+        supportedLanguageKeysRef.current = new Set(
+          SAFE_TERMINAL_LANGUAGE_FALLBACKS
+        );
       }
 
       return supportedLanguageKeysRef.current;
@@ -882,7 +906,7 @@ function TerminalPanel({
 
   const ensureTerminalSession = useCallback(
     async (language: string | null) => {
-      const desiredLanguageKey = language ?? "default";
+      const desiredLanguageKey = getTrackingLanguageKey(language);
       const hasReadySession =
         Boolean(sessionIdRef.current) && isTerminalReadyRef.current;
       const languageMismatch =
@@ -933,20 +957,32 @@ function TerminalPanel({
         const supportedLanguageKeys =
           await ensureSupportedLanguageKeys(codeExecutionModule);
         const hasLanguageConfig = supportedLanguageKeys.has(normalizedLanguage);
-        const targetLanguage = hasLanguageConfig ? normalizedLanguage : null;
+        const shouldOmitLanguage =
+          normalizedLanguage === "javascript" && !hasLanguageConfig;
+        const targetLanguage = hasLanguageConfig
+          ? shouldOmitLanguage
+            ? null
+            : normalizedLanguage
+          : null;
         const requiresRuntimeVerification =
           normalizedLanguage === "c" ||
           normalizedLanguage === "cpp" ||
           normalizedLanguage === "java";
 
-        if (targetLanguage && activeLanguageRef.current !== targetLanguage) {
+        const trackedTargetLanguage = getTrackingLanguageKey(targetLanguage);
+
+        if (
+          targetLanguage &&
+          trackedTargetLanguage !== "default" &&
+          activeLanguageRef.current !== trackedTargetLanguage
+        ) {
           appendStatusLine(
             `Preparing ${targetLanguage.toUpperCase()} execution environment...`
           );
         }
 
         if (
-          !targetLanguage &&
+          (targetLanguage === "javascript" || !targetLanguage) &&
           activeLanguageRef.current &&
           activeLanguageRef.current !== "default" &&
           isTerminalReadyRef.current
