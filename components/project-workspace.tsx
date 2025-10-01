@@ -1041,21 +1041,29 @@ function TerminalPanel({
   }, [onExecuteInTerminal, executeCodeInTerminal]);
 
   const handleTerminalInput = useCallback(
-    (chunk: string) => {
-      if (!sessionIdRef.current) {
-        return;
+    ({
+      sessionId: inputSessionId,
+      input: chunk,
+    }: {
+      sessionId: string;
+      input: string;
+    }) => {
+      if (
+        !sessionIdRef.current ||
+        inputSessionId !== sessionIdRef.current
+      ) {
+        return null;
       }
 
       let forwardBuffer = "";
+      let aggregated = "";
 
       const flushForwardBuffer = () => {
         if (forwardBuffer.length === 0) {
           return;
         }
 
-        terminalSurfaceRef.current?.sendData(forwardBuffer, {
-          sessionId: sessionIdRef.current ?? undefined,
-        });
+        aggregated += forwardBuffer;
         forwardBuffer = "";
       };
 
@@ -1101,6 +1109,7 @@ function TerminalPanel({
               );
             }
 
+            forwardBuffer = "";
             continue;
           }
 
@@ -1145,6 +1154,8 @@ function TerminalPanel({
       }
 
       flushForwardBuffer();
+
+      return aggregated;
     },
     [appendStatusLine, onInputUpdate, writeToTerminal]
   );
@@ -1280,9 +1291,9 @@ function TerminalPanel({
             className="h-full w-full"
             onReady={handleTerminalReady}
             onData={handleTerminalData}
+            onInput={handleTerminalInput}
             onError={handleTerminalError}
             onExit={handleTerminalExit}
-            onUserInput={handleTerminalInput}
           />
         </div>
       </div>
