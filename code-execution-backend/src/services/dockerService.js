@@ -456,6 +456,32 @@ class DockerService {
     await Promise.allSettled(promises);
   }
 
+  async resizeInteractiveContainer(sessionId, dimensions) {
+    const container = this.runningContainers.get(sessionId);
+    if (!container) {
+      throw new Error(`No interactive container found for session ${sessionId}`);
+    }
+
+    const cols = Number(dimensions?.cols);
+    const rows = Number(dimensions?.rows);
+
+    if (!Number.isFinite(cols) || !Number.isFinite(rows)) {
+      return;
+    }
+
+    if (cols <= 0 || rows <= 0) {
+      return;
+    }
+
+    try {
+      await container.resize({ w: Math.floor(cols), h: Math.floor(rows) });
+      logger.debug('Resized interactive container', { sessionId, cols, rows });
+    } catch (error) {
+      logger.warn(`Failed to resize interactive container ${sessionId}: ${error.message}`);
+      throw new Error(`Failed to resize interactive container: ${error.message}`);
+    }
+  }
+
   async stopInteractiveContainer(sessionId) {
     const container = this.runningContainers.get(sessionId);
     if (!container) {
