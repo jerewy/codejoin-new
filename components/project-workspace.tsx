@@ -181,6 +181,27 @@ const shouldUseInteractiveExecution = (
   return interactivePatterns.some((pattern) => pattern.test(normalizedSource));
 };
 
+const SAFE_TERMINAL_LANGUAGE_FALLBACKS: string[] = [
+  "javascript",
+  "python",
+  "java",
+  "go",
+  "rust",
+  "c",
+  "cpp",
+  "csharp",
+  "typescript",
+];
+
+const getTrackingLanguageKey = (language?: string | null): string => {
+  if (!language) {
+    return "default";
+  }
+
+  const normalized = language.toLowerCase();
+  return normalized === "javascript" ? "default" : normalized;
+};
+
 // VS Code-style Terminal component
 function TerminalPanel({
   projectId,
@@ -220,6 +241,9 @@ function TerminalPanel({
   const displayEndsWithNewlineRef = useRef(true);
   const commandBufferRef = useRef("");
   const commandHistoryRef = useRef<string[]>([]);
+  type CodeExecutionModule = typeof import("@/lib/api/codeExecution");
+  const codeExecutionModuleRef = useRef<CodeExecutionModule | null>(null);
+  const supportedLanguageKeysRef = useRef<Set<string> | null>(null);
 
   type TerminalMarkerWatcher = {
     id: number;
@@ -581,7 +605,7 @@ function TerminalPanel({
         appendStatusLine("Connecting to CodeJoin sandbox...");
         hasShownConnectionMessage.current = true;
       }
-      pendingLanguageRef.current = language ?? "default";
+      pendingLanguageRef.current = getTrackingLanguageKey(language);
       startTerminalSession({ projectId, userId, language });
     },
     [
@@ -836,20 +860,66 @@ function TerminalPanel({
     });
   }, []);
 
+  const loadCodeExecutionModule = useCallback(async (): Promise<CodeExecutionModule> => {
+    if (!codeExecutionModuleRef.current) {
+      codeExecutionModuleRef.current = await import("@/lib/api/codeExecution");
+    }
+
+    return codeExecutionModuleRef.current as CodeExecutionModule;
+  }, []);
+
+  const ensureSupportedLanguageKeys = useCallback(
+    async (module?: CodeExecutionModule): Promise<Set<string>> => {
+      if (supportedLanguageKeysRef.current) {
+        return supportedLanguageKeysRef.current;
+      }
+
+      try {
+        const resolvedModule = module ?? (await loadCodeExecutionModule());
+        const response = await resolvedModule.codeExecutionAPI.getSupportedLanguages();
+        const keys = new Set<string>();
+
+        if (response.success && Array.isArray(response.languages)) {
+          response.languages.forEach((languageConfig) => {
+            if (languageConfig?.id) {
+              keys.add(languageConfig.id.toLowerCase());
+            }
+          });
+        }
+
+        // Always treat JavaScript as the default fallback runtime.
+        keys.add("javascript");
+
+        supportedLanguageKeysRef.current =
+          keys.size > 0 ? keys : new Set(SAFE_TERMINAL_LANGUAGE_FALLBACKS);
+      } catch (error) {
+        console.warn("Failed to load supported terminal languages", error);
+        supportedLanguageKeysRef.current = new Set(
+          SAFE_TERMINAL_LANGUAGE_FALLBACKS
+        );
+      }
+
+      return supportedLanguageKeysRef.current;
+    },
+    [loadCodeExecutionModule]
+  );
+
   const ensureTerminalSession = useCallback(
     async (language: string | null) => {
-      const desiredLanguageKey = language ?? "default";
-      const requiresDedicatedContainer = language !== null;
+      const desiredLanguageKey = getTrackingLanguageKey(language);
       const hasReadySession =
         Boolean(sessionIdRef.current) && isTerminalReadyRef.current;
       const languageMismatch =
-        requiresDedicatedContainer &&
         activeLanguageRef.current !== null &&
         activeLanguageRef.current !== desiredLanguageKey;
 
       if (languageMismatch && sessionIdRef.current) {
+        const languageLabel =
+          desiredLanguageKey === "default"
+            ? "default JavaScript"
+            : desiredLanguageKey.toUpperCase();
         appendStatusLine(
-          `Switching terminal to ${desiredLanguageKey.toUpperCase()} environment...`
+          `Switching terminal to ${languageLabel} environment...`
         );
         handleStopSession();
         try {
@@ -878,23 +948,46 @@ function TerminalPanel({
     async (file: ProjectNodeFromDB): Promise<boolean> => {
       try {
         // Detect language first
-        const { codeExecutionAPI } = await import("@/lib/api/codeExecution");
-        const detectedLanguage = codeExecutionAPI.detectLanguageFromFileName(
-          file.name
-        );
-
-        // Check if we need to start a session with specific language support
-        const needsSpecificContainer =
-          detectedLanguage === "c" ||
-          detectedLanguage === "cpp" ||
-          detectedLanguage === "java";
-
-        const targetLanguage = needsSpecificContainer ? detectedLanguage : null;
-
-        if (needsSpecificContainer) {
-          appendStatusLine(
-            `Preparing ${detectedLanguage.toUpperCase()} execution environment...`
+        const codeExecutionModule = await loadCodeExecutionModule();
+        const detectedLanguage =
+          codeExecutionModule.codeExecutionAPI.detectLanguageFromFileName(
+            file.name
           );
+        const normalizedLanguage = detectedLanguage.toLowerCase();
+        const supportedLanguageKeys =
+          await ensureSupportedLanguageKeys(codeExecutionModule);
+        const hasLanguageConfig = supportedLanguageKeys.has(normalizedLanguage);
+        const shouldOmitLanguage =
+          normalizedLanguage === "javascript" && !hasLanguageConfig;
+        const targetLanguage = hasLanguageConfig
+          ? shouldOmitLanguage
+            ? null
+            : normalizedLanguage
+          : null;
+        const requiresRuntimeVerification =
+          normalizedLanguage === "c" ||
+          normalizedLanguage === "cpp" ||
+          normalizedLanguage === "java";
+
+        const trackedTargetLanguage = getTrackingLanguageKey(targetLanguage);
+
+        if (
+          targetLanguage &&
+          trackedTargetLanguage !== "default" &&
+          activeLanguageRef.current !== trackedTargetLanguage
+        ) {
+          appendStatusLine(
+            `Preparing ${targetLanguage.toUpperCase()} execution environment...`
+          );
+        }
+
+        if (
+          (targetLanguage === "javascript" || !targetLanguage) &&
+          activeLanguageRef.current &&
+          activeLanguageRef.current !== "default" &&
+          isTerminalReadyRef.current
+        ) {
+          appendStatusLine("Preparing default JavaScript execution environment...");
         }
 
         await ensureTerminalSession(targetLanguage);
@@ -904,7 +997,7 @@ function TerminalPanel({
           throw new Error("TERMINAL_NOT_READY");
         }
 
-        if (needsSpecificContainer) {
+        if (requiresRuntimeVerification) {
           const languageSupport = await ensureLanguageSupport(
             activeSessionId,
             detectedLanguage
@@ -1029,6 +1122,8 @@ function TerminalPanel({
       flushBufferedInput,
       ensureTerminalSession,
       ensureLanguageSupport,
+      ensureSupportedLanguageKeys,
+      loadCodeExecutionModule,
     ]
   );
 

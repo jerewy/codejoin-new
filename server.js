@@ -3,7 +3,17 @@ const { createServer } = require('http')
 const { Server } = require('socket.io')
 const next = require('next')
 const DockerService = require('./code-execution-backend/src/services/dockerService')
-const { getLanguageConfig } = require('./code-execution-backend/src/config/languages')
+const {
+  SUPPORTED_LANGUAGES,
+  getLanguageConfig,
+  isLanguageSupported,
+} = require('./code-execution-backend/src/config/languages')
+
+const DEFAULT_TERMINAL_LANGUAGE = 'javascript'
+const MULTI_LANGUAGE_FALLBACK_KEY =
+  Object.entries(SUPPORTED_LANGUAGES).find(([, config]) => {
+    return config?.image === 'code-exec-multi'
+  })?.[0] || DEFAULT_TERMINAL_LANGUAGE
 
 const dev = process.env.NODE_ENV !== 'production'
 const hostname = 'localhost'
@@ -128,8 +138,35 @@ app.prepare().then(() => {
         return
       }
 
-      const languageKey = typeof language === 'string' ? language.toLowerCase() : 'javascript'
-      const languageConfig = getLanguageConfig(languageKey) || getLanguageConfig('javascript')
+      const normalizedLanguage =
+        typeof language === 'string' && language.trim().length > 0
+          ? language.toLowerCase()
+          : null
+
+      let resolvedLanguageKey = normalizedLanguage
+
+      if (resolvedLanguageKey && !isLanguageSupported(resolvedLanguageKey)) {
+        console.warn(
+          `terminal:start received unsupported language "${resolvedLanguageKey}" for project ${projectId}. Falling back to ${MULTI_LANGUAGE_FALLBACK_KEY}.`
+        )
+        resolvedLanguageKey = MULTI_LANGUAGE_FALLBACK_KEY
+      }
+
+      if (!resolvedLanguageKey) {
+        console.warn(
+          `terminal:start received no language for project ${projectId}. Using ${MULTI_LANGUAGE_FALLBACK_KEY} runtime.`
+        )
+        resolvedLanguageKey = MULTI_LANGUAGE_FALLBACK_KEY
+      }
+
+      let languageConfig = getLanguageConfig(resolvedLanguageKey)
+
+      if (!languageConfig) {
+        console.warn(
+          `Unable to resolve terminal language config for "${resolvedLanguageKey}". Falling back to ${DEFAULT_TERMINAL_LANGUAGE}.`
+        )
+        languageConfig = getLanguageConfig(DEFAULT_TERMINAL_LANGUAGE)
+      }
 
       try {
         const { sessionId, stream } = await dockerService.createInteractiveContainer(languageConfig)
