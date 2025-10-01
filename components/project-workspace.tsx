@@ -1034,10 +1034,16 @@ function TerminalPanel({
 
   // Register the execution callback
   useEffect(() => {
-    if (onExecuteInTerminal) {
-      console.log("Registering terminal execution callback");
-      onExecuteInTerminal.current = executeCodeInTerminal;
+    if (!onExecuteInTerminal) {
+      return;
     }
+
+    console.log("Registering terminal execution callback");
+    onExecuteInTerminal.current = executeCodeInTerminal;
+
+    return () => {
+      onExecuteInTerminal.current = null;
+    };
   }, [onExecuteInTerminal, executeCodeInTerminal]);
 
   const handleTerminalInput = useCallback(
@@ -1405,8 +1411,18 @@ export default function ProjectWorkspace({
   const terminalExecuteCallbackRef = useRef<
     ((file: ProjectNodeFromDB) => Promise<boolean>) | null
   >(null);
+  const terminalExecutorWaitTimeoutRef = useRef<number | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [inputBuffer, setInputBuffer] = useState("");
+
+  useEffect(() => {
+    return () => {
+      if (terminalExecutorWaitTimeoutRef.current !== null) {
+        window.clearTimeout(terminalExecutorWaitTimeoutRef.current);
+        terminalExecutorWaitTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // show/hide Team Chat panel
   const [showChat, setShowChat] = useState(false);
@@ -1492,6 +1508,57 @@ export default function ProjectWorkspace({
     }
   };
 
+  const waitForTerminalExecutor = useCallback(
+    (timeoutMs = 1500) => {
+      if (typeof window === "undefined") {
+        return Promise.resolve(terminalExecuteCallbackRef.current);
+      }
+
+      if (terminalExecuteCallbackRef.current) {
+        return Promise.resolve(terminalExecuteCallbackRef.current);
+      }
+
+      return new Promise<((file: ProjectNodeFromDB) => Promise<boolean>) | null>((resolve) => {
+        const now = () =>
+          typeof performance !== "undefined" && typeof performance.now === "function"
+            ? performance.now()
+            : Date.now();
+
+        const deadline = now() + timeoutMs;
+
+        const cancelPendingTimer = () => {
+          if (terminalExecutorWaitTimeoutRef.current !== null) {
+            window.clearTimeout(terminalExecutorWaitTimeoutRef.current);
+            terminalExecutorWaitTimeoutRef.current = null;
+          }
+        };
+
+        const poll = () => {
+          const executor = terminalExecuteCallbackRef.current;
+          if (executor) {
+            cancelPendingTimer();
+            resolve(executor);
+            return;
+          }
+
+          if (now() >= deadline) {
+            cancelPendingTimer();
+            resolve(null);
+            return;
+          }
+
+          terminalExecutorWaitTimeoutRef.current = window.setTimeout(() => {
+            terminalExecutorWaitTimeoutRef.current = null;
+            poll();
+          }, 40);
+        };
+
+        poll();
+      });
+    },
+    [terminalExecuteCallbackRef, terminalExecutorWaitTimeoutRef]
+  );
+
   // Enhanced run functionality - now delegates to CodeEditor for real backend execution
   const handleRun = async () => {
     if (!currentFile) return;
@@ -1530,6 +1597,8 @@ export default function ProjectWorkspace({
     };
 
     if (needsInteractiveInput) {
+      setActiveBottomTab("terminal");
+
       const showInteractiveToast = () => {
         toast({
           title: "Interactive run started",
@@ -1559,7 +1628,11 @@ export default function ProjectWorkspace({
         });
       };
 
-      const terminalExecutor = terminalExecuteCallbackRef.current;
+      let terminalExecutor = terminalExecuteCallbackRef.current;
+      if (!terminalExecutor) {
+        terminalExecutor = await waitForTerminalExecutor();
+      }
+
       let shouldFallbackToNonInteractive = false;
       let fallbackReason: string | undefined;
       let fallbackContext:
@@ -1572,7 +1645,6 @@ export default function ProjectWorkspace({
         | undefined;
 
       if (terminalExecutor) {
-        setActiveBottomTab("terminal");
         try {
           const executed = await terminalExecutor(currentFile);
 
@@ -1589,7 +1661,7 @@ export default function ProjectWorkspace({
           const errorMessage = (error as Error)?.message;
           if (errorMessage === "TERMINAL_NOT_READY") {
             shouldFallbackToNonInteractive = true;
-            fallbackReason = undefined;
+            fallbackReason = "Terminal session is still preparing. Running with the standard executor instead.";
           } else if (errorMessage === "TERMINAL_RUNTIME_UNAVAILABLE") {
             shouldFallbackToNonInteractive = true;
             fallbackContext = (
@@ -1620,8 +1692,10 @@ export default function ProjectWorkspace({
           }
         }
       } else {
-        setActiveBottomTab("terminal");
         shouldFallbackToNonInteractive = true;
+        fallbackReason =
+          fallbackReason ??
+          "Terminal session is still starting. Running with the standard executor instead.";
       }
 
       if (shouldFallbackToNonInteractive) {
