@@ -1,13 +1,8 @@
 "use client";
 
-import "xterm/css/xterm.css";
+// import "xterm/css/xterm.css";
 
-import {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-} from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { Terminal, type IDisposable } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import { WebLinksAddon } from "xterm-addon-web-links";
@@ -25,23 +20,28 @@ export interface TerminalSurfaceHandle {
 interface TerminalSurfaceProps {
   className?: string;
   onReady?: (payload: { sessionId: string }) => void;
-  onData?: (payload: { sessionId: string; chunk: string }) => string | void | null;
-  onInput?: (payload: { sessionId: string; input: string }) => string | void | null;
+  onData?: (payload: {
+    sessionId: string;
+    chunk: string;
+  }) => string | void | null;
+  onInput?: (payload: {
+    sessionId: string;
+    input: string;
+  }) => string | void | null;
   onError?: (payload: { sessionId?: string; message: string }) => void;
-  onExit?: (payload: { sessionId: string; code?: number | null; reason?: string }) => void;
+  onExit?: (payload: {
+    sessionId: string;
+    code?: number | null;
+    reason?: string;
+  }) => void;
   onUserInput?: (data: string) => void;
 }
 
 const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
-  ({
-    className,
-    onReady,
-    onData,
-    onInput,
-    onError,
-    onExit,
-    onUserInput,
-  }, ref) => {
+  (
+    { className, onReady, onData, onInput, onError, onExit, onUserInput },
+    ref
+  ) => {
     const { socket, sendTerminalInput } = useSocket();
 
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -210,7 +210,10 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         }
       };
 
-      const handleError = (payload: { sessionId?: string; message: string }) => {
+      const handleError = (payload: {
+        sessionId?: string;
+        message: string;
+      }) => {
         if (
           payload.sessionId &&
           activeSessionIdRef.current &&
