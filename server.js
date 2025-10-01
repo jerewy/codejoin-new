@@ -18,9 +18,70 @@ const documentStates = new Map()
 const dockerService = new DockerService()
 
 const CTRL_C = '\u0003'
+const CTRL_C_CHAR_CODE = CTRL_C.charCodeAt(0)
+
+const CONTROL_CHAR_CODEPOINT = /[\u0000-\u001F\u007F]/
+
+function toBufferLike(value) {
+  if (Buffer.isBuffer(value)) {
+    return value
+  }
+
+  if (value instanceof ArrayBuffer) {
+    return Buffer.from(value)
+  }
+
+  if (ArrayBuffer.isView(value)) {
+    return Buffer.from(value.buffer, value.byteOffset, value.byteLength)
+  }
+
+  return null
+}
+
+function containsControlCharacters(value) {
+  if (Buffer.isBuffer(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      const byte = value[i]
+      if (byte <= 0x1f || byte === 0x7f) {
+        return true
+      }
+    }
+    return false
+  }
+
+  if (typeof value === 'string') {
+    return CONTROL_CHAR_CODEPOINT.test(value)
+  }
+
+  return false
+}
 
 function normalizeTerminalInput(input) {
-  if (typeof input !== 'string' || input.length === 0) {
+  if (input === undefined || input === null) {
+    return null
+  }
+
+  const bufferValue = toBufferLike(input)
+  if (bufferValue) {
+    if (bufferValue.length === 0) {
+      return null
+    }
+
+    if (
+      bufferValue.length === 1 &&
+      bufferValue[0] === CTRL_C_CHAR_CODE
+    ) {
+      return Buffer.from([CTRL_C_CHAR_CODE])
+    }
+
+    return bufferValue
+  }
+
+  if (typeof input !== 'string') {
+    return null
+  }
+
+  if (input.length === 0) {
     return ''
   }
 
@@ -28,15 +89,11 @@ function normalizeTerminalInput(input) {
     return input
   }
 
-  const normalized = input
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
+  if (containsControlCharacters(input) || input.endsWith('\r')) {
+    return input
+  }
 
-  const withTrailingNewline = normalized.endsWith('\n')
-    ? normalized
-    : `${normalized}\n`
-
-  return withTrailingNewline.replace(/\n/g, '\r\n')
+  return `${input}\r`
 }
 
 app.prepare().then(() => {
@@ -146,7 +203,7 @@ app.prepare().then(() => {
     })
 
     socket.on('terminal:input', ({ sessionId, input }) => {
-      if (!sessionId || typeof input !== 'string') {
+      if (!sessionId || input === undefined || input === null) {
         return
       }
 
@@ -155,8 +212,13 @@ app.prepare().then(() => {
         return
       }
 
-      const payload = normalizeTerminalInput(input)
-      if (!payload) {
+      const candidate = toBufferLike(input) ?? input
+      if (typeof candidate !== 'string' && !Buffer.isBuffer(candidate)) {
+        return
+      }
+
+      const payload = normalizeTerminalInput(candidate)
+      if (payload === null || payload === '') {
         return
       }
 
