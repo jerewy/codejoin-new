@@ -7,6 +7,7 @@ import {
   useRef,
 } from "react";
 import { Terminal } from "xterm";
+import type { IDisposable } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import { WebLinksAddon } from "xterm-addon-web-links";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
@@ -24,12 +25,13 @@ interface TerminalSurfaceProps {
   className?: string;
   onReady?: (payload: { sessionId: string }) => void;
   onData?: (payload: { sessionId: string; chunk: string }) => string | void | null;
+  onInput?: (payload: { sessionId: string; input: string }) => string | void | null;
   onError?: (payload: { sessionId?: string; message: string }) => void;
   onExit?: (payload: { sessionId: string; code?: number | null; reason?: string }) => void;
 }
 
 const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
-  ({ className, onReady, onData, onError, onExit }, ref) => {
+  ({ className, onReady, onData, onError, onExit, onInput }, ref) => {
     const { socket, sendTerminalInput } = useSocket();
 
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -37,6 +39,16 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
     const fitAddonRef = useRef<FitAddon | null>(null);
     const activeSessionIdRef = useRef<string | null>(null);
     const resizeObserverRef = useRef<ResizeObserver | null>(null);
+    const onInputRef = useRef<TerminalSurfaceProps["onInput"]>(onInput);
+    const sendTerminalInputRef = useRef(sendTerminalInput);
+
+    useEffect(() => {
+      onInputRef.current = onInput;
+    }, [onInput]);
+
+    useEffect(() => {
+      sendTerminalInputRef.current = sendTerminalInput;
+    }, [sendTerminalInput]);
 
     useEffect(() => {
       const terminal = new Terminal({
@@ -62,18 +74,6 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       terminal.loadAddon(webLinksAddon);
       terminal.loadAddon(clipboardAddon);
 
-      if (containerRef.current) {
-        terminal.open(containerRef.current);
-        terminal.focus();
-        queueMicrotask(() => {
-          try {
-            fitAddon.fit();
-          } catch (error) {
-            console.warn("Failed to fit terminal on mount", error);
-          }
-        });
-      }
-
       const resizeObserver = new ResizeObserver(() => {
         try {
           fitAddon.fit();
@@ -82,7 +82,42 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         }
       });
 
+      let dataDisposable: IDisposable | undefined;
+      let binaryDisposable: IDisposable | undefined;
+
+      const handleInput = (input: string) => {
+        const sessionId = activeSessionIdRef.current;
+        if (!sessionId) {
+          return;
+        }
+
+        const processed = onInputRef.current?.({ sessionId, input });
+
+        if (processed === null) {
+          return;
+        }
+
+        const outbound = typeof processed === "string" ? processed : input;
+
+        if (!outbound) {
+          return;
+        }
+
+        sendTerminalInputRef.current({ sessionId, input: outbound });
+      };
+
       if (containerRef.current) {
+        terminal.open(containerRef.current);
+        dataDisposable = terminal.onData(handleInput);
+        binaryDisposable = terminal.onBinary?.(handleInput);
+        terminal.focus();
+        queueMicrotask(() => {
+          try {
+            fitAddon.fit();
+          } catch (error) {
+            console.warn("Failed to fit terminal on mount", error);
+          }
+        });
         resizeObserver.observe(containerRef.current);
       }
 
@@ -91,6 +126,8 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       resizeObserverRef.current = resizeObserver;
 
       return () => {
+        dataDisposable?.dispose();
+        binaryDisposable?.dispose();
         resizeObserver.disconnect();
         clipboardAddon.dispose?.();
         webLinksAddon.dispose?.();
