@@ -24,6 +24,7 @@ interface TerminalSurfaceProps {
   className?: string;
   onReady?: (payload: { sessionId: string }) => void;
   onData?: (payload: { sessionId: string; chunk: string }) => string | void | null;
+  onInput?: (payload: { sessionId: string; input: string }) => string | void | null;
   onError?: (payload: { sessionId?: string; message: string }) => void;
   onExit?: (payload: { sessionId: string; code?: number | null; reason?: string }) => void;
   onUserInput?: (data: string) => void;
@@ -64,18 +65,6 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       terminal.loadAddon(webLinksAddon);
       terminal.loadAddon(clipboardAddon);
 
-      if (containerRef.current) {
-        terminal.open(containerRef.current);
-        terminal.focus();
-        queueMicrotask(() => {
-          try {
-            fitAddon.fit();
-          } catch (error) {
-            console.warn("Failed to fit terminal on mount", error);
-          }
-        });
-      }
-
       const resizeObserver = new ResizeObserver(() => {
         try {
           fitAddon.fit();
@@ -84,7 +73,42 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         }
       });
 
+      let dataDisposable: IDisposable | undefined;
+      let binaryDisposable: IDisposable | undefined;
+
+      const handleInput = (input: string) => {
+        const sessionId = activeSessionIdRef.current;
+        if (!sessionId) {
+          return;
+        }
+
+        const processed = onInputRef.current?.({ sessionId, input });
+
+        if (processed === null) {
+          return;
+        }
+
+        const outbound = typeof processed === "string" ? processed : input;
+
+        if (!outbound) {
+          return;
+        }
+
+        sendTerminalInputRef.current({ sessionId, input: outbound });
+      };
+
       if (containerRef.current) {
+        terminal.open(containerRef.current);
+        dataDisposable = terminal.onData(handleInput);
+        binaryDisposable = terminal.onBinary?.(handleInput);
+        terminal.focus();
+        queueMicrotask(() => {
+          try {
+            fitAddon.fit();
+          } catch (error) {
+            console.warn("Failed to fit terminal on mount", error);
+          }
+        });
         resizeObserver.observe(containerRef.current);
       }
 
@@ -93,6 +117,8 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       resizeObserverRef.current = resizeObserver;
 
       return () => {
+        dataDisposable?.dispose();
+        binaryDisposable?.dispose();
         resizeObserver.disconnect();
         clipboardAddon.dispose?.();
         webLinksAddon.dispose?.();
