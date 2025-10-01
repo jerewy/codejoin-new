@@ -7,6 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import TerminalSurface, {
+  type TerminalSurfaceHandle,
+} from "@/components/terminal/TerminalSurface";
 import {
   Video,
   VideoOff,
@@ -202,12 +205,10 @@ function TerminalPanel({
     socket,
     isConnected,
     startTerminalSession,
-    sendTerminalInput,
     stopTerminalSession,
   } = useSocket();
   const { toast } = useToast();
 
-  const [terminalOutput, setTerminalOutput] = useState<string>("");
   const [currentCommand, setCurrentCommand] = useState("");
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isTerminalReady, setIsTerminalReady] = useState(false);
@@ -217,8 +218,8 @@ function TerminalPanel({
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
 
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const terminalSurfaceRef = useRef<TerminalSurfaceHandle | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const isTerminalReadyRef = useRef(false);
   const activeLanguageRef = useRef<string | null>(null);
@@ -226,6 +227,7 @@ function TerminalPanel({
   const attemptedInitialStart = useRef(false);
   const hasShownConnectionMessage = useRef(false);
   const rawOutputBufferRef = useRef("");
+  const displayEndsWithNewlineRef = useRef(true);
 
   type TerminalMarkerWatcher = {
     id: number;
@@ -287,35 +289,58 @@ function TerminalPanel({
     return sanitized;
   }, []);
 
+  const updateDisplayTail = useCallback((value: string) => {
+    if (!value) {
+      return;
+    }
+
+    if (value.includes("\x1bc")) {
+      displayEndsWithNewlineRef.current = true;
+      return;
+    }
+
+    displayEndsWithNewlineRef.current = /\r?\n$/.test(value);
+  }, []);
+
+  const writeToTerminal = useCallback(
+    (value: string) => {
+      if (!value) {
+        return;
+      }
+
+      updateDisplayTail(value);
+      const normalized = value.replace(/\r?\n/g, "\r\n");
+      terminalSurfaceRef.current?.write(normalized);
+    },
+    [updateDisplayTail]
+  );
+
   const appendRawOutput = useCallback(
     (chunk: string) => {
       rawOutputBufferRef.current += chunk;
       const sanitizedChunk = sanitizeChunk(chunk);
+
+      processMarkerWatchers();
+
       if (sanitizedChunk.length === 0) {
-        processMarkerWatchers();
-        return;
+        return "";
       }
 
-      setTerminalOutput((prev) => {
-        const next = prev + sanitizedChunk;
-        return next;
-      });
-      processMarkerWatchers();
+      updateDisplayTail(sanitizedChunk);
+      return sanitizedChunk.replace(/\r?\n/g, "\r\n");
     },
-    [processMarkerWatchers, sanitizeChunk]
+    [processMarkerWatchers, sanitizeChunk, updateDisplayTail]
   );
 
   const appendStatusLine = useCallback(
     (message: string) => {
-      setTerminalOutput((prev) => {
-        const needsPrefixNewline = prev.length > 0 && !prev.endsWith("\n");
-        const suffix = message.endsWith("\n") ? "" : "\n";
-        const next = `${prev}${needsPrefixNewline ? "\n" : ""}${message}${suffix}`;
-        return next;
-      });
+      const needsPrefixNewline = !displayEndsWithNewlineRef.current;
+      const suffix = message.endsWith("\n") ? "" : "\n";
+      const payload = `${needsPrefixNewline ? "\n" : ""}${message}${suffix}`;
+      writeToTerminal(payload);
       processMarkerWatchers();
     },
-    [processMarkerWatchers]
+    [processMarkerWatchers, writeToTerminal]
   );
 
   const clearTerminalOutput = useCallback(() => {
@@ -325,8 +350,9 @@ function TerminalPanel({
       ...watcher,
       startIndex: Math.max(0, watcher.startIndex - clearedLength),
     }));
-    setTerminalOutput("");
-  }, []);
+    writeToTerminal("\x1bc");
+    displayEndsWithNewlineRef.current = true;
+  }, [writeToTerminal]);
 
   const waitForTerminalMarker = useCallback(
     (
@@ -417,10 +443,10 @@ function TerminalPanel({
 
       const markerStartIndex = rawOutputBufferRef.current.length;
 
-      sendTerminalInput({
-        sessionId,
-        input: `if command -v ${commandName} >/dev/null 2>&1; then echo '${successMarker}'; else echo '${failureMarker}'; fi\r`,
-      });
+      terminalSurfaceRef.current?.sendData(
+        `if command -v ${commandName} >/dev/null 2>&1; then echo '${successMarker}'; else echo '${failureMarker}'; fi\r`,
+        { sessionId }
+      );
 
       try {
         const result = await waitForTerminalMarker(
@@ -436,7 +462,7 @@ function TerminalPanel({
         return "unknown";
       }
     },
-    [appendStatusLine, sendTerminalInput, waitForTerminalMarker]
+    [appendStatusLine, waitForTerminalMarker]
   );
 
   type LanguageSupportResult = {
@@ -569,14 +595,6 @@ function TerminalPanel({
     userId,
   ]);
 
-  // Auto-scroll when execution output or terminal output changes
-  useEffect(() => {
-    if (scrollContainerRef.current) {
-      const { scrollHeight, clientHeight } = scrollContainerRef.current;
-      scrollContainerRef.current.scrollTop = scrollHeight - clientHeight;
-    }
-  }, [executionOutputs, terminalOutput]);
-
   useEffect(() => {
     const handleFocusRequest = () => {
       if (!isTerminalReady) return;
@@ -652,8 +670,7 @@ function TerminalPanel({
     if (!activeSessionId) return;
 
     const payload = currentCommand.length > 0 ? `${currentCommand}\r` : "\r";
-    console.log('Sending terminal input:', { sessionId: activeSessionId, input: payload, raw: currentCommand });
-    sendTerminalInput({ sessionId: activeSessionId, input: payload });
+    terminalSurfaceRef.current?.sendData(payload, { sessionId: activeSessionId });
 
     if (trimmedCommand.length > 0) {
       setCommandHistory((prev) => [...prev, currentCommand]);
@@ -665,7 +682,7 @@ function TerminalPanel({
     appendStatusLine,
     currentCommand,
     onInputUpdate,
-    sendTerminalInput,
+    terminalSurfaceRef,
   ]);
 
   const handleHistoryNavigation = useCallback(
@@ -689,14 +706,8 @@ function TerminalPanel({
     [commandHistory, historyIndex]
   );
 
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleTerminalReady = ({
-      sessionId: readySessionId,
-    }: {
-      sessionId: string;
-    }) => {
+  const handleTerminalReady = useCallback(
+    ({ sessionId: readySessionId }: { sessionId: string }) => {
       sessionIdRef.current = readySessionId;
       setSessionId(readySessionId);
       setIsTerminalReady(true);
@@ -708,34 +719,37 @@ function TerminalPanel({
       if (hasShownConnectionMessage.current) {
         appendStatusLine("Connected to sandbox session.");
       }
-    };
+    },
+    [appendStatusLine]
+  );
 
-    const handleTerminalData = ({
+  const handleTerminalData = useCallback(
+    ({
       sessionId: incomingSessionId,
       chunk,
     }: {
       sessionId: string;
       chunk: string;
     }) => {
-      if (!sessionIdRef.current || incomingSessionId !== sessionIdRef.current)
-        return;
-      console.log('Received terminal data:', { sessionId: incomingSessionId, chunk, length: chunk.length });
-      appendRawOutput(chunk);
-    };
+      if (!sessionIdRef.current || incomingSessionId !== sessionIdRef.current) {
+        return "";
+      }
 
-    const handleTerminalError = ({
-      sessionId: errorSessionId,
-      message,
-    }: {
-      sessionId?: string;
-      message: string;
-    }) => {
+      return appendRawOutput(chunk);
+    },
+    [appendRawOutput]
+  );
+
+  const handleTerminalError = useCallback(
+    ({ sessionId: errorSessionId, message }: { sessionId?: string; message: string }) => {
       if (
         errorSessionId &&
         sessionIdRef.current &&
         errorSessionId !== sessionIdRef.current
-      )
+      ) {
         return;
+      }
+
       appendStatusLine(`Error: ${message}`);
       toast({
         title: "Terminal error",
@@ -755,9 +769,12 @@ function TerminalPanel({
       setSessionId(null);
       activeLanguageRef.current = null;
       pendingLanguageRef.current = null;
-    };
+    },
+    [appendStatusLine, toast]
+  );
 
-    const handleTerminalExit = ({
+  const handleTerminalExit = useCallback(
+    ({
       sessionId: exitSessionId,
       code,
       reason,
@@ -766,8 +783,9 @@ function TerminalPanel({
       code?: number | null;
       reason?: string;
     }) => {
-      if (!sessionIdRef.current || exitSessionId !== sessionIdRef.current)
+      if (!sessionIdRef.current || exitSessionId !== sessionIdRef.current) {
         return;
+      }
 
       const exitMessageParts = ["Terminal session ended"];
       if (typeof code === "number") {
@@ -791,20 +809,17 @@ function TerminalPanel({
       setIsStopping(false);
       activeLanguageRef.current = null;
       pendingLanguageRef.current = null;
-    };
+    },
+    [appendStatusLine]
+  );
 
-    socket.on("terminal:ready", handleTerminalReady);
-    socket.on("terminal:data", handleTerminalData);
-    socket.on("terminal:error", handleTerminalError);
-    socket.on("terminal:exit", handleTerminalExit);
+  useEffect(() => {
+    if (!socket) {
+      return;
+    }
 
-    return () => {
-      socket.off("terminal:ready", handleTerminalReady);
-      socket.off("terminal:data", handleTerminalData);
-      socket.off("terminal:error", handleTerminalError);
-      socket.off("terminal:exit", handleTerminalExit);
-    };
-  }, [appendRawOutput, appendStatusLine, socket, toast]);
+    hasShownConnectionMessage.current = true;
+  }, [socket]);
 
   // Cleanup active session when component unmounts
   useEffect(() => {
@@ -832,15 +847,14 @@ function TerminalPanel({
       setTimeout(() => {
         if (!sessionIdRef.current) return;
         const payload = line.length > 0 ? `${line}\r` : "\r";
-        sendTerminalInput({
-          sessionId: sessionIdRef.current,
-          input: payload,
+        terminalSurfaceRef.current?.sendData(payload, {
+          sessionId: sessionIdRef.current ?? undefined,
         });
       }, 300 + index * 30);
     });
 
     onInputUpdate("");
-  }, [appendStatusLine, inputBuffer, onInputUpdate, sendTerminalInput]);
+  }, [appendStatusLine, inputBuffer, onInputUpdate]);
 
   const waitForTerminalReady = useCallback(async (timeoutMs = 10000) => {
     if (isTerminalReadyRef.current && sessionIdRef.current) {
@@ -992,28 +1006,26 @@ function TerminalPanel({
           : null;
 
         if (directoryPath) {
-          sendTerminalInput({
-            sessionId: activeSessionId,
-            input: `mkdir -p ${directoryPath}\r`,
-          });
+          terminalSurfaceRef.current?.sendData(
+            `mkdir -p ${directoryPath}\r`,
+            { sessionId: activeSessionId }
+          );
         }
 
-        sendTerminalInput({
-          sessionId: activeSessionId,
-          input: `cat <<'__CODEJOIN__' > ${filename}\r`,
-        });
+        terminalSurfaceRef.current?.sendData(
+          `cat <<'__CODEJOIN__' > ${filename}\r`,
+          { sessionId: activeSessionId }
+        );
 
         lines.forEach((line) => {
           const sanitizedLine = line.replace(/\r/g, "");
-          sendTerminalInput({
+          terminalSurfaceRef.current?.sendData(`${sanitizedLine}\r`, {
             sessionId: activeSessionId,
-            input: `${sanitizedLine}\r`,
           });
         });
 
-        sendTerminalInput({
+        terminalSurfaceRef.current?.sendData(`__CODEJOIN__\r`, {
           sessionId: activeSessionId,
-          input: `__CODEJOIN__\r`,
         });
 
         // Run the appropriate command based on language
@@ -1047,9 +1059,8 @@ function TerminalPanel({
 
         appendStatusLine(`[run] ${runCommand}`);
 
-        sendTerminalInput({
+        terminalSurfaceRef.current?.sendData(`${runCommand}\r`, {
           sessionId: activeSessionId,
-          input: `${runCommand}\r`,
         });
 
         window.setTimeout(() => {
@@ -1074,7 +1085,6 @@ function TerminalPanel({
       }
     },
     [
-      sendTerminalInput,
       toast,
       appendStatusLine,
       flushBufferedInput,
@@ -1111,7 +1121,9 @@ function TerminalPanel({
       event.preventDefault();
       const activeSessionId = sessionIdRef.current;
       if (activeSessionId) {
-        sendTerminalInput({ sessionId: activeSessionId, input: "\u0003" });
+        terminalSurfaceRef.current?.sendData("\u0003", {
+          sessionId: activeSessionId,
+        });
       }
       setCurrentCommand("");
       setHistoryIndex(null);
@@ -1197,15 +1209,19 @@ function TerminalPanel({
       return lines.join("\n");
     });
 
-    setTerminalOutput((prev) => {
-      const needsPrefixNewline = prev.length > 0 && !prev.endsWith("\n");
-      const block = segments.join("\n\n");
-      const suffix = block.endsWith("\n") ? "" : "\n";
-      return `${prev}${needsPrefixNewline ? "\n" : ""}${block}${suffix}`;
-    });
+    const block = segments.join("\n\n");
+    const needsPrefixNewline = !displayEndsWithNewlineRef.current;
+    const suffix = block.endsWith("\n") ? "" : "\n";
+    const payload = `${needsPrefixNewline ? "\n" : ""}${block}${suffix}`;
+    writeToTerminal(payload);
 
     onClearExecutions();
-  }, [executionOutputs, formatExecutionTime, onClearExecutions]);
+  }, [
+    executionOutputs,
+    formatExecutionTime,
+    onClearExecutions,
+    writeToTerminal,
+  ]);
 
   const getStatusIcon = (exitCode: number | null, success?: boolean) => {
     if (success === true || exitCode === 0) {
@@ -1279,69 +1295,56 @@ function TerminalPanel({
       </div>
 
       {/* Terminal Content */}
-      <div
-        ref={scrollContainerRef}
-        className="flex-1 overflow-auto p-3 cursor-text"
-        onClick={handleTerminalClick}
-      >
-        {/* Terminal output stream */}
-        <div className="flex-1 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-          {terminalOutput ? (
-            <pre className="text-[#cccccc] whitespace-pre-wrap leading-relaxed font-mono text-sm select-text cursor-text user-select-text"
-                 style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
-                 onMouseDown={(e) => e.stopPropagation()}
-                 onMouseUp={(e) => e.stopPropagation()}>
-              {terminalOutput}
-            </pre>
-          ) : (
-            <div className="text-xs text-zinc-400 italic font-mono">
-              {isTerminalReady
-                ? "Session ready. Type a command to begin."
-                : "Terminal output will appear here once the sandbox is ready."}
-            </div>
-          )}
+      <div className="flex-1 flex flex-col" onClick={handleTerminalClick}>
+        <div className="flex-1 overflow-hidden p-3">
+          <TerminalSurface
+            ref={terminalSurfaceRef}
+            className="h-full w-full"
+            onReady={handleTerminalReady}
+            onData={handleTerminalData}
+            onError={handleTerminalError}
+            onExit={handleTerminalExit}
+          />
         </div>
-
-        {/* Current command input line */}
-        <div className="flex items-center mt-2 border-t border-zinc-700 pt-2">
-          <span className="text-[#4ec9b0] mr-2 select-none font-mono text-sm">
-            user@codejoin:~$
-          </span>
-          <div className="flex-1 relative">
-            <input
-              ref={inputRef}
-              type="text"
-              value={currentCommand}
-              onChange={(e) => setCurrentCommand(e.target.value)}
-              onKeyDown={handleInputKeyDown}
-              onFocus={() => setIsInputFocused(true)}
-              onBlur={() => setIsInputFocused(false)}
-              onPaste={(e) => {
-                // Allow paste to work normally
-                const pastedText = e.clipboardData.getData('text');
-                setCurrentCommand(prev => prev + pastedText);
-                e.preventDefault();
-              }}
-              disabled={!isTerminalReady || isStarting || isStopping}
-              className="w-full bg-transparent border-none outline-none text-[#cccccc] font-mono text-sm caret-[#4ec9b0]"
-              placeholder=""
-              autoFocus={isTerminalReady}
-            />
-            {isTerminalReady && isInputFocused && (
-              <div
-                className="absolute top-0 w-2 h-5 bg-[#4ec9b0] pointer-events-none animate-blink"
-                style={{
-                  left: `${currentCommand.length * 8.4}px`
+        <div className="px-3 pb-3 pt-2 border-t border-zinc-700">
+          <div className="flex items-center">
+            <span className="text-[#4ec9b0] mr-2 select-none font-mono text-sm">
+              user@codejoin:~$
+            </span>
+            <div className="flex-1 relative">
+              <input
+                ref={inputRef}
+                type="text"
+                value={currentCommand}
+                onChange={(e) => setCurrentCommand(e.target.value)}
+                onKeyDown={handleInputKeyDown}
+                onFocus={() => setIsInputFocused(true)}
+                onBlur={() => setIsInputFocused(false)}
+                onPaste={(e) => {
+                  // Allow paste to work normally
+                  const pastedText = e.clipboardData.getData("text");
+                  setCurrentCommand((prev) => prev + pastedText);
+                  e.preventDefault();
                 }}
+                disabled={!isTerminalReady || isStarting || isStopping}
+                className="w-full bg-transparent border-none outline-none text-[#cccccc] font-mono text-sm caret-[#4ec9b0]"
+                placeholder=""
+                autoFocus={isTerminalReady}
               />
-            )}
-            {!isTerminalReady && (
-              <div className="text-xs text-zinc-500 font-mono">
-                {isStarting
-                  ? "Starting sandbox..."
-                  : "Connect the terminal to start issuing commands"}
-              </div>
-            )}
+              {isTerminalReady && isInputFocused && (
+                <div
+                  className="absolute top-0 w-2 h-5 bg-[#4ec9b0] pointer-events-none animate-blink"
+                  style={{ left: `${currentCommand.length * 8.4}px` }}
+                />
+              )}
+              {!isTerminalReady && (
+                <div className="text-xs text-zinc-500 font-mono">
+                  {isStarting
+                    ? "Starting sandbox..."
+                    : "Connect the terminal to start issuing commands"}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
