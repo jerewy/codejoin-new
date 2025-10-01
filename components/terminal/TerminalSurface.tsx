@@ -62,20 +62,14 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
     const sendTerminalInputRef = useRef(sendTerminalInput);
     const emitTerminalResizeRef = useRef(emitTerminalResize);
     const pendingFitFrameRef = useRef<number | null>(null);
-    const lastMeasuredDimensionsRef = useRef<
-      | {
-          width: number;
-          height: number;
-        }
-      | null
-    >(null);
-    const lastKnownGeometryRef = useRef<
-      | {
-          cols: number;
-          rows: number;
-        }
-      | null
-    >(null);
+    const lastMeasuredDimensionsRef = useRef<{
+      width: number;
+      height: number;
+    } | null>(null);
+    const lastKnownGeometryRef = useRef<{
+      cols: number;
+      rows: number;
+    } | null>(null);
 
     const runFitAndEmit = useCallback(() => {
       pendingFitFrameRef.current = null;
@@ -108,7 +102,11 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       const rows = terminal.rows;
 
       const lastGeometry = lastKnownGeometryRef.current;
-      if (lastGeometry && lastGeometry.cols === cols && lastGeometry.rows === rows) {
+      if (
+        lastGeometry &&
+        lastGeometry.cols === cols &&
+        lastGeometry.rows === rows
+      ) {
         return;
       }
 
@@ -124,17 +122,18 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       emit({ sessionId, cols, rows });
     }, []);
 
+    // In TerminalSurface.tsx, modify the scheduleFitAndEmit function:
     const scheduleFitAndEmit = useCallback(() => {
       if (pendingFitFrameRef.current !== null) {
-        return;
+        window.cancelAnimationFrame(pendingFitFrameRef.current);
       }
 
-      if (typeof window === "undefined" || !window.requestAnimationFrame) {
-        runFitAndEmit();
-        return;
-      }
-
-      pendingFitFrameRef.current = window.requestAnimationFrame(runFitAndEmit);
+      // Add debouncing for smoother resizing
+      pendingFitFrameRef.current = window.requestAnimationFrame(() => {
+        setTimeout(() => {
+          runFitAndEmit();
+        }, 100); // Small delay to let ResizablePanel finish its animation
+      });
     }, [runFitAndEmit]);
 
     useEffect(() => {
@@ -181,7 +180,10 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
 
         let shouldSchedule = false;
         for (const entry of entries) {
-          if (entry.target !== container && entry.target !== container.parentElement) {
+          if (
+            entry.target !== container &&
+            entry.target !== container.parentElement
+          ) {
             continue;
           }
 

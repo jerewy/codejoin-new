@@ -1048,10 +1048,7 @@ function TerminalPanel({
       sessionId: string;
       input: string;
     }) => {
-      if (
-        !sessionIdRef.current ||
-        inputSessionId !== sessionIdRef.current
-      ) {
+      if (!sessionIdRef.current || inputSessionId !== sessionIdRef.current) {
         return null;
       }
 
@@ -2300,7 +2297,18 @@ export default function ProjectWorkspace({
               </div>
             </ResizablePanel>
             <ResizableHandle className="!h-3 bg-muted/50 data-[resize-handle-state=drag]:bg-primary transition-colors" />
-            <ResizablePanel collapsible={true} defaultSize={30} minSize={9}>
+            <ResizablePanel
+              collapsible={true}
+              defaultSize={30}
+              minSize={15} // Increase minimum size
+              maxSize={60} // Add maximum size
+              onResize={(size) => {
+                // Force terminal resize when panel resizes
+                setTimeout(() => {
+                  window.dispatchEvent(new Event("resize"));
+                }, 150);
+              }}
+            >
               <div className="h-full border-t flex flex-col">
                 <Tabs
                   value={activeBottomTab}
