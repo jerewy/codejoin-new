@@ -159,7 +159,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       // Observe terminal container
       resizeObserver.observe(containerRef.current);
 
-      // Also observe terminal container's parent — this catches size changes from resizing panels
+      // Also observe terminal container's parent to catch panel resizing
       const parentElement = containerRef.current.parentElement;
       if (parentElement) {
         resizeObserver.observe(parentElement);
@@ -250,6 +250,62 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       let binaryDisposable: IDisposable | undefined;
 
       const handleInput = (input: string) => {
+        const terminalInstance = terminalRef.current;
+
+        if (terminalInstance && input) {
+          let pendingEcho = "";
+          let inEscapeSequence = false;
+
+          for (let index = 0; index < input.length; index += 1) {
+            const char = input[index];
+            const code = char.charCodeAt(0);
+
+            if (inEscapeSequence) {
+              if (code >= 64 && code <= 126) {
+                inEscapeSequence = false;
+              }
+              continue;
+            }
+
+            if (char === "\x1b") {
+              if (pendingEcho.length > 0) {
+                terminalInstance.write(pendingEcho);
+                pendingEcho = "";
+              }
+              inEscapeSequence = true;
+              continue;
+            }
+
+            if (char === "\r" || char === "\n") {
+              if (pendingEcho.length > 0) {
+                terminalInstance.write(pendingEcho);
+                pendingEcho = "";
+              }
+              terminalInstance.write("\r\n");
+              continue;
+            }
+
+            if (char === "\u007f" || char === "\b" || code === 127) {
+              if (pendingEcho.length > 0) {
+                terminalInstance.write(pendingEcho);
+                pendingEcho = "";
+              }
+              terminalInstance.write("\b \b");
+              continue;
+            }
+
+            if (code < 32 && char !== "\t") {
+              continue;
+            }
+
+            pendingEcho += char;
+          }
+
+          if (pendingEcho.length > 0) {
+            terminalInstance.write(pendingEcho);
+          }
+        }
+
         const sessionId = activeSessionIdRef.current;
         if (!sessionId) {
           return;
@@ -451,11 +507,18 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       [runFitAndEmit, sendTerminalInput]
     );
 
+    const handleContainerInteraction = useCallback(() => {
+      terminalRef.current?.focus();
+    }, []);
+
     return (
       <div
         ref={containerRef}
         className={cn("h-full w-full", className)}
         role="presentation"
+        tabIndex={0}
+        onClick={handleContainerInteraction}
+        onFocus={handleContainerInteraction}
       />
     );
   }
