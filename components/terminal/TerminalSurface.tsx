@@ -1,5 +1,7 @@
 "use client";
 
+import "xterm/css/xterm.css";
+
 import {
   forwardRef,
   useEffect,
@@ -31,7 +33,15 @@ interface TerminalSurfaceProps {
 }
 
 const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
-  ({ className, onReady, onData, onError, onExit, onUserInput }, ref) => {
+  ({
+    className,
+    onReady,
+    onData,
+    onInput,
+    onError,
+    onExit,
+    onUserInput,
+  }, ref) => {
     const { socket, sendTerminalInput } = useSocket();
 
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -40,6 +50,18 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
     const activeSessionIdRef = useRef<string | null>(null);
     const resizeObserverRef = useRef<ResizeObserver | null>(null);
     const inputListenerRef = useRef<IDisposable | null>(null);
+    const onInputRef = useRef<TerminalSurfaceProps["onInput"] | null>(
+      onInput ?? null
+    );
+    const sendTerminalInputRef = useRef(sendTerminalInput);
+
+    useEffect(() => {
+      onInputRef.current = onInput ?? null;
+    }, [onInput]);
+
+    useEffect(() => {
+      sendTerminalInputRef.current = sendTerminalInput;
+    }, [sendTerminalInput]);
 
     useEffect(() => {
       const terminal = new Terminal({
@@ -53,7 +75,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
           background: "#1e1e1e",
           foreground: "#cccccc",
           cursor: "#4ec9b0",
-          selection: "rgba(78, 201, 176, 0.3)",
+          selectionBackground: "rgba(78, 201, 176, 0.3)",
         },
       });
 
@@ -94,7 +116,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
           return;
         }
 
-        sendTerminalInputRef.current({ sessionId, input: outbound });
+        sendTerminalInputRef.current?.({ sessionId, input: outbound });
       };
 
       if (containerRef.current) {
