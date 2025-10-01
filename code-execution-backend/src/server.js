@@ -1,6 +1,8 @@
 require('dotenv').config();
 
 const express = require('express');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
 const logger = require('./utils/logger');
@@ -14,7 +16,18 @@ const {
 } = require('./middleware/security');
 
 const app = express();
+const server = createServer(app);
 const DEFAULT_PORT = process.env.PORT || 3001;
+
+// Initialize Socket.IO with CORS support
+const io = new Server(server, {
+  cors: {
+    origin: process.env.CORS_ORIGIN || ['http://localhost:3000', 'http://localhost:3001'],
+    credentials: true,
+    methods: ['GET', 'POST']
+  },
+  transports: ['websocket', 'polling']
+});
 
 // Basic middleware
 app.use(helmet());
@@ -63,6 +76,61 @@ app.use('*', (req, res) => {
 // Error handling
 app.use(errorHandler);
 
+// Initialize Terminal Service for Socket.IO
+const TerminalService = require('./services/terminalService');
+const terminalService = new TerminalService(io);
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+  logger.info('Client connected to terminal service', { socketId: socket.id });
+  
+  // Handle terminal session lifecycle
+  socket.on('terminal:start', async (data) => {
+    try {
+      const { projectId, userId, language } = data;
+      await terminalService.startSession(socket, { projectId, userId, language });
+    } catch (error) {
+      logger.error('Failed to start terminal session', { error: error.message });
+      socket.emit('terminal:error', { message: error.message });
+    }
+  });
+  
+  socket.on('terminal:stop', async (data) => {
+    try {
+      const { sessionId } = data;
+      await terminalService.stopSession(sessionId);
+    } catch (error) {
+      logger.error('Failed to stop terminal session', { error: error.message });
+      socket.emit('terminal:error', { message: error.message });
+    }
+  });
+  
+  socket.on('terminal:input', async (data) => {
+    try {
+      const { sessionId, input } = data;
+      await terminalService.sendInput(sessionId, input);
+    } catch (error) {
+      logger.error('Failed to send terminal input', { error: error.message });
+      socket.emit('terminal:error', { sessionId: data.sessionId, message: error.message });
+    }
+  });
+  
+  socket.on('terminal:resize', async (data) => {
+    try {
+      const { sessionId, cols, rows } = data;
+      await terminalService.resizeSession(sessionId, { cols, rows });
+    } catch (error) {
+      logger.error('Failed to resize terminal', { error: error.message });
+      socket.emit('terminal:error', { sessionId: data.sessionId, message: error.message });
+    }
+  });
+  
+  socket.on('disconnect', () => {
+    logger.info('Client disconnected from terminal service', { socketId: socket.id });
+    terminalService.handleDisconnect(socket.id);
+  });
+});
+
 function registerShutdownHandlers(server) {
   const signals = ['SIGTERM', 'SIGINT'];
 
@@ -71,10 +139,14 @@ function registerShutdownHandlers(server) {
       logger.info(`${signal} received, starting graceful shutdown`);
 
       try {
+        // Cleanup terminal sessions
+        await terminalService.cleanup();
+        
+        // Cleanup Docker containers
         const DockerService = require('./services/dockerService');
         const dockerService = new DockerService();
         await dockerService.cleanupAll();
-        logger.info('All containers cleaned up');
+        logger.info('All containers and sessions cleaned up');
       } catch (error) {
         logger.error('Error during cleanup:', error);
       } finally {
@@ -88,19 +160,20 @@ function registerShutdownHandlers(server) {
 }
 
 function startServer(port = DEFAULT_PORT) {
-  const server = app.listen(port, () => {
+  const server_instance = server.listen(port, () => {
     logger.info(`Code execution backend started on port ${port}`);
     logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     logger.info(`Health check: http://localhost:${port}/health`);
+    logger.info(`Socket.IO enabled for interactive terminals`);
   });
 
-  server.on('error', (error) => {
+  server_instance.on('error', (error) => {
     logger.error('Server error:', error);
     process.exit(1);
   });
 
-  registerShutdownHandlers(server);
-  return server;
+  registerShutdownHandlers(server_instance);
+  return server_instance;
 }
 
 if (require.main === module) {
