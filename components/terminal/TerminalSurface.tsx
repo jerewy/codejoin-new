@@ -2,7 +2,13 @@
 
 import "xterm/css/xterm.css";
 
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+} from "react";
 import { Terminal, type IDisposable } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import { WebLinksAddon } from "xterm-addon-web-links";
@@ -55,40 +61,81 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
     );
     const sendTerminalInputRef = useRef(sendTerminalInput);
     const emitTerminalResizeRef = useRef(emitTerminalResize);
-    const pendingResizeFrameRef = useRef<number | null>(null);
+    const pendingFitFrameRef = useRef<number | null>(null);
+    const lastMeasuredDimensionsRef = useRef<
+      | {
+          width: number;
+          height: number;
+        }
+      | null
+    >(null);
+    const lastKnownGeometryRef = useRef<
+      | {
+          cols: number;
+          rows: number;
+        }
+      | null
+    >(null);
 
-    const scheduleTerminalResizeEmit = () => {
-      if (pendingResizeFrameRef.current !== null) {
+    const runFitAndEmit = useCallback(() => {
+      pendingFitFrameRef.current = null;
+
+      const container = containerRef.current;
+      const fitAddon = fitAddonRef.current;
+      const terminal = terminalRef.current;
+
+      if (!container || !fitAddon || !terminal) {
+        return;
+      }
+
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      if (width === 0 || height === 0) {
+        return;
+      }
+
+      try {
+        fitAddon.fit();
+      } catch (error) {
+        console.warn("Failed to fit terminal dimensions", error);
+        return;
+      }
+
+      lastMeasuredDimensionsRef.current = { width, height };
+
+      const cols = terminal.cols;
+      const rows = terminal.rows;
+
+      const lastGeometry = lastKnownGeometryRef.current;
+      if (lastGeometry && lastGeometry.cols === cols && lastGeometry.rows === rows) {
+        return;
+      }
+
+      lastKnownGeometryRef.current = { cols, rows };
+
+      const sessionId = activeSessionIdRef.current;
+      const emit = emitTerminalResizeRef.current;
+
+      if (!sessionId || !emit) {
+        return;
+      }
+
+      emit({ sessionId, cols, rows });
+    }, []);
+
+    const scheduleFitAndEmit = useCallback(() => {
+      if (pendingFitFrameRef.current !== null) {
         return;
       }
 
       if (typeof window === "undefined" || !window.requestAnimationFrame) {
-        const sessionId = activeSessionIdRef.current;
-        const terminal = terminalRef.current;
-        const emit = emitTerminalResizeRef.current;
-
-        if (!sessionId || !terminal || !emit) {
-          return;
-        }
-
-        emit({ sessionId, cols: terminal.cols, rows: terminal.rows });
+        runFitAndEmit();
         return;
       }
 
-      pendingResizeFrameRef.current = window.requestAnimationFrame(() => {
-        pendingResizeFrameRef.current = null;
-
-        const sessionId = activeSessionIdRef.current;
-        const terminal = terminalRef.current;
-        const emit = emitTerminalResizeRef.current;
-
-        if (!sessionId || !terminal || !emit) {
-          return;
-        }
-
-        emit({ sessionId, cols: terminal.cols, rows: terminal.rows });
-      });
-    };
+      pendingFitFrameRef.current = window.requestAnimationFrame(runFitAndEmit);
+    }, [runFitAndEmit]);
 
     useEffect(() => {
       onInputRef.current = onInput ?? null;
@@ -126,14 +173,53 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       terminal.loadAddon(webLinksAddon);
       terminal.loadAddon(clipboardAddon);
 
-      const resizeObserver = new ResizeObserver(() => {
-        try {
-          fitAddon.fit();
-          scheduleTerminalResizeEmit();
-        } catch (error) {
-          console.warn("Failed to fit terminal on resize", error);
+      const resizeObserver = new ResizeObserver((entries) => {
+        const container = containerRef.current;
+        if (!container) {
+          return;
+        }
+
+        let shouldSchedule = false;
+        for (const entry of entries) {
+          if (entry.target !== container && entry.target !== container.parentElement) {
+            continue;
+          }
+
+          if (entry.target === container) {
+            const boxSize = Array.isArray(entry.contentBoxSize)
+              ? entry.contentBoxSize[0]
+              : entry.contentBoxSize;
+            const width =
+              typeof boxSize?.inlineSize === "number"
+                ? boxSize.inlineSize
+                : entry.contentRect.width;
+            const height =
+              typeof boxSize?.blockSize === "number"
+                ? boxSize.blockSize
+                : entry.contentRect.height;
+
+            if (typeof width === "number" && typeof height === "number") {
+              const last = lastMeasuredDimensionsRef.current;
+              if (last && last.width === width && last.height === height) {
+                continue;
+              }
+              lastMeasuredDimensionsRef.current = { width, height };
+            }
+          }
+
+          shouldSchedule = true;
+        }
+
+        if (shouldSchedule) {
+          scheduleFitAndEmit();
         }
       });
+      const handleWindowResize = () => {
+        scheduleFitAndEmit();
+      };
+      if (typeof window !== "undefined") {
+        window.addEventListener("resize", handleWindowResize);
+      }
 
       let dataDisposable: IDisposable | undefined;
       let binaryDisposable: IDisposable | undefined;
@@ -166,13 +252,16 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         terminal.focus();
         queueMicrotask(() => {
           try {
-            fitAddon.fit();
-            scheduleTerminalResizeEmit();
+            scheduleFitAndEmit();
           } catch (error) {
             console.warn("Failed to fit terminal on mount", error);
           }
         });
         resizeObserver.observe(containerRef.current);
+        const parentElement = containerRef.current.parentElement;
+        if (parentElement) {
+          resizeObserver.observe(parentElement);
+        }
       }
 
       terminalRef.current = terminal;
@@ -183,12 +272,17 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         dataDisposable?.dispose();
         binaryDisposable?.dispose();
         resizeObserver.disconnect();
-        if (pendingResizeFrameRef.current !== null) {
-          if (typeof window !== "undefined" && window.cancelAnimationFrame) {
-            window.cancelAnimationFrame(pendingResizeFrameRef.current);
-          }
-          pendingResizeFrameRef.current = null;
+        if (typeof window !== "undefined") {
+          window.removeEventListener("resize", handleWindowResize);
         }
+        if (pendingFitFrameRef.current !== null) {
+          if (typeof window !== "undefined" && window.cancelAnimationFrame) {
+            window.cancelAnimationFrame(pendingFitFrameRef.current);
+          }
+          pendingFitFrameRef.current = null;
+        }
+        lastMeasuredDimensionsRef.current = null;
+        lastKnownGeometryRef.current = null;
         clipboardAddon.dispose?.();
         webLinksAddon.dispose?.();
         inputListenerRef.current?.dispose();
@@ -198,7 +292,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         fitAddonRef.current = null;
         resizeObserverRef.current = null;
       };
-    }, []);
+    }, [scheduleFitAndEmit]);
 
     useEffect(() => {
       if (!terminalRef.current) {
@@ -233,13 +327,9 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
 
       const handleReady = (payload: { sessionId: string }) => {
         activeSessionIdRef.current = payload.sessionId;
+        lastKnownGeometryRef.current = null;
         queueMicrotask(() => {
-          try {
-            fitAddonRef.current?.fit();
-            scheduleTerminalResizeEmit();
-          } catch (error) {
-            console.warn("Failed to fit terminal after ready", error);
-          }
+          scheduleFitAndEmit();
         });
         onReady?.(payload);
       };
@@ -284,6 +374,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
           return;
         }
         activeSessionIdRef.current = null;
+        lastKnownGeometryRef.current = null;
         onExit?.(payload);
       };
 
@@ -298,7 +389,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         socket.off("terminal:error", handleError);
         socket.off("terminal:exit", handleExit);
       };
-    }, [socket, onReady, onData, onError, onExit]);
+    }, [socket, onReady, onData, onError, onExit, scheduleFitAndEmit]);
 
     useImperativeHandle(
       ref,
