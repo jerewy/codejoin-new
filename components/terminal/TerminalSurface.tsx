@@ -1,6 +1,6 @@
 "use client";
 
-// import "xterm/css/xterm.css";
+import "xterm/css/xterm.css";
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { Terminal, type IDisposable } from "xterm";
