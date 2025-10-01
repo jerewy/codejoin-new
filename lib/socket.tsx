@@ -42,21 +42,10 @@ interface SocketContextType {
     result: any;
     userId: string;
   }) => void;
-  startTerminalSession: (data: {
-    projectId: string;
-    userId: string;
-    language?: string;
-  }) => void;
-  sendTerminalInput: (data: {
-    sessionId: string;
-    input: string | ArrayBuffer | Uint8Array;
-  }) => void;
-  stopTerminalSession: (data: { sessionId: string }) => void;
-  emitTerminalResize: (data: {
-    sessionId: string;
-    cols: number;
-    rows: number;
-  }) => void;
+  startTerminalSession: (data: TerminalSocketEvents["terminal:start"]) => void;
+  sendTerminalInput: (data: TerminalSocketEvents["terminal:input"]) => void;
+  stopTerminalSession: (data: TerminalSocketEvents["terminal:stop"]) => void;
+  emitTerminalResize: (data: TerminalSocketEvents["terminal:resize"]) => void;
   collaborators: Array<{
     userId: string;
     userName: string;
@@ -89,6 +78,26 @@ export const useSocket = () => {
   }
   return context;
 };
+
+type TerminalSocketEvents = {
+  "terminal:start": {
+    projectId: string;
+    userId: string;
+    language?: string;
+  };
+  "terminal:stop": { sessionId: string };
+  "terminal:input": {
+    sessionId: string;
+    input: string | ArrayBuffer | Uint8Array;
+  };
+  "terminal:resize": {
+    sessionId: string;
+    cols: number;
+    rows: number;
+  };
+};
+
+type TerminalSocketEvent = keyof TerminalSocketEvents;
 
 interface SocketProviderProps {
   children: ReactNode;
@@ -211,6 +220,19 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
     [socket]
   );
 
+  const emitTerminalEvent = useCallback(
+    <E extends TerminalSocketEvent>(
+      event: E,
+      payload: TerminalSocketEvents[E]
+    ) => {
+      if (!socket) {
+        return;
+      }
+      socket.emit(event, payload);
+    },
+    [socket]
+  );
+
   const emitFileChange = useCallback(
     (data: {
       projectId: string;
@@ -264,42 +286,31 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   );
 
   const startTerminalSession = useCallback(
-    (data: { projectId: string; userId: string; language?: string }) => {
-      if (socket) {
-        socket.emit("terminal:start", data);
-      }
+    (data: TerminalSocketEvents["terminal:start"]) => {
+      emitTerminalEvent("terminal:start", data);
     },
-    [socket]
+    [emitTerminalEvent]
   );
 
   const sendTerminalInput = useCallback(
-    (data: {
-      sessionId: string;
-      input: string | ArrayBuffer | Uint8Array;
-    }) => {
-      if (socket) {
-        socket.emit("terminal:input", data);
-      }
+    (data: TerminalSocketEvents["terminal:input"]) => {
+      emitTerminalEvent("terminal:input", data);
     },
-    [socket]
+    [emitTerminalEvent]
   );
 
   const stopTerminalSession = useCallback(
-    (data: { sessionId: string }) => {
-      if (socket) {
-        socket.emit("terminal:stop", data);
-      }
+    (data: TerminalSocketEvents["terminal:stop"]) => {
+      emitTerminalEvent("terminal:stop", data);
     },
-    [socket]
+    [emitTerminalEvent]
   );
 
   const emitTerminalResize = useCallback(
-    (data: { sessionId: string; cols: number; rows: number }) => {
-      if (socket) {
-        socket.emit("terminal:resize", data);
-      }
+    (data: TerminalSocketEvents["terminal:resize"]) => {
+      emitTerminalEvent("terminal:resize", data);
     },
-    [socket]
+    [emitTerminalEvent]
   );
 
   return (
