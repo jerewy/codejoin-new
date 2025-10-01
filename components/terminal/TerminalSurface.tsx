@@ -27,11 +27,11 @@ interface TerminalSurfaceProps {
   onInput?: (payload: { sessionId: string; input: string }) => string | void | null;
   onError?: (payload: { sessionId?: string; message: string }) => void;
   onExit?: (payload: { sessionId: string; code?: number | null; reason?: string }) => void;
-  onInput?: (data: string) => void;
+  onUserInput?: (data: string) => void;
 }
 
 const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
-  ({ className, onReady, onData, onError, onExit, onInput }, ref) => {
+  ({ className, onReady, onData, onError, onExit, onUserInput }, ref) => {
     const { socket, sendTerminalInput } = useSocket();
 
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -139,12 +139,12 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       inputListenerRef.current?.dispose();
       inputListenerRef.current = null;
 
-      if (!onInput) {
+      if (!onUserInput) {
         return;
       }
 
       const disposable = terminalRef.current.onData((data) => {
-        onInput(data);
+        onUserInput(data);
       });
 
       inputListenerRef.current = disposable;
@@ -155,7 +155,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
           inputListenerRef.current = null;
         }
       };
-    }, [onInput]);
+    }, [onUserInput]);
 
     useEffect(() => {
       if (!socket) {

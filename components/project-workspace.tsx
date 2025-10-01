@@ -1246,7 +1246,9 @@ function TerminalPanel({
           <Button
             variant="ghost"
             size="sm"
-            onClick={sessionId ? handleStopSession : initializeSession}
+            onClick={() =>
+              (sessionId ? handleStopSession : initializeSession)()
+            }
             className="h-6 w-6 p-0 text-[#cccccc] hover:bg-[#3c3c3c] hover:text-white"
             title={
               sessionId ? "Stop terminal session" : "Start terminal session"
@@ -1281,7 +1283,7 @@ function TerminalPanel({
             onData={handleTerminalData}
             onError={handleTerminalError}
             onExit={handleTerminalExit}
-            onInput={handleTerminalInput}
+            onUserInput={handleTerminalInput}
           />
         </div>
       </div>
