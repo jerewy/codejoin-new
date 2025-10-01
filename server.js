@@ -177,6 +177,41 @@ app.prepare().then(() => {
       }
     })
 
+    socket.on('terminal:resize', async ({ sessionId, cols, rows }) => {
+      if (!sessionId) {
+        return
+      }
+
+      const width = Number(cols)
+      const height = Number(rows)
+
+      if (!Number.isFinite(width) || !Number.isFinite(height)) {
+        return
+      }
+
+      if (width <= 0 || height <= 0) {
+        return
+      }
+
+      const session = terminalSessions.get(sessionId)
+      if (!session || session.cleaning) {
+        return
+      }
+
+      try {
+        await dockerService.resizeInteractiveContainer(sessionId, {
+          cols: width,
+          rows: height
+        })
+      } catch (error) {
+        console.warn('Failed to resize terminal session', error)
+        socket.emit('terminal:error', {
+          sessionId,
+          message: error.message
+        })
+      }
+    })
+
     socket.on('terminal:stop', ({ sessionId }) => {
       if (!sessionId) return
       cleanupTerminalSession(sessionId, {
