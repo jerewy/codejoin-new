@@ -47,7 +47,10 @@ interface SocketContextType {
     userId: string;
     language?: string;
   }) => void;
-  sendTerminalInput: (data: { sessionId: string; input: string }) => void;
+  sendTerminalInput: (data: {
+    sessionId: string;
+    input: string | ArrayBuffer | Uint8Array;
+  }) => void;
   stopTerminalSession: (data: { sessionId: string }) => void;
   collaborators: Array<{
     userId: string;
@@ -264,7 +267,10 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   );
 
   const sendTerminalInput = useCallback(
-    (data: { sessionId: string; input: string }) => {
+    (data: {
+      sessionId: string;
+      input: string | ArrayBuffer | Uint8Array;
+    }) => {
       if (socket) {
         socket.emit("terminal:input", data);
       }
