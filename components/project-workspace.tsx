@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
 import TerminalSurface, {
   type TerminalSurfaceHandle,
 } from "@/components/terminal/TerminalSurface";
@@ -205,16 +204,10 @@ function TerminalPanel({
     useSocket();
   const { toast } = useToast();
 
-  const [currentCommand, setCurrentCommand] = useState("");
-  const [isInputFocused, setIsInputFocused] = useState(false);
   const [isTerminalReady, setIsTerminalReady] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [commandHistory, setCommandHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState<number | null>(null);
-
-  const inputRef = useRef<HTMLInputElement>(null);
   const terminalSurfaceRef = useRef<TerminalSurfaceHandle | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const isTerminalReadyRef = useRef(false);
@@ -224,6 +217,8 @@ function TerminalPanel({
   const hasShownConnectionMessage = useRef(false);
   const rawOutputBufferRef = useRef("");
   const displayEndsWithNewlineRef = useRef(true);
+  const commandBufferRef = useRef("");
+  const commandHistoryRef = useRef<string[]>([]);
 
   type TerminalMarkerWatcher = {
     id: number;
@@ -601,7 +596,7 @@ function TerminalPanel({
   useEffect(() => {
     const handleFocusRequest = () => {
       if (!isTerminalReady) return;
-      inputRef.current?.focus();
+      terminalSurfaceRef.current?.focus();
     };
 
     window.addEventListener("terminalFocusInput", handleFocusRequest);
@@ -622,7 +617,7 @@ function TerminalPanel({
   // Focus input when terminal body is clicked
   const handleTerminalClick = () => {
     if (!isTerminalReady) return;
-    inputRef.current?.focus();
+    terminalSurfaceRef.current?.focus();
   };
 
   const handleStopSession = useCallback(() => {
@@ -636,81 +631,9 @@ function TerminalPanel({
     stopTerminalSession({ sessionId: activeSessionId });
     activeLanguageRef.current = null;
     pendingLanguageRef.current = null;
+    commandBufferRef.current = "";
+    commandHistoryRef.current = [];
   }, [appendStatusLine, stopTerminalSession]);
-
-  const handleCommandSubmit = useCallback(() => {
-    const trimmedCommand = currentCommand.trim();
-    const [commandKeyword, ...restTokens] = trimmedCommand.split(/\s+/);
-    const isInputCommand = commandKeyword?.toLowerCase() === "input";
-
-    if (isInputCommand) {
-      const argumentStartIndex = currentCommand.indexOf(" ");
-      const hasArgument = argumentStartIndex !== -1;
-      const rawValue = hasArgument
-        ? currentCommand.slice(argumentStartIndex + 1)
-        : "";
-      const normalizedValue = rawValue.trim();
-      const argumentKeyword = normalizedValue.split(/\s+/)[0]?.toLowerCase();
-
-      if (!hasArgument || normalizedValue.length === 0) {
-        appendStatusLine(
-          "[input] Provide a value or use `input clear` to reset the buffer."
-        );
-      } else if (argumentKeyword === "clear" && restTokens.length === 1) {
-        onInputUpdate("");
-        appendStatusLine("[input] Execution input buffer cleared.");
-      } else {
-        onInputUpdate(rawValue);
-        appendStatusLine(
-          `[input] Execution input buffer set (${rawValue.length} characters).`
-        );
-      }
-
-      if (trimmedCommand.length > 0) {
-        setCommandHistory((prev) => [...prev, currentCommand]);
-      }
-
-      setCurrentCommand("");
-      setHistoryIndex(null);
-      return;
-    }
-
-    const activeSessionId = sessionIdRef.current;
-    if (!activeSessionId) return;
-
-    const payload = currentCommand.length > 0 ? `${currentCommand}\r` : "\r";
-    terminalSurfaceRef.current?.sendData(payload, {
-      sessionId: activeSessionId,
-    });
-
-    if (trimmedCommand.length > 0) {
-      setCommandHistory((prev) => [...prev, currentCommand]);
-    }
-
-    setCurrentCommand("");
-    setHistoryIndex(null);
-  }, [appendStatusLine, currentCommand, onInputUpdate, terminalSurfaceRef]);
-
-  const handleHistoryNavigation = useCallback(
-    (direction: "up" | "down") => {
-      if (commandHistory.length === 0) return;
-
-      if (direction === "up") {
-        const newIndex =
-          historyIndex === null
-            ? commandHistory.length - 1
-            : Math.max(0, historyIndex - 1);
-        setHistoryIndex(newIndex);
-        setCurrentCommand(commandHistory[newIndex] ?? "");
-      } else {
-        if (historyIndex === null) return;
-        const newIndex = Math.min(commandHistory.length - 1, historyIndex + 1);
-        setHistoryIndex(newIndex);
-        setCurrentCommand(commandHistory[newIndex] ?? "");
-      }
-    },
-    [commandHistory, historyIndex]
-  );
 
   const handleTerminalReady = useCallback(
     ({ sessionId: readySessionId }: { sessionId: string }) => {
@@ -781,6 +704,8 @@ function TerminalPanel({
       setSessionId(null);
       activeLanguageRef.current = null;
       pendingLanguageRef.current = null;
+      commandBufferRef.current = "";
+      commandHistoryRef.current = [];
     },
     [appendStatusLine, toast]
   );
@@ -821,6 +746,8 @@ function TerminalPanel({
       setIsStopping(false);
       activeLanguageRef.current = null;
       pendingLanguageRef.current = null;
+      commandBufferRef.current = "";
+      commandHistoryRef.current = [];
     },
     [appendStatusLine]
   );
@@ -1006,9 +933,6 @@ function TerminalPanel({
           }
         }
 
-        // Clear any existing command
-        setCurrentCommand("");
-
         // Save the file content to a temp file in the terminal
         const filename = file.name;
         const content = file.content ?? "";
@@ -1115,77 +1039,116 @@ function TerminalPanel({
     }
   }, [onExecuteInTerminal, executeCodeInTerminal]);
 
-  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!isTerminalReady) return;
-
-    // Handle copy/paste functionality
-    if (event.ctrlKey && event.key.toLowerCase() === "v") {
-      // Allow default paste behavior
-      return;
-    }
-
-    if (event.ctrlKey && event.key.toLowerCase() === "c") {
-      // If there's selected text, allow copy
-      const selection = window.getSelection();
-      if (selection && selection.toString().length > 0) {
-        return; // Allow default copy behavior
+  const handleTerminalInput = useCallback(
+    (chunk: string) => {
+      if (!sessionIdRef.current) {
+        return;
       }
 
-      // Otherwise, send interrupt signal to terminal
-      event.preventDefault();
-      const activeSessionId = sessionIdRef.current;
-      if (activeSessionId) {
-        terminalSurfaceRef.current?.sendData("\u0003", {
-          sessionId: activeSessionId,
+      let forwardBuffer = "";
+
+      const flushForwardBuffer = () => {
+        if (forwardBuffer.length === 0) {
+          return;
+        }
+
+        terminalSurfaceRef.current?.sendData(forwardBuffer, {
+          sessionId: sessionIdRef.current ?? undefined,
         });
+        forwardBuffer = "";
+      };
+
+      for (let index = 0; index < chunk.length; index += 1) {
+        const char = chunk[index];
+
+        if (char === "\r") {
+          const command = commandBufferRef.current;
+          commandBufferRef.current = "";
+
+          const trimmedCommand = command.trim();
+          if (trimmedCommand.length > 0) {
+            commandHistoryRef.current.push(command);
+          }
+
+          const [commandKeyword, ...restTokens] = trimmedCommand.split(/\s+/);
+          const isInputCommand = commandKeyword?.toLowerCase() === "input";
+
+          if (isInputCommand) {
+            const argumentStartIndex = command.indexOf(" ");
+            const hasArgument = argumentStartIndex !== -1;
+            const rawValue = hasArgument
+              ? command.slice(argumentStartIndex + 1)
+              : "";
+            const normalizedValue = rawValue.trim();
+            const argumentKeyword =
+              normalizedValue.split(/\s+/)[0]?.toLowerCase();
+
+            writeToTerminal("\r\n");
+
+            if (!hasArgument || normalizedValue.length === 0) {
+              appendStatusLine(
+                "[input] Provide a value or use `input clear` to reset the buffer."
+              );
+            } else if (
+              argumentKeyword === "clear" &&
+              restTokens.length === 1
+            ) {
+              onInputUpdate("");
+              appendStatusLine("[input] Execution input buffer cleared.");
+            } else {
+              onInputUpdate(rawValue);
+              appendStatusLine(
+                `[input] Execution input buffer set (${rawValue.length} characters).`
+              );
+            }
+
+            continue;
+          }
+
+          forwardBuffer += char;
+          continue;
+        }
+
+        if (char === "\x03") {
+          commandBufferRef.current = "";
+          forwardBuffer += char;
+          continue;
+        }
+
+        if (char === "\x7f" || char === "\b") {
+          commandBufferRef.current = commandBufferRef.current.slice(0, -1);
+          forwardBuffer += char;
+          continue;
+        }
+
+        if (char === "\x1b") {
+          let sequence = char;
+          while (index + 1 < chunk.length) {
+            const nextChar = chunk[index + 1];
+            sequence += nextChar;
+            index += 1;
+            if (
+              (nextChar >= "A" && nextChar <= "Z") ||
+              (nextChar >= "a" && nextChar <= "z")
+            ) {
+              break;
+            }
+          }
+          forwardBuffer += sequence;
+          continue;
+        }
+
+        if (char >= " " || char === "\t") {
+          commandBufferRef.current += char;
+        }
+
+        forwardBuffer += char;
       }
-      setCurrentCommand("");
-      setHistoryIndex(null);
-      return;
-    }
 
-    if (event.key === "Enter") {
-      event.preventDefault();
-      handleCommandSubmit();
-      return;
-    }
-
-    // Only send arrow keys for command history if there's no active program waiting for input
-    // We can detect this by checking if the current command is empty and we're at a prompt
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      handleHistoryNavigation("up");
-      // Don't send arrow key sequences to the terminal to avoid interfering with programs
-      return;
-    }
-
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      handleHistoryNavigation("down");
-      // Don't send arrow key sequences to the terminal to avoid interfering with programs
-      return;
-    }
-
-    if (event.key === "Tab") {
-      event.preventDefault();
-      const availableCommands = [
-        "help",
-        "clear",
-        "executions",
-        "npm",
-        "docker",
-        "ls",
-        "pwd",
-        "input",
-      ];
-      const matches = availableCommands.filter((cmd) =>
-        cmd.startsWith(currentCommand)
-      );
-      if (matches.length === 1) {
-        setCurrentCommand(matches[0]);
-      }
-    }
-  };
+      flushForwardBuffer();
+    },
+    [appendStatusLine, onInputUpdate, writeToTerminal]
+  );
 
   const formatExecutionTime = useCallback((ms: number) => {
     if (ms < 1000) return `${ms}ms`;
@@ -1283,7 +1246,9 @@ function TerminalPanel({
           <Button
             variant="ghost"
             size="sm"
-            onClick={sessionId ? handleStopSession : initializeSession}
+            onClick={() =>
+              (sessionId ? handleStopSession : initializeSession)()
+            }
             className="h-6 w-6 p-0 text-[#cccccc] hover:bg-[#3c3c3c] hover:text-white"
             title={
               sessionId ? "Stop terminal session" : "Start terminal session"
@@ -1318,6 +1283,7 @@ function TerminalPanel({
             onData={handleTerminalData}
             onError={handleTerminalError}
             onExit={handleTerminalExit}
+            onUserInput={handleTerminalInput}
           />
         </div>
       </div>
