@@ -201,12 +201,8 @@ function TerminalPanel({
     ((file: ProjectNodeFromDB) => Promise<boolean>) | null
   >;
 }) {
-  const {
-    socket,
-    isConnected,
-    startTerminalSession,
-    stopTerminalSession,
-  } = useSocket();
+  const { socket, isConnected, startTerminalSession, stopTerminalSession } =
+    useSocket();
   const { toast } = useToast();
 
   const [currentCommand, setCurrentCommand] = useState("");
@@ -280,10 +276,7 @@ function TerminalPanel({
 
     let sanitized = chunk;
     hiddenMarkersRef.current.forEach((marker) => {
-      const pattern = new RegExp(
-        `^.*${escapeRegExp(marker)}.*$`,
-        "gm"
-      );
+      const pattern = new RegExp(`^.*${escapeRegExp(marker)}.*$`, "gm");
       sanitized = sanitized.replace(pattern, "");
     });
     return sanitized;
@@ -370,7 +363,10 @@ function TerminalPanel({
         const watcherId = markerWatcherIdRef.current++;
         const resolvedStartIndex =
           typeof startIndex === "number"
-            ? Math.max(0, Math.min(startIndex, rawOutputBufferRef.current.length))
+            ? Math.max(
+                0,
+                Math.min(startIndex, rawOutputBufferRef.current.length)
+              )
             : rawOutputBufferRef.current.length;
         let timeoutId: number | null = null;
 
@@ -400,7 +396,8 @@ function TerminalPanel({
           reject(error);
         };
 
-        const existingSlice = rawOutputBufferRef.current.slice(resolvedStartIndex);
+        const existingSlice =
+          rawOutputBufferRef.current.slice(resolvedStartIndex);
         if (existingSlice.includes(successMarker)) {
           resolveAndCleanup(true);
           return;
@@ -518,7 +515,10 @@ function TerminalPanel({
           return { status: gppStatus, command: "g++" };
         }
         case "java": {
-          const javacStatus = await verifyCommandAvailability(sessionId, "javac");
+          const javacStatus = await verifyCommandAvailability(
+            sessionId,
+            "javac"
+          );
           if (javacStatus === "missing") {
             const reason =
               "The interactive sandbox does not have the Java compiler installed.";
@@ -567,33 +567,36 @@ function TerminalPanel({
     [appendStatusLine, verifyCommandAvailability]
   );
 
-  const initializeSession = useCallback((language?: string) => {
-    if (
-      !socket ||
-      !projectId ||
-      !userId ||
-      sessionIdRef.current ||
-      isStarting
-    ) {
-      return;
-    }
+  const initializeSession = useCallback(
+    (language?: string) => {
+      if (
+        !socket ||
+        !projectId ||
+        !userId ||
+        sessionIdRef.current ||
+        isStarting
+      ) {
+        return;
+      }
 
-    setIsStarting(true);
-    setIsStopping(false);
-    if (!hasShownConnectionMessage.current) {
-      appendStatusLine("Connecting to CodeJoin sandbox...");
-      hasShownConnectionMessage.current = true;
-    }
-    pendingLanguageRef.current = language ?? "default";
-    startTerminalSession({ projectId, userId, language });
-  }, [
-    appendStatusLine,
-    isStarting,
-    projectId,
-    socket,
-    startTerminalSession,
-    userId,
-  ]);
+      setIsStarting(true);
+      setIsStopping(false);
+      if (!hasShownConnectionMessage.current) {
+        appendStatusLine("Connecting to CodeJoin sandbox...");
+        hasShownConnectionMessage.current = true;
+      }
+      pendingLanguageRef.current = language ?? "default";
+      startTerminalSession({ projectId, userId, language });
+    },
+    [
+      appendStatusLine,
+      isStarting,
+      projectId,
+      socket,
+      startTerminalSession,
+      userId,
+    ]
+  );
 
   useEffect(() => {
     const handleFocusRequest = () => {
@@ -643,18 +646,24 @@ function TerminalPanel({
     if (isInputCommand) {
       const argumentStartIndex = currentCommand.indexOf(" ");
       const hasArgument = argumentStartIndex !== -1;
-      const rawValue = hasArgument ? currentCommand.slice(argumentStartIndex + 1) : "";
+      const rawValue = hasArgument
+        ? currentCommand.slice(argumentStartIndex + 1)
+        : "";
       const normalizedValue = rawValue.trim();
       const argumentKeyword = normalizedValue.split(/\s+/)[0]?.toLowerCase();
 
       if (!hasArgument || normalizedValue.length === 0) {
-        appendStatusLine("[input] Provide a value or use `input clear` to reset the buffer.");
+        appendStatusLine(
+          "[input] Provide a value or use `input clear` to reset the buffer."
+        );
       } else if (argumentKeyword === "clear" && restTokens.length === 1) {
         onInputUpdate("");
         appendStatusLine("[input] Execution input buffer cleared.");
       } else {
         onInputUpdate(rawValue);
-        appendStatusLine(`[input] Execution input buffer set (${rawValue.length} characters).`);
+        appendStatusLine(
+          `[input] Execution input buffer set (${rawValue.length} characters).`
+        );
       }
 
       if (trimmedCommand.length > 0) {
@@ -670,7 +679,9 @@ function TerminalPanel({
     if (!activeSessionId) return;
 
     const payload = currentCommand.length > 0 ? `${currentCommand}\r` : "\r";
-    terminalSurfaceRef.current?.sendData(payload, { sessionId: activeSessionId });
+    terminalSurfaceRef.current?.sendData(payload, {
+      sessionId: activeSessionId,
+    });
 
     if (trimmedCommand.length > 0) {
       setCommandHistory((prev) => [...prev, currentCommand]);
@@ -678,12 +689,7 @@ function TerminalPanel({
 
     setCurrentCommand("");
     setHistoryIndex(null);
-  }, [
-    appendStatusLine,
-    currentCommand,
-    onInputUpdate,
-    terminalSurfaceRef,
-  ]);
+  }, [appendStatusLine, currentCommand, onInputUpdate, terminalSurfaceRef]);
 
   const handleHistoryNavigation = useCallback(
     (direction: "up" | "down") => {
@@ -741,7 +747,13 @@ function TerminalPanel({
   );
 
   const handleTerminalError = useCallback(
-    ({ sessionId: errorSessionId, message }: { sessionId?: string; message: string }) => {
+    ({
+      sessionId: errorSessionId,
+      message,
+    }: {
+      sessionId?: string;
+      message: string;
+    }) => {
       if (
         errorSessionId &&
         sessionIdRef.current &&
@@ -840,7 +852,9 @@ function TerminalPanel({
     const lines = pendingInput.split(/\n/);
     const lineCount = lines.length;
     appendStatusLine(
-      `[input] Sending ${lineCount} line${lineCount === 1 ? "" : "s"} of buffered input...`
+      `[input] Sending ${lineCount} line${
+        lineCount === 1 ? "" : "s"
+      } of buffered input...`
     );
 
     lines.forEach((line, index) => {
@@ -937,8 +951,9 @@ function TerminalPanel({
       try {
         // Detect language first
         const { codeExecutionAPI } = await import("@/lib/api/codeExecution");
-        const detectedLanguage =
-          codeExecutionAPI.detectLanguageFromFileName(file.name);
+        const detectedLanguage = codeExecutionAPI.detectLanguageFromFileName(
+          file.name
+        );
 
         // Check if we need to start a session with specific language support
         const needsSpecificContainer =
@@ -946,9 +961,7 @@ function TerminalPanel({
           detectedLanguage === "cpp" ||
           detectedLanguage === "java";
 
-        const targetLanguage = needsSpecificContainer
-          ? detectedLanguage
-          : null;
+        const targetLanguage = needsSpecificContainer ? detectedLanguage : null;
 
         if (needsSpecificContainer) {
           appendStatusLine(
@@ -971,9 +984,11 @@ function TerminalPanel({
 
           if (languageSupport.status === "missing") {
             const runtimeError = new Error("TERMINAL_RUNTIME_UNAVAILABLE");
-            (runtimeError as Error & {
-              context?: Record<string, unknown>;
-            }).context = {
+            (
+              runtimeError as Error & {
+                context?: Record<string, unknown>;
+              }
+            ).context = {
               language: detectedLanguage,
               command: languageSupport.command,
               reason: languageSupport.reason,
@@ -1006,10 +1021,9 @@ function TerminalPanel({
           : null;
 
         if (directoryPath) {
-          terminalSurfaceRef.current?.sendData(
-            `mkdir -p ${directoryPath}\r`,
-            { sessionId: activeSessionId }
-          );
+          terminalSurfaceRef.current?.sendData(`mkdir -p ${directoryPath}\r`, {
+            sessionId: activeSessionId,
+          });
         }
 
         terminalSurfaceRef.current?.sendData(
@@ -1453,8 +1467,9 @@ export default function ProjectWorkspace({
   const [consoleOutputs, setConsoleOutputs] = useState<ExecutionResult[]>([]);
   const [problems, setProblems] = useState<Problem[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
-  const terminalExecuteCallbackRef =
-    useRef<((file: ProjectNodeFromDB) => Promise<boolean>) | null>(null);
+  const terminalExecuteCallbackRef = useRef<
+    ((file: ProjectNodeFromDB) => Promise<boolean>) | null
+  >(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [inputBuffer, setInputBuffer] = useState("");
 
@@ -1484,7 +1499,8 @@ export default function ProjectWorkspace({
         <div>
           <h2 className="text-lg font-semibold">Authentication unavailable</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Supabase environment variables are not configured. Configure them to access the project workspace.
+            Supabase environment variables are not configured. Configure them to
+            access the project workspace.
           </p>
         </div>
       </div>
@@ -1595,17 +1611,15 @@ export default function ProjectWorkspace({
         const hasCustomMessage = Boolean(message);
         const contextualHint = context?.language
           ? `Queue the responses with the terminal \`input\` command or via the prompt before running ${context.language.toUpperCase()} code again.`
-          :
-            "If your program needs stdin, queue it with the terminal `input` command before running again.";
+          : "If your program needs stdin, queue it with the terminal `input` command before running again.";
         toast({
           title: hasCustomMessage
             ? "Interactive sandbox unavailable"
             : "Terminal not ready",
-          description:
-            (message
-              ? `${message} ${contextualHint}`
-              : `Open the terminal tab and start a session to run interactive programs. ${contextualHint}`
-            ).trim(),
+          description: (message
+            ? `${message} ${contextualHint}`
+            : `Open the terminal tab and start a session to run interactive programs. ${contextualHint}`
+          ).trim(),
           variant: "destructive",
         });
       };
@@ -1707,7 +1721,6 @@ export default function ProjectWorkspace({
       setAiMessage("");
     }
   };
-
 
   // Handle execution results from CodeEditor
   const handleExecutionResult = (rawResult: ExecutionResult) => {
