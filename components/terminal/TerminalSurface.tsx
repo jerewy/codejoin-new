@@ -6,7 +6,7 @@ import {
   useImperativeHandle,
   useRef,
 } from "react";
-import { Terminal } from "xterm";
+import { Terminal, type IDisposable } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import { WebLinksAddon } from "xterm-addon-web-links";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
@@ -26,10 +26,11 @@ interface TerminalSurfaceProps {
   onData?: (payload: { sessionId: string; chunk: string }) => string | void | null;
   onError?: (payload: { sessionId?: string; message: string }) => void;
   onExit?: (payload: { sessionId: string; code?: number | null; reason?: string }) => void;
+  onInput?: (data: string) => void;
 }
 
 const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
-  ({ className, onReady, onData, onError, onExit }, ref) => {
+  ({ className, onReady, onData, onError, onExit, onInput }, ref) => {
     const { socket, sendTerminalInput } = useSocket();
 
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -37,6 +38,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
     const fitAddonRef = useRef<FitAddon | null>(null);
     const activeSessionIdRef = useRef<string | null>(null);
     const resizeObserverRef = useRef<ResizeObserver | null>(null);
+    const inputListenerRef = useRef<IDisposable | null>(null);
 
     useEffect(() => {
       const terminal = new Terminal({
@@ -94,12 +96,40 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         resizeObserver.disconnect();
         clipboardAddon.dispose?.();
         webLinksAddon.dispose?.();
+        inputListenerRef.current?.dispose();
+        inputListenerRef.current = null;
         terminal.dispose();
         terminalRef.current = null;
         fitAddonRef.current = null;
         resizeObserverRef.current = null;
       };
     }, []);
+
+    useEffect(() => {
+      if (!terminalRef.current) {
+        return;
+      }
+
+      inputListenerRef.current?.dispose();
+      inputListenerRef.current = null;
+
+      if (!onInput) {
+        return;
+      }
+
+      const disposable = terminalRef.current.onData((data) => {
+        onInput(data);
+      });
+
+      inputListenerRef.current = disposable;
+
+      return () => {
+        disposable.dispose();
+        if (inputListenerRef.current === disposable) {
+          inputListenerRef.current = null;
+        }
+      };
+    }, [onInput]);
 
     useEffect(() => {
       if (!socket) {
@@ -193,6 +223,8 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         },
         dispose: () => {
           resizeObserverRef.current?.disconnect();
+          inputListenerRef.current?.dispose();
+          inputListenerRef.current = null;
           terminalRef.current?.dispose();
           terminalRef.current = null;
           fitAddonRef.current = null;
