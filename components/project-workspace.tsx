@@ -1320,47 +1320,6 @@ function TerminalPanel({
             onExit={handleTerminalExit}
           />
         </div>
-        <div className="px-3 pb-3 pt-2 border-t border-zinc-700">
-          <div className="flex items-center">
-            <span className="text-[#4ec9b0] mr-2 select-none font-mono text-sm">
-              user@codejoin:~$
-            </span>
-            <div className="flex-1 relative">
-              <input
-                ref={inputRef}
-                type="text"
-                value={currentCommand}
-                onChange={(e) => setCurrentCommand(e.target.value)}
-                onKeyDown={handleInputKeyDown}
-                onFocus={() => setIsInputFocused(true)}
-                onBlur={() => setIsInputFocused(false)}
-                onPaste={(e) => {
-                  // Allow paste to work normally
-                  const pastedText = e.clipboardData.getData("text");
-                  setCurrentCommand((prev) => prev + pastedText);
-                  e.preventDefault();
-                }}
-                disabled={!isTerminalReady || isStarting || isStopping}
-                className="w-full bg-transparent border-none outline-none text-[#cccccc] font-mono text-sm caret-[#4ec9b0]"
-                placeholder=""
-                autoFocus={isTerminalReady}
-              />
-              {isTerminalReady && isInputFocused && (
-                <div
-                  className="absolute top-0 w-2 h-5 bg-[#4ec9b0] pointer-events-none animate-blink"
-                  style={{ left: `${currentCommand.length * 8.4}px` }}
-                />
-              )}
-              {!isTerminalReady && (
-                <div className="text-xs text-zinc-500 font-mono">
-                  {isStarting
-                    ? "Starting sandbox..."
-                    : "Connect the terminal to start issuing commands"}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
