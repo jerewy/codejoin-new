@@ -20,8 +20,6 @@ const dockerService = new DockerService()
 const CTRL_C = '\u0003'
 const CTRL_C_CHAR_CODE = CTRL_C.charCodeAt(0)
 
-const CONTROL_CHAR_CODEPOINT = /[\u0000-\u001F\u007F]/
-
 function toBufferLike(value) {
   if (Buffer.isBuffer(value)) {
     return value
@@ -36,24 +34,6 @@ function toBufferLike(value) {
   }
 
   return null
-}
-
-function containsControlCharacters(value) {
-  if (Buffer.isBuffer(value)) {
-    for (let i = 0; i < value.length; i += 1) {
-      const byte = value[i]
-      if (byte <= 0x1f || byte === 0x7f) {
-        return true
-      }
-    }
-    return false
-  }
-
-  if (typeof value === 'string') {
-    return CONTROL_CHAR_CODEPOINT.test(value)
-  }
-
-  return false
 }
 
 function normalizeTerminalInput(input) {
@@ -82,18 +62,14 @@ function normalizeTerminalInput(input) {
   }
 
   if (input.length === 0) {
-    return ''
+    return null
   }
 
   if (input === CTRL_C) {
     return input
   }
 
-  if (containsControlCharacters(input) || input.endsWith('\r')) {
-    return input
-  }
-
-  return `${input}\r`
+  return input
 }
 
 app.prepare().then(() => {
