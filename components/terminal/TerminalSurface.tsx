@@ -42,7 +42,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
     { className, onReady, onData, onInput, onError, onExit, onUserInput },
     ref
   ) => {
-    const { socket, sendTerminalInput } = useSocket();
+    const { socket, sendTerminalInput, emitTerminalResize } = useSocket();
 
     const containerRef = useRef<HTMLDivElement | null>(null);
     const terminalRef = useRef<Terminal | null>(null);
@@ -54,6 +54,41 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       onInput ?? null
     );
     const sendTerminalInputRef = useRef(sendTerminalInput);
+    const emitTerminalResizeRef = useRef(emitTerminalResize);
+    const pendingResizeFrameRef = useRef<number | null>(null);
+
+    const scheduleTerminalResizeEmit = () => {
+      if (pendingResizeFrameRef.current !== null) {
+        return;
+      }
+
+      if (typeof window === "undefined" || !window.requestAnimationFrame) {
+        const sessionId = activeSessionIdRef.current;
+        const terminal = terminalRef.current;
+        const emit = emitTerminalResizeRef.current;
+
+        if (!sessionId || !terminal || !emit) {
+          return;
+        }
+
+        emit({ sessionId, cols: terminal.cols, rows: terminal.rows });
+        return;
+      }
+
+      pendingResizeFrameRef.current = window.requestAnimationFrame(() => {
+        pendingResizeFrameRef.current = null;
+
+        const sessionId = activeSessionIdRef.current;
+        const terminal = terminalRef.current;
+        const emit = emitTerminalResizeRef.current;
+
+        if (!sessionId || !terminal || !emit) {
+          return;
+        }
+
+        emit({ sessionId, cols: terminal.cols, rows: terminal.rows });
+      });
+    };
 
     useEffect(() => {
       onInputRef.current = onInput ?? null;
@@ -62,6 +97,10 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
     useEffect(() => {
       sendTerminalInputRef.current = sendTerminalInput;
     }, [sendTerminalInput]);
+
+    useEffect(() => {
+      emitTerminalResizeRef.current = emitTerminalResize;
+    }, [emitTerminalResize]);
 
     useEffect(() => {
       const terminal = new Terminal({
@@ -90,6 +129,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       const resizeObserver = new ResizeObserver(() => {
         try {
           fitAddon.fit();
+          scheduleTerminalResizeEmit();
         } catch (error) {
           console.warn("Failed to fit terminal on resize", error);
         }
@@ -127,6 +167,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         queueMicrotask(() => {
           try {
             fitAddon.fit();
+            scheduleTerminalResizeEmit();
           } catch (error) {
             console.warn("Failed to fit terminal on mount", error);
           }
@@ -142,6 +183,12 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         dataDisposable?.dispose();
         binaryDisposable?.dispose();
         resizeObserver.disconnect();
+        if (pendingResizeFrameRef.current !== null) {
+          if (typeof window !== "undefined" && window.cancelAnimationFrame) {
+            window.cancelAnimationFrame(pendingResizeFrameRef.current);
+          }
+          pendingResizeFrameRef.current = null;
+        }
         clipboardAddon.dispose?.();
         webLinksAddon.dispose?.();
         inputListenerRef.current?.dispose();
@@ -189,6 +236,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         queueMicrotask(() => {
           try {
             fitAddonRef.current?.fit();
+            scheduleTerminalResizeEmit();
           } catch (error) {
             console.warn("Failed to fit terminal after ready", error);
           }
