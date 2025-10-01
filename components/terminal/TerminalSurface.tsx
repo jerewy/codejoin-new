@@ -55,6 +55,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
     const terminalRef = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
     const activeSessionIdRef = useRef<string | null>(null);
+    const pendingInputRef = useRef<string[]>([]);
     const resizeObserverRef = useRef<ResizeObserver | null>(null);
     const inputListenerRef = useRef<IDisposable | null>(null);
     const onInputRef = useRef<TerminalSurfaceProps["onInput"] | null>(
@@ -71,6 +72,26 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       cols: number;
       rows: number;
     } | null>(null);
+
+    const dispatchInput = useCallback((sessionId: string, chunk: string) => {
+      if (!chunk) {
+        return;
+      }
+
+      const processed = onInputRef.current?.({ sessionId, input: chunk });
+
+      if (processed === null) {
+        return;
+      }
+
+      const outbound = typeof processed === "string" ? processed : chunk;
+
+      if (!outbound) {
+        return;
+      }
+
+      sendTerminalInputRef.current?.({ sessionId, input: outbound });
+    }, []);
 
     const runFitAndEmit = useCallback(() => {
       pendingFitFrameRef.current = null;
@@ -249,25 +270,17 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       let dataDisposable: IDisposable | undefined;
       let binaryDisposable: IDisposable | undefined;
 
-      const handleInput = (input: string) => {
+      const handleInput = (chunk: string) => {
+        if (!chunk) {
+          return;
+        }
         const sessionId = activeSessionIdRef.current;
         if (!sessionId) {
+          pendingInputRef.current.push(chunk);
           return;
         }
 
-        const processed = onInputRef.current?.({ sessionId, input });
-
-        if (processed === null) {
-          return;
-        }
-
-        const outbound = typeof processed === "string" ? processed : input;
-
-        if (!outbound) {
-          return;
-        }
-
-        sendTerminalInputRef.current?.({ sessionId, input: outbound });
+        dispatchInput(sessionId, chunk);
       };
 
       if (containerRef.current) {
@@ -317,7 +330,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         fitAddonRef.current = null;
         resizeObserverRef.current = null;
       };
-    }, [scheduleFitAndEmit]);
+    }, [scheduleFitAndEmit, dispatchInput]);
 
     useEffect(() => {
       if (!terminalRef.current) {
@@ -353,6 +366,12 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       const handleReady = (payload: { sessionId: string }) => {
         activeSessionIdRef.current = payload.sessionId;
         lastKnownGeometryRef.current = null;
+        if (pendingInputRef.current.length > 0) {
+          for (const chunk of pendingInputRef.current) {
+            dispatchInput(payload.sessionId, chunk);
+          }
+          pendingInputRef.current = [];
+        }
         queueMicrotask(() => {
           scheduleFitAndEmit();
         });
@@ -400,6 +419,7 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         }
         activeSessionIdRef.current = null;
         lastKnownGeometryRef.current = null;
+        pendingInputRef.current = [];
         onExit?.(payload);
       };
 
@@ -414,7 +434,15 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
         socket.off("terminal:error", handleError);
         socket.off("terminal:exit", handleExit);
       };
-    }, [socket, onReady, onData, onError, onExit, scheduleFitAndEmit]);
+    }, [
+      socket,
+      onReady,
+      onData,
+      onError,
+      onExit,
+      scheduleFitAndEmit,
+      dispatchInput,
+    ]);
 
     useImperativeHandle(
       ref,
