@@ -29,6 +29,7 @@ const dockerService = new DockerService()
 
 const CTRL_C = '\u0003'
 const CTRL_C_CHAR_CODE = CTRL_C.charCodeAt(0)
+const TERMINAL_SESSION_IDLE_TIMEOUT_MS = 2 * 60 * 1000
 
 function toBufferLike(value) {
   if (Buffer.isBuffer(value)) {
@@ -94,43 +95,161 @@ app.prepare().then(() => {
     }
   })
 
-  io.on('connection', (socket) => {
-    console.log('User connected:', socket.id)
+  const terminalSessionRegistry = new Map()
 
-    const terminalSessions = new Map()
+  const emitToSocket = (socketId, event, payload) => {
+    if (!socketId) {
+      return
+    }
 
-    const cleanupTerminalSession = async (sessionId, { code = null, reason = null, emitExit = false } = {}) => {
-      const session = terminalSessions.get(sessionId)
-      if (!session || session.cleaning) {
+    const targetSocket = io.sockets.sockets.get(socketId)
+    if (targetSocket) {
+      targetSocket.emit(event, payload)
+    }
+  }
+
+  const detachSessionStream = (session) => {
+    if (session.detachStream) {
+      try {
+        session.detachStream()
+      } catch (streamError) {
+        console.warn('Failed to detach terminal stream', streamError.message)
+      }
+      session.detachStream = null
+    }
+
+    session.stream = null
+  }
+
+  const attachStreamToSocket = (session, stream, socket) => {
+    detachSessionStream(session)
+
+    if (session.idleTimer) {
+      clearTimeout(session.idleTimer)
+      session.idleTimer = null
+    }
+
+    stream.setEncoding('utf-8')
+
+    const handleData = (chunk) => {
+      socket.emit('terminal:data', {
+        sessionId: session.sessionId,
+        chunk
+      })
+    }
+
+    const handleError = (error) => {
+      socket.emit('terminal:error', {
+        sessionId: session.sessionId,
+        message: error.message
+      })
+    }
+
+    const handleClose = () => {
+      if (session.cleaning) {
         return
       }
 
-      session.cleaning = true
-
-      if (session.stream) {
-        try {
-          session.stream.destroy()
-        } catch (streamError) {
-          console.warn('Failed to destroy terminal stream', streamError.message)
-        }
-      }
-
-      terminalSessions.delete(sessionId)
-
-      try {
-        await dockerService.stopInteractiveContainer(sessionId)
-      } catch (error) {
-        console.warn('Failed to stop terminal session container', error.message)
-      }
-
-      if (emitExit) {
-        socket.emit('terminal:exit', {
-          sessionId,
-          code,
-          reason
-        })
+      if (session.activeSocketId === socket.id) {
+        session.activeSocketId = null
       }
     }
+
+    stream.on('data', handleData)
+    stream.on('error', handleError)
+    stream.on('close', handleClose)
+
+    session.stream = stream
+    session.activeSocketId = socket.id
+    session.lastKnownSocketId = socket.id
+    session.detachStream = () => {
+      stream.off('data', handleData)
+      stream.off('error', handleError)
+      stream.off('close', handleClose)
+
+      try {
+        stream.destroy()
+      } catch (destroyError) {
+        console.warn('Failed to destroy terminal stream', destroyError.message)
+      }
+
+      if (session.stream === stream) {
+        session.stream = null
+      }
+    }
+  }
+
+  const cleanupTerminalSession = async (
+    sessionId,
+    { code = null, reason = null, emitExit = false, targetSocketId = null } = {}
+  ) => {
+    const session = terminalSessionRegistry.get(sessionId)
+    if (!session || session.cleaning) {
+      return
+    }
+
+    session.cleaning = true
+
+    if (session.idleTimer) {
+      clearTimeout(session.idleTimer)
+      session.idleTimer = null
+    }
+
+    detachSessionStream(session)
+    session.activeSocketId = null
+
+    terminalSessionRegistry.delete(sessionId)
+
+    try {
+      await dockerService.stopInteractiveContainer(sessionId)
+    } catch (error) {
+      console.warn('Failed to stop terminal session container', error.message)
+    }
+
+    if (emitExit) {
+      const recipientSocketId = targetSocketId || session.lastKnownSocketId
+      emitToSocket(recipientSocketId, 'terminal:exit', {
+        sessionId,
+        code,
+        reason
+      })
+    }
+  }
+
+  const scheduleIdleCleanup = (session) => {
+    if (session.idleTimer) {
+      clearTimeout(session.idleTimer)
+    }
+
+    session.idleTimer = setTimeout(() => {
+      cleanupTerminalSession(session.sessionId, {
+        reason: 'Session expired after disconnect',
+        emitExit: false
+      }).catch((error) => {
+        console.warn('Failed to cleanup idle terminal session', error.message)
+      })
+    }, TERMINAL_SESSION_IDLE_TIMEOUT_MS)
+  }
+
+  const markSessionDetached = (sessionId, socketId) => {
+    const session = terminalSessionRegistry.get(sessionId)
+    if (!session || session.cleaning) {
+      return
+    }
+
+    if (session.activeSocketId !== socketId) {
+      return
+    }
+
+    detachSessionStream(session)
+    session.activeSocketId = null
+    scheduleIdleCleanup(session)
+  }
+
+  io.on('connection', (socket) => {
+    console.log('User connected:', socket.id)
+
+    const claimedTerminalSessions = new Set()
 
     socket.on('terminal:start', async ({ projectId, userId, language }) => {
       if (!projectId || !userId) {
@@ -171,28 +290,24 @@ app.prepare().then(() => {
       try {
         const { sessionId, stream } = await dockerService.createInteractiveContainer(languageConfig)
 
-        stream.setEncoding('utf-8')
-
         const sessionData = {
-          stream,
-          cleaning: false
+          sessionId,
+          projectId,
+          userId,
+          languageKey: resolvedLanguageKey,
+          stream: null,
+          detachStream: null,
+          idleTimer: null,
+          activeSocketId: null,
+          lastKnownSocketId: null,
+          cleaning: false,
+          createdAt: Date.now()
         }
 
-        terminalSessions.set(sessionId, sessionData)
+        terminalSessionRegistry.set(sessionId, sessionData)
+        claimedTerminalSessions.add(sessionId)
 
-        stream.on('data', (chunk) => {
-          socket.emit('terminal:data', {
-            sessionId,
-            chunk
-          })
-        })
-
-        stream.on('error', (error) => {
-          socket.emit('terminal:error', {
-            sessionId,
-            message: error.message
-          })
-        })
+        attachStreamToSocket(sessionData, stream, socket)
 
         dockerService.waitForContainer(sessionId)
           .then((status) => {
@@ -207,6 +322,9 @@ app.prepare().then(() => {
               emitExit: true
             })
           })
+          .finally(() => {
+            claimedTerminalSessions.delete(sessionId)
+          })
 
         socket.emit('terminal:ready', { sessionId })
       } catch (error) {
@@ -215,13 +333,65 @@ app.prepare().then(() => {
       }
     })
 
+    socket.on('terminal:resume', async ({ sessionId, projectId, userId }) => {
+      if (!sessionId || !projectId || !userId) {
+        socket.emit('terminal:error', {
+          sessionId,
+          message: 'sessionId, projectId, and userId are required to resume a session'
+        })
+        return
+      }
+
+      const session = terminalSessionRegistry.get(sessionId)
+      if (!session || session.cleaning) {
+        socket.emit('terminal:error', {
+          sessionId,
+          message: 'Terminal session is no longer available'
+        })
+        return
+      }
+
+      if (session.projectId !== projectId || session.userId !== userId) {
+        socket.emit('terminal:error', {
+          sessionId,
+          message: 'Terminal session is not accessible for this user'
+        })
+        return
+      }
+
+      try {
+        const { stream } = await dockerService.attachInteractiveStream(sessionId)
+        claimedTerminalSessions.add(sessionId)
+        attachStreamToSocket(session, stream, socket)
+        socket.emit('terminal:ready', { sessionId })
+      } catch (error) {
+        console.warn('Failed to resume terminal session', error)
+        socket.emit('terminal:error', {
+          sessionId,
+          message: error.message
+        })
+        cleanupTerminalSession(sessionId, {
+          reason: error.message,
+          emitExit: false
+        })
+          .catch(() => {})
+          .finally(() => {
+            claimedTerminalSessions.delete(sessionId)
+          })
+      }
+    })
+
     socket.on('terminal:input', ({ sessionId, input }) => {
       if (!sessionId || input === undefined || input === null) {
         return
       }
 
-      const session = terminalSessions.get(sessionId)
+      const session = terminalSessionRegistry.get(sessionId)
       if (!session || session.cleaning || !session.stream) {
+        return
+      }
+
+      if (session.activeSocketId !== socket.id) {
         return
       }
 
@@ -268,8 +438,12 @@ app.prepare().then(() => {
         return
       }
 
-      const session = terminalSessions.get(sessionId)
+      const session = terminalSessionRegistry.get(sessionId)
       if (!session || session.cleaning) {
+        return
+      }
+
+      if (session.activeSocketId !== socket.id) {
         return
       }
 
@@ -289,9 +463,11 @@ app.prepare().then(() => {
 
     socket.on('terminal:stop', ({ sessionId }) => {
       if (!sessionId) return
+      claimedTerminalSessions.delete(sessionId)
       cleanupTerminalSession(sessionId, {
         reason: 'Session stopped by user',
-        emitExit: true
+        emitExit: true,
+        targetSocketId: socket.id
       })
     })
 
@@ -398,9 +574,10 @@ app.prepare().then(() => {
     socket.on('disconnect', () => {
       console.log('User disconnected:', socket.id)
 
-      terminalSessions.forEach((_, sessionId) => {
-        cleanupTerminalSession(sessionId)
+      claimedTerminalSessions.forEach((sessionId) => {
+        markSessionDetached(sessionId, socket.id)
       })
+      claimedTerminalSessions.clear()
 
       const collaborator = collaborators.get(socket.id)
       if (collaborator) {

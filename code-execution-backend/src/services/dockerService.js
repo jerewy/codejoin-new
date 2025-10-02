@@ -259,6 +259,54 @@ class DockerService {
     }
   }
 
+  async attachInteractiveStream(sessionId) {
+    let container = this.runningContainers.get(sessionId);
+
+    if (!container) {
+      container = this.docker.getContainer(`code-terminal-${sessionId}`);
+      try {
+        const inspection = await container.inspect();
+        if (!inspection?.State?.Running) {
+          throw new Error('Interactive session is not running');
+        }
+        this.runningContainers.set(sessionId, container);
+      } catch (error) {
+        throw new Error(
+          `Unable to resume interactive session: ${error.message || error}`
+        );
+      }
+    } else {
+      try {
+        const inspection = await container.inspect();
+        if (!inspection?.State?.Running) {
+          this.runningContainers.delete(sessionId);
+          throw new Error('Interactive session has already exited');
+        }
+      } catch (error) {
+        this.runningContainers.delete(sessionId);
+        throw new Error(
+          `Unable to inspect interactive session: ${error.message || error}`
+        );
+      }
+    }
+
+    try {
+      const stream = await container.attach({
+        stream: true,
+        stdin: true,
+        stdout: true,
+        stderr: true,
+        tty: true
+      });
+
+      return { stream };
+    } catch (error) {
+      throw new Error(
+        `Failed to attach to interactive session: ${error.message || error}`
+      );
+    }
+  }
+
   async copyCodeToContainer(container, fileName, code) {
     const tar = require('tar-stream');
     const pack = tar.pack();
