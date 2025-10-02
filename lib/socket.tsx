@@ -232,7 +232,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   const leaveProject = useCallback(
     (projectId: string) => {
       if (socket) {
-        socket.leave(projectId);
+        socket.emit("leave-project", { projectId });
       }
     },
     [socket]

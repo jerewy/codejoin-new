@@ -508,6 +508,7 @@ app.prepare().then(() => {
         userId,
         userName,
         userAvatar,
+        socketId: socket.id,
         joinedAt: new Date(),
         lastActivity: new Date()
       })
@@ -532,6 +533,32 @@ app.prepare().then(() => {
         }))
 
       socket.emit('collaborators-list', projectCollaborators)
+    })
+
+    socket.on('leave-project', (data = {}) => {
+      const { projectId } = data
+
+      if (!projectId) {
+        return
+      }
+
+      socket.leave(projectId)
+
+      const collaborator = collaborators.get(socket.id)
+
+      if (!collaborator) {
+        return
+      }
+
+      if (collaborator.projectId === projectId) {
+        collaborators.delete(socket.id)
+
+        socket.to(projectId).emit('collaborator-left', {
+          userId: collaborator.userId,
+          userName: collaborator.userName,
+          socketId: socket.id
+        })
+      }
     })
 
     // Handle file content changes for real-time collaboration
