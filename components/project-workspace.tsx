@@ -825,23 +825,6 @@ function TerminalPanel({
     };
   }, [stopTerminalSession]);
 
-  const sendTerminalData = useCallback(
-    (payload: string, options?: { sessionId?: string }) => {
-      if (!isConnected) {
-        return;
-      }
-
-      const targetSessionId =
-        options?.sessionId ?? sessionIdRef.current ?? undefined;
-      if (!targetSessionId) {
-        return;
-      }
-
-      terminalSurfaceRef.current?.sendData(payload, { sessionId: targetSessionId });
-    },
-    [isConnected]
-  );
-
   // Execute code directly in the interactive terminal session
   const flushBufferedInput = useCallback(() => {
     if (!isConnected || !sessionIdRef.current) return;
@@ -865,7 +848,13 @@ function TerminalPanel({
     });
 
     onInputUpdate("");
-  }, [appendStatusLine, inputBuffer, isConnected, onInputUpdate, sendTerminalData]);
+  }, [
+    appendStatusLine,
+    inputBuffer,
+    isConnected,
+    onInputUpdate,
+    sendTerminalData,
+  ]);
 
   const waitForTerminalReady = useCallback(async (timeoutMs = 10000) => {
     if (isTerminalReadyRef.current && sessionIdRef.current) {
@@ -905,13 +894,16 @@ function TerminalPanel({
     });
   }, []);
 
-  const loadCodeExecutionModule = useCallback(async (): Promise<CodeExecutionModule> => {
-    if (!codeExecutionModuleRef.current) {
-      codeExecutionModuleRef.current = await import("@/lib/api/codeExecution");
-    }
+  const loadCodeExecutionModule =
+    useCallback(async (): Promise<CodeExecutionModule> => {
+      if (!codeExecutionModuleRef.current) {
+        codeExecutionModuleRef.current = await import(
+          "@/lib/api/codeExecution"
+        );
+      }
 
-    return codeExecutionModuleRef.current as CodeExecutionModule;
-  }, []);
+      return codeExecutionModuleRef.current as CodeExecutionModule;
+    }, []);
 
   const ensureSupportedLanguageKeys = useCallback(
     async (module?: CodeExecutionModule): Promise<Set<string>> => {
@@ -921,7 +913,8 @@ function TerminalPanel({
 
       try {
         const resolvedModule = module ?? (await loadCodeExecutionModule());
-        const response = await resolvedModule.codeExecutionAPI.getSupportedLanguages();
+        const response =
+          await resolvedModule.codeExecutionAPI.getSupportedLanguages();
         const keys = new Set<string>();
         let hasCatalogEntries = false;
 
@@ -1005,8 +998,9 @@ function TerminalPanel({
             file.name
           );
         const normalizedLanguage = detectedLanguage.toLowerCase();
-        const supportedLanguageKeys =
-          await ensureSupportedLanguageKeys(codeExecutionModule);
+        const supportedLanguageKeys = await ensureSupportedLanguageKeys(
+          codeExecutionModule
+        );
         const hasLanguageConfig = supportedLanguageKeys.has(normalizedLanguage);
         const shouldOmitLanguage =
           normalizedLanguage === "javascript" && !hasLanguageConfig;
@@ -1038,7 +1032,9 @@ function TerminalPanel({
           activeLanguageRef.current !== "default" &&
           isTerminalReadyRef.current
         ) {
-          appendStatusLine("Preparing default JavaScript execution environment...");
+          appendStatusLine(
+            "Preparing default JavaScript execution environment..."
+          );
         }
 
         await ensureTerminalSession(targetLanguage);
@@ -1665,9 +1661,12 @@ export default function ProjectWorkspace({
         return Promise.resolve(terminalExecuteCallbackRef.current);
       }
 
-      return new Promise<((file: ProjectNodeFromDB) => Promise<boolean>) | null>((resolve) => {
+      return new Promise<
+        ((file: ProjectNodeFromDB) => Promise<boolean>) | null
+      >((resolve) => {
         const now = () =>
-          typeof performance !== "undefined" && typeof performance.now === "function"
+          typeof performance !== "undefined" &&
+          typeof performance.now === "function"
             ? performance.now()
             : Date.now();
 
@@ -1808,7 +1807,8 @@ export default function ProjectWorkspace({
           const errorMessage = (error as Error)?.message;
           if (errorMessage === "TERMINAL_NOT_READY") {
             shouldFallbackToNonInteractive = true;
-            fallbackReason = "Terminal session is still preparing. Running with the standard executor instead.";
+            fallbackReason =
+              "Terminal session is still preparing. Running with the standard executor instead.";
           } else if (errorMessage === "TERMINAL_RUNTIME_UNAVAILABLE") {
             shouldFallbackToNonInteractive = true;
             fallbackContext = (
