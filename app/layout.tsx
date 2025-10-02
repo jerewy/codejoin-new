@@ -28,50 +28,111 @@ export default function RootLayout({
         <Script id="next-chunk-recovery" strategy="beforeInteractive">
           {`
             (() => {
-              const STORAGE_KEY = 'next-chunk-retry-count';
+              if (window.__NEXT_CHUNK_RECOVERY_INITIALIZED) {
+                return;
+              }
+
+              window.__NEXT_CHUNK_RECOVERY_INITIALIZED = true;
+
+              const STORAGE_KEY = 'next-chunk-retry-state';
               const MAX_RETRIES = 3;
+              const CHUNK_PATH_PATTERN = /\/_next\/static\/(chunks|app|webpack)\//;
 
-              const handleChunkError = (event) => {
-                const target = event?.target;
-                if (!target || target.tagName !== 'SCRIPT') {
-                  return;
-                }
-
-                const src = target.src || '';
-                if (!src.includes('/_next/static/chunks/')) {
-                  return;
-                }
-
+              const readRetryState = () => {
                 try {
-                  const retries = Number(sessionStorage.getItem(STORAGE_KEY) || '0');
-
-                  if (Number.isNaN(retries)) {
-                    sessionStorage.setItem(STORAGE_KEY, '1');
-                    window.location.reload();
-                    return;
+                  const raw = sessionStorage.getItem(STORAGE_KEY);
+                  if (!raw) {
+                    return { count: 0 };
                   }
 
-                  if (retries >= MAX_RETRIES) {
-                    sessionStorage.removeItem(STORAGE_KEY);
-                    console.error('Chunk failed to load after multiple attempts.');
-                    return;
+                  const parsed = JSON.parse(raw);
+                  if (!parsed || typeof parsed.count !== 'number' || Number.isNaN(parsed.count)) {
+                    return { count: 0 };
                   }
 
-                  sessionStorage.setItem(STORAGE_KEY, String(retries + 1));
-                  window.location.reload();
-                } catch (storageError) {
-                  console.warn('Unable to persist chunk retry count', storageError);
-                  window.location.reload();
+                  return { count: parsed.count };
+                } catch (error) {
+                  console.warn('Unable to read chunk retry state', error);
+                  return { count: 0 };
                 }
               };
 
-              window.addEventListener('error', handleChunkError, true);
-              window.addEventListener('load', () => {
+              const persistRetryState = (state) => {
+                try {
+                  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+                } catch (error) {
+                  console.warn('Unable to persist chunk retry state', error);
+                }
+              };
+
+              const resetRetryState = () => {
                 try {
                   sessionStorage.removeItem(STORAGE_KEY);
-                } catch (storageError) {
-                  console.warn('Unable to reset chunk retry count', storageError);
+                } catch (error) {
+                  console.warn('Unable to reset chunk retry state', error);
                 }
+              };
+
+              const reloadWithBuster = (retryCount) => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('chunkRetry', String(retryCount));
+                url.searchParams.set('_ts', String(Date.now()));
+                window.location.replace(url.toString());
+              };
+
+              const scheduleRecoveryReload = () => {
+                const { count } = readRetryState();
+
+                if (count >= MAX_RETRIES) {
+                  resetRetryState();
+                  console.error('Chunk failed to load after multiple attempts.');
+                  return;
+                }
+
+                const nextCount = count + 1;
+                persistRetryState({ count: nextCount });
+                reloadWithBuster(nextCount);
+              };
+
+              const isChunkScript = (target) => {
+                if (!target || target.tagName !== 'SCRIPT') {
+                  return false;
+                }
+
+                const src = target.src || '';
+                return CHUNK_PATH_PATTERN.test(src);
+              };
+
+              const isChunkLoadError = (error) => {
+                if (!error) {
+                  return false;
+                }
+
+                const message = typeof error === 'string' ? error : error.message || '';
+                if (!message) {
+                  return false;
+                }
+
+                return message.includes('ChunkLoadError') || message.includes('Loading chunk');
+              };
+
+              const handleScriptError = (event) => {
+                if (isChunkScript(event?.target)) {
+                  scheduleRecoveryReload();
+                }
+              };
+
+              const handleUnhandledRejection = (event) => {
+                if (isChunkLoadError(event?.reason)) {
+                  event.preventDefault?.();
+                  scheduleRecoveryReload();
+                }
+              };
+
+              window.addEventListener('error', handleScriptError, true);
+              window.addEventListener('unhandledrejection', handleUnhandledRejection);
+              window.addEventListener('load', () => {
+                resetRetryState();
               });
             })();
           `}
