@@ -224,8 +224,13 @@ function TerminalPanel({
   >;
   terminalSurfaceRef?: React.MutableRefObject<TerminalSurfaceHandle | null>;
 }) {
-  const { socket, isConnected, startTerminalSession, stopTerminalSession } =
-    useSocket();
+  const {
+    socket,
+    isConnected,
+    startTerminalSession,
+    stopTerminalSession,
+    resumeTerminalSession,
+  } = useSocket();
   const { toast } = useToast();
 
   const [isTerminalReady, setIsTerminalReady] = useState(false);
@@ -241,6 +246,7 @@ function TerminalPanel({
   const pendingLanguageRef = useRef<string | null>(null);
   const attemptedInitialStart = useRef(false);
   const hasShownConnectionMessage = useRef(false);
+  const pendingResumeRef = useRef(false);
   const rawOutputBufferRef = useRef("");
   const displayEndsWithNewlineRef = useRef(true);
   const commandBufferRef = useRef("");
@@ -629,6 +635,8 @@ function TerminalPanel({
         hasShownConnectionMessage.current = true;
       }
       pendingLanguageRef.current = getTrackingLanguageKey(language);
+      attemptedInitialStart.current = true;
+      pendingResumeRef.current = false;
       startTerminalSession({ projectId, userId, language });
     },
     [
@@ -653,14 +661,62 @@ function TerminalPanel({
     };
   }, [isTerminalReady]);
 
-  // Start session on initial mount when socket is ready
+  // Manage terminal session lifecycle across socket reconnects
   useEffect(() => {
-    if (!socket || !isConnected) return;
-    if (!attemptedInitialStart.current) {
-      attemptedInitialStart.current = true;
+    if (!socket) {
+      return;
+    }
+
+    if (!isConnected) {
+      if (sessionIdRef.current) {
+        if (!pendingResumeRef.current) {
+          appendStatusLine(
+            "Lost connection to sandbox session. Attempting to reconnect..."
+          );
+        }
+        pendingResumeRef.current = true;
+        setIsTerminalReady(false);
+        isTerminalReadyRef.current = false;
+        setIsStarting(false);
+        setIsStopping(false);
+      } else {
+        attemptedInitialStart.current = false;
+      }
+      return;
+    }
+
+    hasShownConnectionMessage.current = true;
+
+    if (
+      pendingResumeRef.current &&
+      sessionIdRef.current &&
+      projectId &&
+      userId
+    ) {
+      setIsStarting(true);
+      setIsStopping(false);
+      appendStatusLine("Reconnecting to sandbox session...");
+      resumeTerminalSession({
+        sessionId: sessionIdRef.current,
+        projectId,
+        userId,
+      });
+      pendingResumeRef.current = false;
+      return;
+    }
+
+    if (!sessionIdRef.current && !attemptedInitialStart.current) {
       initializeSession();
     }
-  }, [initializeSession, isConnected, socket]);
+  }, [
+    appendStatusLine,
+    initializeSession,
+    isConnected,
+    projectId,
+    resumeTerminalSession,
+    socket,
+    userId,
+  ]);
 
   // Focus input when terminal body is clicked
   const handleTerminalClick = () => {
@@ -681,6 +737,7 @@ function TerminalPanel({
     pendingLanguageRef.current = null;
     commandBufferRef.current = "";
     commandHistoryRef.current = [];
+    pendingResumeRef.current = false;
   }, [appendStatusLine, stopTerminalSession]);
 
   const handleTerminalReady = useCallback(
@@ -691,6 +748,8 @@ function TerminalPanel({
       isTerminalReadyRef.current = true;
       activeLanguageRef.current = pendingLanguageRef.current;
       pendingLanguageRef.current = null;
+      attemptedInitialStart.current = true;
+      pendingResumeRef.current = false;
       setIsStarting(false);
       setIsStopping(false);
       if (hasShownConnectionMessage.current) {
@@ -733,6 +792,8 @@ function TerminalPanel({
     pendingLanguageRef.current = null;
     commandBufferRef.current = "";
     commandHistoryRef.current = [];
+    attemptedInitialStart.current = false;
+    pendingResumeRef.current = false;
   }, []);
 
   const handleTerminalError = useCallback(
@@ -797,23 +858,6 @@ function TerminalPanel({
 
     hasShownConnectionMessage.current = true;
   }, [socket]);
-
-  useEffect(() => {
-    if (isConnected === false) {
-      if (sessionIdRef.current || isTerminalReadyRef.current) {
-        appendStatusLine(
-          "Lost connection to sandbox session. Resetting terminal state..."
-        );
-      }
-      resetSessionState("Terminal connection lost");
-      attemptedInitialStart.current = false;
-      return;
-    }
-
-    if (isConnected && !sessionIdRef.current) {
-      attemptedInitialStart.current = false;
-    }
-  }, [appendStatusLine, isConnected, resetSessionState]);
 
   // Cleanup active session when component unmounts
   useEffect(() => {
