@@ -211,6 +211,7 @@ function TerminalPanel({
   inputBuffer,
   onInputUpdate,
   onExecuteInTerminal,
+  terminalSurfaceRef: externalTerminalSurfaceRef,
 }: {
   projectId: string;
   userId: string;
@@ -221,6 +222,7 @@ function TerminalPanel({
   onExecuteInTerminal?: React.MutableRefObject<
     ((file: ProjectNodeFromDB) => Promise<boolean>) | null
   >;
+  terminalSurfaceRef?: React.MutableRefObject<TerminalSurfaceHandle | null>;
 }) {
   const { socket, isConnected, startTerminalSession, stopTerminalSession } =
     useSocket();
@@ -230,7 +232,9 @@ function TerminalPanel({
   const [isStarting, setIsStarting] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const terminalSurfaceRef = useRef<TerminalSurfaceHandle | null>(null);
+  const localTerminalSurfaceRef = useRef<TerminalSurfaceHandle | null>(null);
+  const terminalSurfaceRef =
+    externalTerminalSurfaceRef ?? localTerminalSurfaceRef;
   const sessionIdRef = useRef<string | null>(null);
   const isTerminalReadyRef = useRef(false);
   const activeLanguageRef = useRef<string | null>(null);
@@ -448,6 +452,25 @@ function TerminalPanel({
   );
 
   type CommandAvailability = "available" | "missing" | "unknown";
+
+  const sendTerminalData = useCallback(
+    (payload: string, options?: { sessionId?: string }) => {
+      if (!isConnected) {
+        return;
+      }
+
+      const targetSessionId =
+        options?.sessionId ?? sessionIdRef.current ?? undefined;
+      if (!targetSessionId) {
+        return;
+      }
+
+      terminalSurfaceRef.current?.sendData(payload, {
+        sessionId: targetSessionId,
+      });
+    },
+    [isConnected, terminalSurfaceRef]
+  );
 
   const verifyCommandAvailability = useCallback(
     async (
@@ -1537,6 +1560,7 @@ export default function ProjectWorkspace({
   const terminalExecutorWaitTimeoutRef = useRef<number | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [inputBuffer, setInputBuffer] = useState("");
+  const terminalSurfaceRef = useRef<TerminalSurfaceHandle | null>(null);
 
   useEffect(() => {
     return () => {
@@ -2571,6 +2595,7 @@ export default function ProjectWorkspace({
                       inputBuffer={inputBuffer}
                       onInputUpdate={setInputBuffer}
                       onExecuteInTerminal={terminalExecuteCallbackRef}
+                      terminalSurfaceRef={terminalSurfaceRef}
                     />
                   </TabsContent>
 
