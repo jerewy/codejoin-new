@@ -460,7 +460,7 @@ function TerminalPanel({
 
       const markerStartIndex = rawOutputBufferRef.current.length;
 
-      terminalSurfaceRef.current?.sendData(
+      sendTerminalData(
         `if command -v ${commandName} >/dev/null 2>&1; then echo '${successMarker}'; else echo '${failureMarker}'; fi\r`,
         { sessionId }
       );
@@ -479,7 +479,7 @@ function TerminalPanel({
         return "unknown";
       }
     },
-    [appendStatusLine, waitForTerminalMarker]
+    [appendStatusLine, sendTerminalData, waitForTerminalMarker]
   );
 
   type LanguageSupportResult = {
@@ -694,6 +694,24 @@ function TerminalPanel({
     [appendRawOutput]
   );
 
+  const resetSessionState = useCallback((reason?: string) => {
+    markerWatchersRef.current.forEach((watcher) =>
+      watcher.reject(new Error(reason || "Terminal session ended"))
+    );
+    markerWatchersRef.current = [];
+    hiddenMarkersRef.current.clear();
+    sessionIdRef.current = null;
+    setSessionId(null);
+    setIsTerminalReady(false);
+    isTerminalReadyRef.current = false;
+    setIsStarting(false);
+    setIsStopping(false);
+    activeLanguageRef.current = null;
+    pendingLanguageRef.current = null;
+    commandBufferRef.current = "";
+    commandHistoryRef.current = [];
+  }, []);
+
   const handleTerminalError = useCallback(
     ({
       sessionId: errorSessionId,
@@ -716,23 +734,9 @@ function TerminalPanel({
         description: message,
         variant: "destructive",
       });
-      markerWatchersRef.current.forEach((watcher) =>
-        watcher.reject(new Error(message))
-      );
-      markerWatchersRef.current = [];
-      hiddenMarkersRef.current.clear();
-      setIsTerminalReady(false);
-      isTerminalReadyRef.current = false;
-      setIsStarting(false);
-      setIsStopping(false);
-      sessionIdRef.current = null;
-      setSessionId(null);
-      activeLanguageRef.current = null;
-      pendingLanguageRef.current = null;
-      commandBufferRef.current = "";
-      commandHistoryRef.current = [];
+      resetSessionState(message);
     },
-    [appendStatusLine, toast]
+    [appendStatusLine, resetSessionState, toast]
   );
 
   const handleTerminalExit = useCallback(
@@ -758,23 +762,9 @@ function TerminalPanel({
       }
 
       appendStatusLine(exitMessageParts.join(" "));
-      markerWatchersRef.current.forEach((watcher) =>
-        watcher.reject(new Error(reason || "Terminal session ended"))
-      );
-      markerWatchersRef.current = [];
-      hiddenMarkersRef.current.clear();
-      sessionIdRef.current = null;
-      setSessionId(null);
-      setIsTerminalReady(false);
-      isTerminalReadyRef.current = false;
-      setIsStarting(false);
-      setIsStopping(false);
-      activeLanguageRef.current = null;
-      pendingLanguageRef.current = null;
-      commandBufferRef.current = "";
-      commandHistoryRef.current = [];
+      resetSessionState(reason);
     },
-    [appendStatusLine]
+    [appendStatusLine, resetSessionState]
   );
 
   useEffect(() => {
@@ -784,6 +774,23 @@ function TerminalPanel({
 
     hasShownConnectionMessage.current = true;
   }, [socket]);
+
+  useEffect(() => {
+    if (isConnected === false) {
+      if (sessionIdRef.current || isTerminalReadyRef.current) {
+        appendStatusLine(
+          "Lost connection to sandbox session. Resetting terminal state..."
+        );
+      }
+      resetSessionState("Terminal connection lost");
+      attemptedInitialStart.current = false;
+      return;
+    }
+
+    if (isConnected && !sessionIdRef.current) {
+      attemptedInitialStart.current = false;
+    }
+  }, [appendStatusLine, isConnected, resetSessionState]);
 
   // Cleanup active session when component unmounts
   useEffect(() => {
@@ -795,9 +802,26 @@ function TerminalPanel({
     };
   }, [stopTerminalSession]);
 
+  const sendTerminalData = useCallback(
+    (payload: string, options?: { sessionId?: string }) => {
+      if (!isConnected) {
+        return;
+      }
+
+      const targetSessionId =
+        options?.sessionId ?? sessionIdRef.current ?? undefined;
+      if (!targetSessionId) {
+        return;
+      }
+
+      terminalSurfaceRef.current?.sendData(payload, { sessionId: targetSessionId });
+    },
+    [isConnected]
+  );
+
   // Execute code directly in the interactive terminal session
   const flushBufferedInput = useCallback(() => {
-    if (!sessionIdRef.current) return;
+    if (!isConnected || !sessionIdRef.current) return;
     const pendingInput = inputBuffer.replace(/\r/g, "");
     if (!pendingInput.trim()) return;
 
@@ -811,16 +835,14 @@ function TerminalPanel({
 
     lines.forEach((line, index) => {
       setTimeout(() => {
-        if (!sessionIdRef.current) return;
+        if (!isConnected || !sessionIdRef.current) return;
         const payload = line.length > 0 ? `${line}\r` : "\r";
-        terminalSurfaceRef.current?.sendData(payload, {
-          sessionId: sessionIdRef.current ?? undefined,
-        });
+        sendTerminalData(payload);
       }, 300 + index * 30);
     });
 
     onInputUpdate("");
-  }, [appendStatusLine, inputBuffer, onInputUpdate]);
+  }, [appendStatusLine, inputBuffer, isConnected, onInputUpdate, sendTerminalData]);
 
   const waitForTerminalReady = useCallback(async (timeoutMs = 10000) => {
     if (isTerminalReadyRef.current && sessionIdRef.current) {
@@ -1045,24 +1067,23 @@ function TerminalPanel({
           : null;
 
         if (directoryPath) {
-          terminalSurfaceRef.current?.sendData(`mkdir -p ${directoryPath}\r`, {
+          sendTerminalData(`mkdir -p ${directoryPath}\r`, {
             sessionId: activeSessionId,
           });
         }
 
-        terminalSurfaceRef.current?.sendData(
-          `cat <<'__CODEJOIN__' > ${filename}\r`,
-          { sessionId: activeSessionId }
-        );
+        sendTerminalData(`cat <<'__CODEJOIN__' > ${filename}\r`, {
+          sessionId: activeSessionId,
+        });
 
         lines.forEach((line) => {
           const sanitizedLine = line.replace(/\r/g, "");
-          terminalSurfaceRef.current?.sendData(`${sanitizedLine}\r`, {
+          sendTerminalData(`${sanitizedLine}\r`, {
             sessionId: activeSessionId,
           });
         });
 
-        terminalSurfaceRef.current?.sendData(`__CODEJOIN__\r`, {
+        sendTerminalData(`__CODEJOIN__\r`, {
           sessionId: activeSessionId,
         });
 
@@ -1097,7 +1118,7 @@ function TerminalPanel({
 
         appendStatusLine(`[run] ${runCommand}`);
 
-        terminalSurfaceRef.current?.sendData(`${runCommand}\r`, {
+        sendTerminalData(`${runCommand}\r`, {
           sessionId: activeSessionId,
         });
 
@@ -1130,6 +1151,7 @@ function TerminalPanel({
       ensureLanguageSupport,
       ensureSupportedLanguageKeys,
       loadCodeExecutionModule,
+      sendTerminalData,
     ]
   );
 
