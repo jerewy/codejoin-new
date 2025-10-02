@@ -255,6 +255,12 @@ function TerminalPanel({
   const codeExecutionModuleRef = useRef<CodeExecutionModule | null>(null);
   const supportedLanguageKeysRef = useRef<Set<string> | null>(null);
 
+  const INPUT_READY_MARKER = "__CODEJOIN_INPUT_READY__";
+
+  const isWindowsEnvironment =
+    typeof navigator !== "undefined" &&
+    navigator.userAgent.toLowerCase().includes("windows");
+
   type TerminalMarkerWatcher = {
     id: number;
     successMarker: string;
@@ -870,7 +876,7 @@ function TerminalPanel({
   }, [stopTerminalSession]);
 
   // Execute code directly in the interactive terminal session
-  const flushBufferedInput = useCallback(() => {
+  const flushBufferedInput = useCallback((options?: { markerStartIndex?: number }) => {
     if (!isConnected || !sessionIdRef.current) return;
     const pendingInput = inputBuffer.replace(/\r/g, "");
     if (!pendingInput.trim()) return;
@@ -883,23 +889,44 @@ function TerminalPanel({
       } of buffered input...`
     );
 
-    lines.forEach((line, index) => {
-      setTimeout(() => {
-        if (!isConnected || !sessionIdRef.current) return;
-        const payload = line.length > 0 ? `${line}\r` : "\r";
-        sendTerminalData(payload);
-      }, 300 + index * 30);
-    });
+    const deliverInput = async () => {
+      const startIndex =
+        typeof options?.markerStartIndex === "number"
+          ? options.markerStartIndex
+          : rawOutputBufferRef.current.length;
 
-    onInputUpdate("");
+      try {
+        await waitForTerminalMarker(INPUT_READY_MARKER, undefined, {
+          startIndex,
+          timeoutMs: 8000,
+        });
+      } catch (error) {
+        console.warn(
+          "Input readiness marker not observed; sending buffered input immediately.",
+          error
+        );
+      }
+
+      lines.forEach((line, index) => {
+        setTimeout(() => {
+          if (!isConnected || !sessionIdRef.current) return;
+          const payload = line.length > 0 ? `${line}\r` : "\r";
+          sendTerminalData(payload);
+        }, 50 + index * 20);
+      });
+    };
+
+    void deliverInput().finally(() => {
+      onInputUpdate("");
+    });
   }, [
     appendStatusLine,
     inputBuffer,
     isConnected,
     onInputUpdate,
     sendTerminalData,
+    waitForTerminalMarker,
   ]);
-
   const waitForTerminalReady = useCallback(async (timeoutMs = 10000) => {
     if (isTerminalReadyRef.current && sessionIdRef.current) {
       return;
@@ -1054,9 +1081,10 @@ function TerminalPanel({
             : normalizedLanguage
           : null;
         const requiresRuntimeVerification =
-          normalizedLanguage === "c" ||
-          normalizedLanguage === "cpp" ||
-          normalizedLanguage === "java";
+          !isWindowsEnvironment &&
+          (normalizedLanguage === "c" ||
+            normalizedLanguage === "cpp" ||
+            normalizedLanguage === "java");
 
         const trackedTargetLanguage = getTrackingLanguageKey(targetLanguage);
 
@@ -1154,26 +1182,26 @@ function TerminalPanel({
         let runCommand = "";
         switch (detectedLanguage) {
           case "python":
-            runCommand = `python3 ${filename} 2>/dev/null || python ${filename}`;
+            runCommand = `{ printf "${INPUT_READY_MARKER}\n"; python3 ${filename} 2>/dev/null || python ${filename}; }`;
             break;
           case "javascript":
-            runCommand = `node ${filename}`;
+            runCommand = `{ printf "${INPUT_READY_MARKER}\n"; node ${filename}; }`;
             break;
           case "c":
-            runCommand = `gcc -o program ${filename} 2>/dev/null && ./program`;
+            runCommand = `gcc -o program ${filename} 2>/dev/null && { printf "${INPUT_READY_MARKER}\n"; ./program; }`;
             break;
           case "cpp":
-            runCommand = `g++ -o program ${filename} 2>/dev/null && ./program`;
+            runCommand = `g++ -o program ${filename} 2>/dev/null && { printf "${INPUT_READY_MARKER}\n"; ./program; }`;
             break;
           case "java":
             {
               const className = filename.replace(/\.java$/, "");
-              runCommand = `javac ${filename} 2>/dev/null && java ${className}`;
+              runCommand = `javac ${filename} 2>/dev/null && { printf "${INPUT_READY_MARKER}\n"; java ${className}; }`;
             }
             break;
           case "shell":
           case "sh":
-            runCommand = `chmod +x ${filename} && ./${filename}`;
+            runCommand = `chmod +x ${filename} && { printf "${INPUT_READY_MARKER}\n"; ./${filename}; }`;
             break;
           default:
             runCommand = `echo "Language ${detectedLanguage} not directly supported in terminal. File created as ${filename}"`;
@@ -1181,13 +1209,13 @@ function TerminalPanel({
 
         appendStatusLine(`[run] ${runCommand}`);
 
+        const markerStartIndex = rawOutputBufferRef.current.length;
+
         sendTerminalData(`${runCommand}\r`, {
           sessionId: activeSessionId,
         });
 
-        window.setTimeout(() => {
-          flushBufferedInput();
-        }, 150);
+        flushBufferedInput({ markerStartIndex });
 
         return true;
       } catch (error: any) {
