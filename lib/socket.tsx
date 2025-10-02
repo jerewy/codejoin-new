@@ -129,17 +129,26 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
     // Only initialize socket connection if Socket.IO server is available
     let socketInstance: Socket | null = null;
 
-    try {
-      socketInstance = io(
-        process.env.NODE_ENV === "production"
-          ? process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
-          : "http://localhost:3000",
-        {
-          timeout: 5000,
-          forceNew: true,
-        }
-      );
+    const resolveSocketUrl = () => {
+      const explicitUrl = process.env.NEXT_PUBLIC_SOCKET_URL?.trim();
+      if (explicitUrl) {
+        return explicitUrl;
+      }
 
+      if (process.env.NODE_ENV === "production") {
+        return process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+      }
+
+      return window.location.origin;
+    };
+
+    try {
+      const socketUrl = resolveSocketUrl();
+
+      socketInstance = io(socketUrl, {
+        timeout: 5000,
+        forceNew: true,
+      });
       socketInstance.on("connect", () => {
         console.log("Connected to Socket.IO server");
         setIsConnected(true);
