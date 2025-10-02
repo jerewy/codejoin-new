@@ -35,7 +35,8 @@ export default function RootLayout({
               window.__NEXT_CHUNK_RECOVERY_INITIALIZED = true;
 
               const STORAGE_KEY = 'next-chunk-retry-state';
-              const MAX_RETRIES = 3;
+              const RETRY_DELAYS = [1000, 3000, 5000, 10000, 20000];
+              const MAX_RETRIES = RETRY_DELAYS.length;
               const CHUNK_PATH_PATTERN = /\/_next\/static\/(chunks|app|webpack)\//;
 
               const readRetryState = () => {
@@ -91,7 +92,24 @@ export default function RootLayout({
 
                 const nextCount = count + 1;
                 persistRetryState({ count: nextCount });
-                reloadWithBuster(nextCount);
+
+                const scheduleReload = () => {
+                  const delayIndex = Math.min(
+                    nextCount - 1,
+                    RETRY_DELAYS.length - 1
+                  );
+                  const delay = RETRY_DELAYS[delayIndex];
+
+                  setTimeout(() => {
+                    reloadWithBuster(nextCount);
+                  }, delay);
+                };
+
+                if (typeof window.requestIdleCallback === 'function') {
+                  window.requestIdleCallback(scheduleReload);
+                } else {
+                  scheduleReload();
+                }
               };
 
               const isChunkScript = (target) => {
