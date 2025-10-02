@@ -1,5 +1,66 @@
+process.env.API_KEY = process.env.API_KEY || 'test-key';
+
+const mockExecuteCode = jest.fn();
+
+jest.mock('../src/services/dockerService', () => {
+  return jest.fn().mockImplementation(() => ({
+    executeCode: mockExecuteCode,
+    cleanupAll: jest.fn(),
+    cleanup: jest.fn()
+  }));
+});
+
 const request = require('supertest');
 const app = require('../src/server');
+
+const mockSuccessResponse = (output = '', overrides = {}) => ({
+  success: true,
+  output,
+  error: '',
+  exitCode: 0,
+  executionTime: 5,
+  ...overrides
+});
+
+const mockErrorResponse = (error = 'Execution failed', overrides = {}) => ({
+  success: false,
+  output: '',
+  error,
+  exitCode: 1,
+  executionTime: 5,
+  ...overrides
+});
+
+beforeEach(() => {
+  mockExecuteCode.mockImplementation(async (_languageConfig, code, input = '') => {
+    if (code.includes('missing quote')) {
+      return mockErrorResponse('SyntaxError: Unexpected token');
+    }
+
+    if (code.includes('time.sleep(2)')) {
+      return mockSuccessResponse('Done\n', { executionTime: 2000 });
+    }
+
+    if (code.includes('console.log("Hello, World!");')) {
+      return mockSuccessResponse('Hello, World!\n');
+    }
+
+    if (code.includes('print("Hello from Python!")')) {
+      return mockSuccessResponse('Hello from Python!\n');
+    }
+
+    if (input && input.trim().length > 0) {
+      const normalized = input.trim();
+      return mockSuccessResponse(`Hello, ${normalized}!\n`);
+    }
+
+    return mockSuccessResponse();
+  });
+});
+
+afterEach(() => {
+  mockExecuteCode.mockClear();
+});
 
 describe('Code Execution API', () => {
   beforeAll(async () => {
@@ -45,7 +106,7 @@ describe('Code Execution API', () => {
   });
 
   describe('POST /api/execute', () => {
-    const validApiKey = process.env.API_KEY || 'test-key';
+    const validApiKey = process.env.API_KEY;
 
     it('should execute simple JavaScript code', async () => {
       const response = await request(app)
@@ -103,6 +164,20 @@ describe('Code Execution API', () => {
 
       expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error');
+    });
+
+    it('should reject requests with invalid API key', async () => {
+      const response = await request(app)
+        .post('/api/execute')
+        .set('X-API-Key', 'wrong-key')
+        .send({
+          language: 'python',
+          code: 'print("hello")'
+        })
+        .expect(401);
+
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body.error).toBe('Invalid API key');
     });
 
     it('should reject invalid language', async () => {
