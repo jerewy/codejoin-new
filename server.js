@@ -117,11 +117,21 @@ app.prepare().then(() => {
       }
       session.detachStream = null
     }
-
-    session.stream = null
   }
 
   const attachStreamToSocket = (session, stream, socket) => {
+    const reusableStream =
+      stream ||
+      (session.stream &&
+      !session.stream.destroyed &&
+      !session.stream.readableEnded
+        ? session.stream
+        : null)
+
+    if (!reusableStream) {
+      throw new Error('Terminal stream is no longer available')
+    }
+
     detachSessionStream(session)
 
     if (session.idleTimer) {
@@ -129,7 +139,7 @@ app.prepare().then(() => {
       session.idleTimer = null
     }
 
-    stream.setEncoding('utf-8')
+    reusableStream.setEncoding('utf-8')
 
     const handleData = (chunk) => {
       socket.emit('terminal:data', {
@@ -153,28 +163,34 @@ app.prepare().then(() => {
       if (session.activeSocketId === socket.id) {
         session.activeSocketId = null
       }
+
+      if (session.stream === reusableStream) {
+        session.stream = null
+      }
     }
 
-    stream.on('data', handleData)
-    stream.on('error', handleError)
-    stream.on('close', handleClose)
+    reusableStream.on('data', handleData)
+    reusableStream.on('error', handleError)
+    reusableStream.on('close', handleClose)
 
-    session.stream = stream
+    if (typeof reusableStream.resume === 'function') {
+      reusableStream.resume()
+    }
+
+    session.stream = reusableStream
     session.activeSocketId = socket.id
     session.lastKnownSocketId = socket.id
     session.detachStream = () => {
-      stream.off('data', handleData)
-      stream.off('error', handleError)
-      stream.off('close', handleClose)
+      reusableStream.off('data', handleData)
+      reusableStream.off('error', handleError)
+      reusableStream.off('close', handleClose)
 
-      try {
-        stream.destroy()
-      } catch (destroyError) {
-        console.warn('Failed to destroy terminal stream', destroyError.message)
-      }
-
-      if (session.stream === stream) {
-        session.stream = null
+      if (typeof reusableStream.pause === 'function') {
+        try {
+          reusableStream.pause()
+        } catch (pauseError) {
+          console.warn('Failed to pause terminal stream', pauseError.message)
+        }
       }
     }
   }
@@ -359,10 +375,19 @@ app.prepare().then(() => {
         return
       }
 
+      const existingStream = session.stream
+      const canReuseExistingStream =
+        existingStream &&
+        !existingStream.destroyed &&
+        !existingStream.readableEnded
+
       try {
-        const { stream } = await dockerService.attachInteractiveStream(sessionId)
         claimedTerminalSessions.add(sessionId)
-        attachStreamToSocket(session, stream, socket)
+        const streamToAttach = canReuseExistingStream
+          ? existingStream
+          : (await dockerService.attachInteractiveStream(sessionId)).stream
+
+        attachStreamToSocket(session, streamToAttach, socket)
         socket.emit('terminal:ready', { sessionId })
       } catch (error) {
         console.warn('Failed to resume terminal session', error)
