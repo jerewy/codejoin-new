@@ -46,6 +46,9 @@ interface SocketContextType {
   sendTerminalInput: (data: TerminalSocketEvents["terminal:input"]) => void;
   stopTerminalSession: (data: TerminalSocketEvents["terminal:stop"]) => void;
   emitTerminalResize: (data: TerminalSocketEvents["terminal:resize"]) => void;
+  resumeTerminalSession: (
+    data: TerminalSocketEvents["terminal:resume"]
+  ) => void;
   collaborators: Array<{
     userId: string;
     userName: string;
@@ -68,6 +71,7 @@ const SocketContext = createContext<SocketContextType>({
   sendTerminalInput: () => {},
   stopTerminalSession: () => {},
   emitTerminalResize: () => {},
+  resumeTerminalSession: () => {},
   collaborators: [],
 });
 
@@ -94,6 +98,11 @@ type TerminalSocketEvents = {
     sessionId: string;
     cols: number;
     rows: number;
+  };
+  "terminal:resume": {
+    sessionId: string;
+    projectId: string;
+    userId: string;
   };
 };
 
@@ -313,6 +322,13 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
     [emitTerminalEvent]
   );
 
+  const resumeTerminalSession = useCallback(
+    (data: TerminalSocketEvents["terminal:resume"]) => {
+      emitTerminalEvent("terminal:resume", data);
+    },
+    [emitTerminalEvent]
+  );
+
   return (
     <SocketContext.Provider
       value={{
@@ -328,6 +344,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
         sendTerminalInput,
         stopTerminalSession,
         emitTerminalResize,
+        resumeTerminalSession,
         collaborators,
       }}
     >
