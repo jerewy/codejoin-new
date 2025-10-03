@@ -59,17 +59,43 @@ export default async function ProjectPage({
 
     const { data: collaboratorsData, error: collaboratorsError } = await supabase
       .from("collaborators")
-      .select(
-        `
-          user_id,
-          role,
-          profiles (
-            full_name,
-            user_avatar
-          )
-        `
-      )
+      .select("user_id, role")
       .eq("project_id", params.id);
+
+    let profilesById = new Map<string, { full_name: string | null; user_avatar: string | null }>();
+
+    if (!collaboratorsError && collaboratorsData && collaboratorsData.length > 0) {
+      const collaboratorIds = collaboratorsData
+        .map((row) => row?.user_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+      if (collaboratorIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id, full_name, user_avatar")
+          .in("id", collaboratorIds);
+
+        if (profilesError) {
+          console.warn("Failed to load collaborator profiles", profilesError);
+        } else if (profilesData) {
+          type ProfileRow = {
+            id: string;
+            full_name: string | null;
+            user_avatar: string | null;
+          };
+
+          profilesById = new Map(
+            (profilesData as ProfileRow[]).map((profile) => [
+              profile.id,
+              {
+                full_name: profile.full_name ?? null,
+                user_avatar: profile.user_avatar ?? null,
+              },
+            ])
+          );
+        }
+      }
+    }
 
     project = projectData;
     nodes = nodesData;
@@ -80,24 +106,18 @@ export default async function ProjectPage({
       type CollaboratorRow = {
         user_id: string;
         role: string;
-        profiles:
-          | { full_name: string | null; user_avatar: string | null }
-          | { full_name: string | null; user_avatar: string | null }[]
-          | null;
       };
 
-      collaborators = (collaboratorsData as CollaboratorRow[]).map(
-        ({ user_id, role, profiles }) => {
-          const profile = Array.isArray(profiles) ? profiles[0] : profiles;
+      collaborators = (collaboratorsData as CollaboratorRow[]).map(({ user_id, role }) => {
+        const profile = user_id ? profilesById.get(user_id) : undefined;
 
-          return {
-            user_id,
-            role,
-            full_name: profile?.full_name ?? null,
-            user_avatar: profile?.user_avatar ?? null,
-          } satisfies Collaborator;
-        }
-      );
+        return {
+          user_id,
+          role,
+          full_name: profile?.full_name ?? null,
+          user_avatar: profile?.user_avatar ?? null,
+        } satisfies Collaborator;
+      });
     }
 
     // If database queries fail, provide mock data for development
