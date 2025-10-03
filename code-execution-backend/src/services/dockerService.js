@@ -72,16 +72,33 @@ class DockerService {
       };
 
     } catch (error) {
-      logger.error(`Docker execution error: ${error.message}`, { containerId, error });
+      const details = this.extractDockerErrorDetails(error);
+      const detailMessage = this.composeDockerErrorMessage(details);
+      const summaryMessage = typeof error.message === 'string' && error.message.trim()
+        ? error.message.trim()
+        : detailMessage;
+      const logDetails = {
+        ...details,
+        stack: error.stack
+      };
 
-      let errorMessage = error.message;
+      logger.error(`Docker execution error: ${summaryMessage}`, { containerId, error: logDetails });
 
-      // Provide better error messages for common issues
-      if (error.message.includes('ENOENT') || error.message.includes('connect')) {
-        errorMessage = 'Docker is not running or not accessible. Please start Docker Desktop and try again.';
-      } else if (error.message.includes('permission denied')) {
+      let errorMessage = summaryMessage;
+      const detailForMessage = detailMessage || summaryMessage;
+      const summaryLower = summaryMessage ? summaryMessage.toLowerCase() : '';
+      const detailLower = detailMessage ? detailMessage.toLowerCase() : summaryLower;
+
+      if (this.isDockerConnectionIssue(summaryMessage, detailMessage)) {
+        const friendly = 'Docker is not running or not accessible. Please start Docker Desktop and try again.';
+        if (detailForMessage && !friendly.toLowerCase().includes(detailForMessage.toLowerCase())) {
+          errorMessage = `${friendly} (Details: ${detailForMessage})`;
+        } else {
+          errorMessage = friendly;
+        }
+      } else if (summaryLower.includes('permission denied') || detailLower.includes('permission denied')) {
         errorMessage = 'Permission denied accessing Docker. Make sure your user has access to Docker.';
-      } else if (error.message.includes('no such image')) {
+      } else if (summaryLower.includes('no such image') || detailLower.includes('no such image')) {
         errorMessage = `Docker image '${languageConfig.image}' not found. Please pull the required images.`;
       }
 
@@ -103,8 +120,13 @@ class DockerService {
       await this.docker.ping();
       logger.debug('Docker connection test successful');
     } catch (error) {
-      logger.error('Docker connection test failed', { error: error.message });
-      throw new Error(`Docker connection failed: ${error.message}`);
+      const details = this.extractDockerErrorDetails(error);
+      const detailedMessage = this.composeDockerErrorMessage(details);
+      logger.error('Docker connection test failed', { error: details });
+      const connectionError = new Error(this.composeDockerErrorMessage(details, { prefix: 'Docker connection failed: ' }));
+      connectionError.dockerDetails = { ...details };
+      connectionError.cause = error;
+      throw connectionError;
     }
   }
 
@@ -376,6 +398,144 @@ class DockerService {
       exitCode,
       executionTime
     };
+  }
+
+  extractDockerErrorDetails(error) {
+    const details = {};
+
+    const mergeField = (key, value) => {
+      if (value === undefined || value === null) {
+        return;
+      }
+
+      if (typeof value === 'string' && key !== 'stack') {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return;
+        }
+        value = trimmed;
+      }
+
+      if (details[key] === undefined) {
+        details[key] = value;
+      }
+    };
+
+    const mergeFrom = (source) => {
+      if (!source || typeof source !== 'object') {
+        return;
+      }
+
+      mergeField('message', source.message);
+      mergeField('reason', source.reason);
+      mergeField('code', source.code);
+      mergeField('errno', source.errno);
+      mergeField('syscall', source.syscall);
+      mergeField('address', source.address);
+      mergeField('port', source.port);
+
+      if (details.stack === undefined && source.stack) {
+        details.stack = source.stack;
+      }
+    };
+
+    if (error?.dockerDetails) {
+      mergeFrom(error.dockerDetails);
+    }
+
+    mergeFrom(error);
+
+    if (error?.cause) {
+      mergeFrom(error.cause);
+    }
+
+    if (!details.message && typeof details.reason === 'string') {
+      details.message = details.reason;
+    }
+
+    return details;
+  }
+
+  composeDockerErrorMessage(details, options = {}) {
+    const { prefix = '' } = options || {};
+    if (!details || typeof details !== 'object') {
+      const fallbackMessage = 'Unknown Docker error';
+      return prefix ? `${prefix}${fallbackMessage}` : fallbackMessage;
+    }
+
+    const baseCandidates = [];
+    if (typeof details.message === 'string') {
+      const message = details.message.trim();
+      if (message) {
+        baseCandidates.push(message);
+      }
+    }
+    if (typeof details.reason === 'string') {
+      const reason = details.reason.trim();
+      if (reason) {
+        baseCandidates.push(reason);
+      }
+    }
+
+    const baseMessage = baseCandidates.find((candidate) => candidate && candidate.length > 0) || 'Unknown Docker error';
+
+    const extras = [];
+    const seen = new Set();
+
+    const addExtra = (value) => {
+      if (!value && value !== 0) {
+        return;
+      }
+      const stringValue = typeof value === 'string' ? value.trim() : String(value).trim();
+      if (!stringValue || seen.has(stringValue) || baseMessage.includes(stringValue)) {
+        return;
+      }
+      seen.add(stringValue);
+      extras.push(stringValue);
+    };
+
+    const appendLabeled = (value, label) => {
+      if (value === undefined || value === null) {
+        return;
+      }
+      const stringValue = typeof value === 'string' ? value.trim() : String(value).trim();
+      if (!stringValue) {
+        return;
+      }
+      const formatted = `${label}: ${stringValue}`;
+      if (seen.has(formatted) || baseMessage.includes(formatted)) {
+        return;
+      }
+      seen.add(formatted);
+      extras.push(formatted);
+    };
+
+    if (typeof details.reason === 'string') {
+      const trimmedReason = details.reason.trim();
+      if (trimmedReason && !baseMessage.includes(trimmedReason)) {
+        addExtra(trimmedReason);
+      }
+    }
+
+    appendLabeled(details.code, 'code');
+    appendLabeled(details.errno, 'errno');
+    appendLabeled(details.syscall, 'syscall');
+    appendLabeled(details.address, 'address');
+    appendLabeled(details.port, 'port');
+
+    const message = extras.length ? `${baseMessage} (${extras.join(', ')})` : baseMessage;
+
+    return prefix ? `${prefix}${message}` : message;
+  }
+
+  isDockerConnectionIssue(...messages) {
+    const needles = ['enoent', 'connect', 'econnrefused', 'docker.sock'];
+    return messages
+      .filter((message) => typeof message === 'string')
+      .some((message) => {
+        const normalized = message.toLowerCase();
+        return needles.some((needle) => normalized.includes(needle));
+      });
   }
 
   parseDockerStream(buffer) {
