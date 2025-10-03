@@ -234,6 +234,12 @@ cd code-execution-backend && npm run dev  # Port 3001
 npm run dev  # Port 3000
 ```
 
+### 🐳 Docker prerequisites for the execution service
+
+- The majority of languages (Java, TypeScript, SQL, C#, Go, Rust) now run inside the consolidated `code-exec-multi` image. Build or refresh it locally with `cd code-execution-backend && npm run docker:build` before running tests that touch those languages.
+- Ensure Docker Desktop (Windows/macOS) or the Docker daemon (`dockerd`) on Linux is running. When Docker is offline the backend logs show `Docker connection failed: Unknown error`, and language tests exit with "Docker is not running or not accessible".
+- If you prefer to use language-specific base images again, adjust `code-execution-backend/src/config/languages.js` and rebuild the relevant images. The backend will pick up the change on the next execution.
+
 **API Usage Example**:
 ```javascript
 // Execute Python code
