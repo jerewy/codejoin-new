@@ -37,8 +37,7 @@ export default async function ProjectPage({
 }) {
   // Create a Supabase client for this server component
   const supabase = await createServerSupabase();
-  // This would also be fetched from the database in a real app
-  const collaborators: Collaborator[] = [];
+  let collaborators: Collaborator[] = [];
   const params = await paramsPromise;
 
   // Fetch data needed for the header
@@ -58,12 +57,55 @@ export default async function ProjectPage({
       .select("*")
       .eq("project_id", params.id);
 
+    const { data: collaboratorsData, error: collaboratorsError } = await supabase
+      .from("collaborators")
+      .select(
+        `
+          user_id,
+          role,
+          profiles (
+            full_name,
+            user_avatar
+          )
+        `
+      )
+      .eq("project_id", params.id);
+
     project = projectData;
     nodes = nodesData;
 
+    if (collaboratorsError) {
+      console.warn("Failed to load collaborators", collaboratorsError);
+    } else if (collaboratorsData) {
+      type CollaboratorRow = {
+        user_id: string;
+        role: string;
+        profiles:
+          | { full_name: string | null; user_avatar: string | null }
+          | { full_name: string | null; user_avatar: string | null }[]
+          | null;
+      };
+
+      collaborators = (collaboratorsData as CollaboratorRow[]).map(
+        ({ user_id, role, profiles }) => {
+          const profile = Array.isArray(profiles) ? profiles[0] : profiles;
+
+          return {
+            user_id,
+            role,
+            full_name: profile?.full_name ?? null,
+            user_avatar: profile?.user_avatar ?? null,
+          } satisfies Collaborator;
+        }
+      );
+    }
+
     // If database queries fail, provide mock data for development
     if (projectError || nodesError || !project || !nodes) {
-      console.warn("Database query failed, using mock data:", { projectError, nodesError });
+      console.warn("Database query failed, using mock data:", {
+        projectError,
+        nodesError,
+      });
 
       project = { name: `Project ${params.id}` };
       nodes = [
