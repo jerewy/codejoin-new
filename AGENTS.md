@@ -17,3 +17,10 @@ Recent history mixes styles; align on `<type>: <subject>` (e.g., `feat: add coll
 
 ## Security & Configuration Tips
 Environment secrets belong in `.env.local` (frontend) and `code-execution-backend/.env`; never commit them. The backend runs containers without network access, so avoid introducing APIs that assume outbound calls. When adding third-party modules, note their security posture in the PR and update `docs/` if new ports or keys are required.
+
+## Collaborative Workspace Notes
+- `components/project-workspace.tsx` now keeps the legacy layout but drives autosave via Supabase when configured or localStorage fallback (`codejoin:project:<id>` key) when Supabase env vars are missing.
+- Autosave status is surfaced in the main toolbar (`autosaveState` badge) and manual `Save` forwards through the same helpers.
+- Keep `shouldUseInteractiveExecution` wired to the run button; interactive files must route to the terminal panel which streams stdin via `terminal:input`.
+- `lib/socket.tsx` owns remote cursor state; Monaco decorations are applied in `components/code-editor.tsx` (template literal CSS injection).
+- When editing the workspace, preserve the Terminal/Problems/Chat tabs; Extensions and other panes were intentionally removed for the MVP.

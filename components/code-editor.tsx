@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import Editor, { OnMount } from "@monaco-editor/react";
 import { ProjectNodeFromDB } from "@/lib/types";
+import type * as MonacoEditor from "monaco-editor";
 
 // Enhanced language support with more comprehensive file extensions
 const SUPPORTED_LANGUAGES = [
@@ -38,6 +39,17 @@ interface ExecutionResult {
   success?: boolean;
 }
 
+type RemoteCursor = {
+  userId: string;
+  userName?: string;
+  color: string;
+  position: {
+    lineNumber: number;
+    column: number;
+  };
+  socketId?: string;
+};
+
 interface CodeEditorProps {
   file: ProjectNodeFromDB | undefined;
   onChange: (value: string | undefined) => void;
@@ -47,6 +59,8 @@ interface CodeEditorProps {
   onExecutionStart?: () => void;
   onExecutionStop?: () => void;
   executionInput?: string;
+  remoteCursors?: RemoteCursor[];
+  onCursorMove?: (position: { lineNumber: number; column: number }) => void;
 }
 
 export default function CodeEditor({
@@ -58,8 +72,44 @@ export default function CodeEditor({
   onExecutionStart,
   onExecutionStop,
   executionInput = "",
+  remoteCursors = [],
+  onCursorMove,
 }: CodeEditorProps) {
-  const detectLanguage = (fileName: string): string => {
+  const editorRef = useRef<MonacoEditor.editor.IStandaloneCodeEditor | null>(
+    null
+  );
+  const monacoRef = useRef<typeof MonacoEditor | null>(null);
+  const cursorDecorationsRef = useRef<string[]>([]);
+  const cursorClassCacheRef = useRef<Record<string, string>>({});
+
+  const ensureCursorClass = useCallback((color: string) => {
+    if (typeof document === "undefined") {
+      return "";
+    }
+
+    const cache = cursorClassCacheRef.current;
+    if (cache[color]) {
+      return cache[color];
+    }
+
+    const safeKey = color.replace(/[^a-z0-9]/gi, "");
+    const className = "remote-cursor-" + safeKey + "-" + Object.keys(cache).length;
+    const styleId = "remote-cursor-style-" + className;
+
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.textContent = [
+        `.${className} { position: relative; }`,
+        `.${className}::before { content: ""; position: absolute; border-left: 2px solid ${color}; left: -1px; top: 0; bottom: 0; }`,
+      ].join("\n");
+      document.head.appendChild(style);
+    }
+
+    cache[color] = className;
+    return className;
+  }, []);
+const detectLanguage = (fileName: string): string => {
     const ext = fileName.split(".").pop()?.toLowerCase() || "";
     const lang = SUPPORTED_LANGUAGES.find((l) => l.ext.includes(ext));
     return lang?.id || "plaintext";
@@ -688,6 +738,66 @@ export default function CodeEditor({
   }, [executeCode]);
 
 
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || !onCursorMove) {
+      return;
+    }
+
+    const disposable = editor.onDidChangeCursorPosition((event) => {
+      const position = event.position;
+      onCursorMove({
+        lineNumber: position.lineNumber,
+        column: position.column,
+      });
+    });
+
+    return () => {
+      disposable.dispose();
+    };
+  }, [onCursorMove]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) {
+      return;
+    }
+
+    const decorations = remoteCursors.map((cursor) => {
+      const className = ensureCursorClass(cursor.color);
+      const range = new monaco.Range(
+        cursor.position.lineNumber,
+        cursor.position.column,
+        cursor.position.lineNumber,
+        cursor.position.column
+      );
+
+      const label = cursor.userName ? cursor.userName : "Collaborator";
+
+      return {
+        range,
+        options: {
+          className,
+          hoverMessage: { value: "**" + label + "**" },
+        },
+      };
+    });
+
+    cursorDecorationsRef.current = editor.deltaDecorations(
+      cursorDecorationsRef.current,
+      decorations
+    );
+  }, [remoteCursors, ensureCursorClass]);
+
+  useEffect(() => {
+    return () => {
+      if (editorRef.current && cursorDecorationsRef.current.length) {
+        editorRef.current.deltaDecorations(cursorDecorationsRef.current, []);
+      }
+      cursorDecorationsRef.current = [];
+    };
+  }, []);
   if (!file) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -778,3 +888,20 @@ export default function CodeEditor({
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

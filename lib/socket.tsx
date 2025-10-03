@@ -380,6 +380,17 @@ export const useFileCollaboration = (
     }>
   >([]);
 
+  const [remoteCursors, setRemoteCursors] = useState<
+    Record<
+      string,
+      {
+        userId: string;
+        position: { lineNumber: number; column: number };
+        socketId: string;
+      }
+    >
+  >({});
+
   useEffect(() => {
     if (!socket) return;
 
@@ -395,45 +406,137 @@ export const useFileCollaboration = (
       }
     };
 
-    socket.on("file-updated", handleFileUpdate);
+    socket.on('file-updated', handleFileUpdate);
 
     return () => {
-      socket.off("file-updated", handleFileUpdate);
+      socket.off('file-updated', handleFileUpdate);
     };
   }, [socket, fileId, userId]);
 
-  const handleContentChange = (content: string, operation = "edit") => {
-    emitFileChange({
-      projectId,
-      fileId,
-      content,
-      userId,
-      operation,
-    });
-  };
+  useEffect(() => {
+    if (!socket) {
+      setRemoteCursors({});
+      return;
+    }
 
-  const handleCursorMove = (position: any) => {
-    emitCursorPosition({
-      projectId,
-      fileId,
-      position,
-      userId,
-    });
-  };
+    const handleCursorUpdate = (data: {
+      projectId: string;
+      fileId: string;
+      position: { lineNumber: number; column: number };
+      userId: string;
+      socketId: string;
+    }) => {
+      if (
+        data.projectId !== projectId ||
+        data.fileId !== fileId ||
+        data.userId === userId
+      ) {
+        return;
+      }
 
-  const handleFileSelect = () => {
+      setRemoteCursors((prev) => ({
+        ...prev,
+        [data.socketId]: {
+          userId: data.userId,
+          position: data.position,
+          socketId: data.socketId,
+        },
+      }));
+    };
+
+    const handleUserFileSelect = (data: {
+      fileId: string;
+      userId: string;
+      socketId: string;
+    }) => {
+      if (data.userId === userId) {
+        return;
+      }
+
+      if (data.fileId === fileId) {
+        return;
+      }
+
+      setRemoteCursors((prev) => {
+        if (!(data.socketId in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[data.socketId];
+        return next;
+      });
+    };
+
+    const handleCollaboratorLeft = (data: { socketId: string }) => {
+      setRemoteCursors((prev) => {
+        if (!(data.socketId in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[data.socketId];
+        return next;
+      });
+    };
+
+    socket.on('cursor-update', handleCursorUpdate);
+    socket.on('user-file-select', handleUserFileSelect);
+    socket.on('collaborator-left', handleCollaboratorLeft);
+
+    return () => {
+      socket.off('cursor-update', handleCursorUpdate);
+      socket.off('user-file-select', handleUserFileSelect);
+      socket.off('collaborator-left', handleCollaboratorLeft);
+    };
+  }, [socket, projectId, fileId, userId]);
+
+  useEffect(() => {
+    setRemoteCursors({});
+  }, [fileId]);
+
+  const handleContentChange = useCallback(
+    (content: string, operation = 'edit') => {
+      emitFileChange({
+        projectId,
+        fileId,
+        content,
+        userId,
+        operation,
+      });
+    },
+    [emitFileChange, projectId, fileId, userId]
+  );
+
+  const handleCursorMove = useCallback(
+    (position: { lineNumber: number; column: number }) => {
+      emitCursorPosition({
+        projectId,
+        fileId,
+        position,
+        userId,
+      });
+    },
+    [emitCursorPosition, projectId, fileId, userId]
+  );
+
+  const handleFileSelect = useCallback(() => {
     emitFileSelect({
       projectId,
       fileId,
       userId,
     });
-  };
+  }, [emitFileSelect, projectId, fileId, userId]);
+
+  const clearRemoteChanges = useCallback(() => {
+    setRemoteChanges([]);
+  }, []);
 
   return {
     remoteChanges,
     handleContentChange,
     handleCursorMove,
     handleFileSelect,
-    clearRemoteChanges: () => setRemoteChanges([]),
+    clearRemoteChanges,
+    remoteCursors,
   };
 };
+

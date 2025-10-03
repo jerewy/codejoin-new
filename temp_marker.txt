@@ -78,6 +78,14 @@ import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { type ProjectNode } from "@/app/project/[id]/page";
 import {
+  type Collaborator,
+  type Extension,
+  type LanguageOption,
+  mockCollaborators,
+  mockExtensions,
+  mockLanguageOptions,
+} from "@/lib/mock-data";
+import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -110,46 +118,6 @@ interface ProjectWorkspaceProps {
   initialNodes: ProjectNodeFromDB[];
   projectId: string;
 }
-
-type AutosaveState = "idle" | "saving" | "saved" | "error";
-
-const LOCAL_STORAGE_PREFIX = "codejoin:project";
-
-const createClientId = () => {
-  if (typeof globalThis !== "undefined" &&
-    "crypto" in globalThis &&
-    typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  return `local-${Math.random().toString(36).slice(2, 11)}`;
-};
-
-const mergeNodesWithLocalState = (
-  initialNodes: ProjectNodeFromDB[],
-  persistedNodes: ProjectNodeFromDB[]
-) => {
-  if (!persistedNodes.length) {
-    return initialNodes;
-  }
-
-  const persistedById = new Map<string, ProjectNodeFromDB>();
-  persistedNodes.forEach((node) => {
-    persistedById.set(node.id, node);
-  });
-
-  const merged: ProjectNodeFromDB[] = initialNodes.map((node) => {
-    const persisted = persistedById.get(node.id);
-    return persisted ? { ...node, ...persisted } : node;
-  });
-
-  persistedNodes.forEach((node) => {
-    if (!merged.some((existing) => existing.id === node.id)) {
-      merged.push(node);
-    }
-  });
-
-  return merged;
-};
 
 // Language extension mapping
 const getFileExtension = (fileName: string): string => {
@@ -908,60 +876,57 @@ function TerminalPanel({
   }, [stopTerminalSession]);
 
   // Execute code directly in the interactive terminal session
-  const flushBufferedInput = useCallback(
-    (options?: { markerStartIndex?: number }) => {
-      if (!isConnected || !sessionIdRef.current) return;
-      const pendingInput = inputBuffer.replace(/\r/g, "");
-      if (!pendingInput.trim()) return;
+  const flushBufferedInput = useCallback((options?: { markerStartIndex?: number }) => {
+    if (!isConnected || !sessionIdRef.current) return;
+    const pendingInput = inputBuffer.replace(/\r/g, "");
+    if (!pendingInput.trim()) return;
 
-      const lines = pendingInput.split(/\n/);
-      const lineCount = lines.length;
-      appendStatusLine(
-        `[input] Sending ${lineCount} line${
-          lineCount === 1 ? "" : "s"
-        } of buffered input...`
-      );
+    const lines = pendingInput.split(/\n/);
+    const lineCount = lines.length;
+    appendStatusLine(
+      `[input] Sending ${lineCount} line${
+        lineCount === 1 ? "" : "s"
+      } of buffered input...`
+    );
 
-      const deliverInput = async () => {
-        const startIndex =
-          typeof options?.markerStartIndex === "number"
-            ? options.markerStartIndex
-            : rawOutputBufferRef.current.length;
+    const deliverInput = async () => {
+      const startIndex =
+        typeof options?.markerStartIndex === "number"
+          ? options.markerStartIndex
+          : rawOutputBufferRef.current.length;
 
-        try {
-          await waitForTerminalMarker(INPUT_READY_MARKER, undefined, {
-            startIndex,
-            timeoutMs: 8000,
-          });
-        } catch (error) {
-          console.warn(
-            "Input readiness marker not observed; sending buffered input immediately.",
-            error
-          );
-        }
-
-        lines.forEach((line, index) => {
-          setTimeout(() => {
-            if (!isConnected || !sessionIdRef.current) return;
-            const payload = line.length > 0 ? `${line}\r` : "\r";
-            sendTerminalData(payload);
-          }, 50 + index * 20);
+      try {
+        await waitForTerminalMarker(INPUT_READY_MARKER, undefined, {
+          startIndex,
+          timeoutMs: 8000,
         });
-      };
+      } catch (error) {
+        console.warn(
+          "Input readiness marker not observed; sending buffered input immediately.",
+          error
+        );
+      }
 
-      void deliverInput().finally(() => {
-        onInputUpdate("");
+      lines.forEach((line, index) => {
+        setTimeout(() => {
+          if (!isConnected || !sessionIdRef.current) return;
+          const payload = line.length > 0 ? `${line}\r` : "\r";
+          sendTerminalData(payload);
+        }, 50 + index * 20);
       });
-    },
-    [
-      appendStatusLine,
-      inputBuffer,
-      isConnected,
-      onInputUpdate,
-      sendTerminalData,
-      waitForTerminalMarker,
-    ]
-  );
+    };
+
+    void deliverInput().finally(() => {
+      onInputUpdate("");
+    });
+  }, [
+    appendStatusLine,
+    inputBuffer,
+    isConnected,
+    onInputUpdate,
+    sendTerminalData,
+    waitForTerminalMarker,
+  ]);
   const waitForTerminalReady = useCallback(async (timeoutMs = 10000) => {
     if (isTerminalReadyRef.current && sessionIdRef.current) {
       return;
@@ -1647,6 +1612,7 @@ export default function ProjectWorkspace({
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
+  const [isExtensionsOpen, setIsExtensionsOpen] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("html");
   const [isAIVoiceActive, setIsAIVoiceActive] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
@@ -1663,10 +1629,6 @@ export default function ProjectWorkspace({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [inputBuffer, setInputBuffer] = useState("");
   const terminalSurfaceRef = useRef<TerminalSurfaceHandle | null>(null);
-
-  const [autosaveState, setAutosaveState] = useState<AutosaveState>("idle");
-  const autosaveTimerRef = useRef<number | null>(null);
-  const autosaveResetTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
@@ -1689,362 +1651,33 @@ export default function ProjectWorkspace({
     initialNodes.find((n) => n.type === "file")?.id || null
   );
 
-
-  const supabase = getSupabaseClient();
-  const localPersistenceEnabled = !supabase;
-  const localStorageKey = `${LOCAL_STORAGE_PREFIX}:${projectId}:nodes`;
-  const [storageReady, setStorageReady] = useState(!localPersistenceEnabled);
-  const hasLoadedLocalStateRef = useRef(false);
+  const [mockCollaboratorsList] = useState<Collaborator[]>(mockCollaborators);
+  const [extensions] = useState<Extension[]>(mockExtensions);
+  const [languageOptions] = useState<LanguageOption[]>(mockLanguageOptions);
 
   const currentFile = nodes.find((f) => f.id === activeNodeId);
+
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return (
+      <div className="flex h-full w-full items-center justify-center rounded-lg border border-dashed border-muted-foreground/40 p-6 text-center">
+        <div>
+          <h2 className="text-lg font-semibold">Authentication unavailable</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Supabase environment variables are not configured. Configure them to
+            access the project workspace.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // Debug logging
   console.log("Active Node ID:", activeNodeId);
   console.log("Current File:", currentFile);
   console.log("Initial Nodes:", initialNodes);
   const currentLanguage = currentFile?.language || selectedLanguage;
-
-  const autosaveLabel =
-    autosaveState === "saving"
-      ? "Saving..."
-      : autosaveState === "saved"
-      ? localPersistenceEnabled
-        ? "Saved locally"
-        : "Saved"
-      : autosaveState === "error"
-      ? "Save failed"
-      : localPersistenceEnabled
-      ? "Local autosave"
-      : "Autosave ready";
-
-  const autosaveBadgeVariant =
-    autosaveState === "error"
-      ? "destructive"
-      : autosaveState === "saving"
-      ? "secondary"
-      : "outline";
-
-  useEffect(() => {
-    if (!localPersistenceEnabled) {
-      if (!storageReady) {
-        setStorageReady(true);
-      }
-      return;
-    }
-
-    if (hasLoadedLocalStateRef.current) {
-      return;
-    }
-
-    if (typeof window === "undefined") {
-      setStorageReady(true);
-      return;
-    }
-
-    hasLoadedLocalStateRef.current = true;
-
-    try {
-      const raw = window.localStorage.getItem(localStorageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          setNodes((prev) => mergeNodesWithLocalState(prev, parsed));
-        }
-      }
-    } catch (error) {
-      console.warn("Failed to load local project state", error);
-    } finally {
-      setStorageReady(true);
-    }
-  }, [localPersistenceEnabled, localStorageKey, storageReady]);
-
-  useEffect(() => {
-    if (!localPersistenceEnabled || !storageReady) {
-      return;
-    }
-
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    try {
-      window.localStorage.setItem(localStorageKey, JSON.stringify(nodes));
-    } catch (error) {
-      console.warn("Failed to persist project state locally", error);
-    }
-  }, [localPersistenceEnabled, localStorageKey, nodes, storageReady]);
-
-  const scheduleAutosaveReset = useCallback(() => {
-    if (autosaveResetTimerRef.current) {
-      window.clearTimeout(autosaveResetTimerRef.current);
-    }
-
-    autosaveResetTimerRef.current = window.setTimeout(() => {
-      setAutosaveState("idle");
-      autosaveResetTimerRef.current = null;
-    }, 1600);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (autosaveTimerRef.current) {
-        window.clearTimeout(autosaveTimerRef.current);
-        autosaveTimerRef.current = null;
-      }
-      if (autosaveResetTimerRef.current) {
-        window.clearTimeout(autosaveResetTimerRef.current);
-        autosaveResetTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  // Persistence helpers
-  const updateNodeContent = useCallback(
-    async (nodeId: string, content: string) => {
-      if (supabase) {
-        const { error } = await supabase
-          .from("project_nodes")
-          .update({ content })
-          .eq("id", nodeId);
-
-        if (error) {
-          throw new Error(error.message);
-        }
-        return;
-      }
-
-      setNodes((prev) =>
-        prev.map((node) =>
-          node.id === nodeId ? { ...node, content } : node
-        )
-      );
-    },
-    [supabase]
-  );
-
-  const createFile = useCallback(
-    async (name: string, parentId: string | null = null, content: string = "") => {
-      const trimmedName = name.trim();
-      if (!trimmedName) {
-        return;
-      }
-
-      if (supabase) {
-        const { data, error } = await supabase
-          .from("project_nodes")
-          .insert({
-            name: trimmedName,
-            type: "file",
-            project_id: projectId,
-            parent_id: parentId,
-            content,
-          })
-          .select()
-          .single();
-
-        if (error) {
-          toast({
-            variant: "destructive",
-            title: "Could not create file",
-            description: error.message,
-          });
-          return;
-        }
-
-        const created = data as ProjectNodeFromDB;
-        setNodes((prev) => [...prev, created]);
-        setActiveNodeId(created.id);
-        return;
-      }
-
-      const newNode: ProjectNodeFromDB = {
-        id: createClientId(),
-        project_id: projectId,
-        parent_id: parentId,
-        name: trimmedName,
-        type: "file",
-        content,
-        language: null,
-      };
-
-      setNodes((prev) => [...prev, newNode]);
-      setActiveNodeId(newNode.id);
-    },
-    [projectId, supabase, toast]
-  );
-
-  const createFolder = useCallback(
-    async (name: string, parentId: string | null = null) => {
-      const trimmedName = name.trim();
-      if (!trimmedName) {
-        return;
-      }
-
-      if (supabase) {
-        const { data, error } = await supabase
-          .from("project_nodes")
-          .insert({
-            name: trimmedName,
-            type: "folder",
-            project_id: projectId,
-            parent_id: parentId,
-          })
-          .select()
-          .single();
-
-        if (error) {
-          toast({
-            variant: "destructive",
-            title: "Could not create folder",
-            description: error.message,
-          });
-          return;
-        }
-
-        const created = data as ProjectNodeFromDB;
-        setNodes((prev) => [...prev, created]);
-        return;
-      }
-
-      const newNode: ProjectNodeFromDB = {
-        id: createClientId(),
-        project_id: projectId,
-        parent_id: parentId,
-        name: trimmedName,
-        type: "folder",
-        content: null,
-        language: null,
-      };
-
-      setNodes((prev) => [...prev, newNode]);
-    },
-    [projectId, supabase, toast]
-  );
-
-  const renameNode = useCallback(
-    async (id: string | undefined, _old: string, newName: string) => {
-      if (!id) {
-        return false;
-      }
-
-      const trimmedName = newName.trim();
-      if (!trimmedName) {
-        return false;
-      }
-
-      if (supabase) {
-        const { error } = await supabase
-          .from("project_nodes")
-          .update({ name: trimmedName })
-          .eq("id", id);
-
-        if (error) {
-          toast({
-            variant: "destructive",
-            title: "Rename failed",
-            description: error.message,
-          });
-          return false;
-        }
-      }
-
-      setNodes((prev) =>
-        prev.map((node) =>
-          node.id === id ? { ...node, name: trimmedName } : node
-        )
-      );
-
-      if (activeNodeId === id) {
-        setActiveNodeId(id);
-      }
-
-      return true;
-    },
-    [activeNodeId, supabase, toast]
-  );
-
-  const deleteNode = useCallback(
-    async (id: string | undefined) => {
-      if (!id) {
-        return;
-      }
-
-      if (supabase) {
-        const { error } = await supabase
-          .from("project_nodes")
-          .delete()
-          .eq("id", id);
-
-        if (error) {
-          toast({
-            variant: "destructive",
-            title: "Delete failed",
-            description: error.message,
-          });
-          return;
-        }
-      }
-
-      setNodes((prev) => prev.filter((node) => node.id !== id));
-      if (activeNodeId === id) {
-        const nextFile = nodes.find((node) => node.id !== id && node.type === "file");
-        setActiveNodeId(nextFile?.id ?? null);
-      }
-    },
-    [activeNodeId, nodes, supabase, toast]
-  );  useEffect(() => {
-    if (!currentFile || !hasUnsavedChanges) {
-      return;
-    }
-
-    if (autosaveTimerRef.current) {
-      window.clearTimeout(autosaveTimerRef.current);
-      autosaveTimerRef.current = null;
-    }
-
-    const contentToSave = currentFile.content ?? "";
-
-    autosaveTimerRef.current = window.setTimeout(async () => {
-      setAutosaveState("saving");
-      try {
-        await updateNodeContent(currentFile.id, contentToSave);
-        setHasUnsavedChanges(false);
-        setAutosaveState("saved");
-        scheduleAutosaveReset();
-      } catch (error) {
-        console.warn("Autosave failed", error);
-        setAutosaveState("error");
-        toast({
-          variant: "destructive",
-          title: "Autosave failed",
-          description:
-            error instanceof Error
-              ? error.message
-              : "Unable to persist your changes.",
-        });
-      } finally {
-        autosaveTimerRef.current = null;
-      }
-    }, 1200);
-
-    return () => {
-      if (autosaveTimerRef.current) {
-        window.clearTimeout(autosaveTimerRef.current);
-        autosaveTimerRef.current = null;
-      }
-    };
-  }, [
-    currentFile?.content,
-    currentFile?.id,
-    hasUnsavedChanges,
-    scheduleAutosaveReset,
-    toast,
-    updateNodeContent,
-  ]);
-
-  useEffect(() => {
-    setAutosaveState("idle");
-  }, [currentFile?.id]);
 
   // Real-time collaboration for the current file
   const {
@@ -2062,49 +1695,33 @@ export default function ProjectWorkspace({
 
   // Save functionality
   const handleSave = async () => {
-    if (!currentFile) {
-      return;
-    }
-
-    setAutosaveState("saving");
+    if (!currentFile) return;
 
     try {
       await updateNodeContent(currentFile.id, currentFile.content ?? "");
       setHasUnsavedChanges(false);
-      setAutosaveState("saved");
-      scheduleAutosaveReset();
 
+      // Add success message to console
       setConsoleOutputs((prev) => [
         ...prev,
         {
-          output: `[saved] Saved ${currentFile.name}`,
+          output: `✓ Saved ${currentFile.name}`,
           exitCode: 0,
           executionTime: 0,
         },
       ]);
     } catch (error) {
-      setAutosaveState("error");
       setConsoleOutputs((prev) => [
         ...prev,
         {
           output: "",
-          error: error instanceof Error ? error.message : String(error),
+          error: `Failed to save ${currentFile.name}: ${error}`,
           exitCode: 1,
           executionTime: 0,
         },
       ]);
-      toast({
-        variant: "destructive",
-        title: "Save failed",
-        description:
-          error instanceof Error
-            ? error.message
-            : "An unexpected error occurred while saving.",
-      });
     }
   };
-
-
 
   const waitForTerminalExecutor = useCallback(
     (timeoutMs = 1500) => {
@@ -2545,15 +2162,77 @@ export default function ProjectWorkspace({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [handleSave, handleRun, showSidebar, showChat]);
 
+  // Supabase wiring
+  const updateNodeContent = async (nodeId: string, content: string) => {
+    await supabase.from("project_nodes").update({ content }).eq("id", nodeId);
+  };
 
+  const createFile = async (
+    name: string,
+    parentId: string | null = null,
+    content: string = ""
+  ) => {
+    const { data, error } = await supabase
+      .from("project_nodes")
+      .insert({
+        name,
+        type: "file",
+        content: content,
+        project_id: projectId,
+        parent_id: parentId,
+      })
+      .select()
+      .single();
+    if (!error && data) {
+      setNodes((prev) => [...prev, data as any]);
+      setActiveNodeId(name);
+    }
+  };
 
-  if (localPersistenceEnabled && !storageReady) {
-    return (
-      <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
-        Preparing workspace...
-      </div>
-    );
-  }
+  const createFolder = async (name: string, parentId: string | null = null) => {
+    const { data, error } = await supabase
+      .from("project_nodes")
+      .insert({
+        name,
+        type: "folder",
+        project_id: projectId,
+        parent_id: parentId,
+      })
+      .select()
+      .single();
+    if (!error && data) {
+      setNodes((prev) => [...prev, data as any]);
+    }
+  };
+
+  const renameNode = async (
+    id: string | undefined,
+    _old: string,
+    newName: string
+  ) => {
+    if (!id) return;
+    const { error } = await supabase
+      .from("project_nodes")
+      .update({ name: newName })
+      .eq("id", id);
+
+    if (nodes.some((f) => f.name === newName)) {
+      return false;
+    }
+    if (!error) {
+      setNodes((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, name: newName } : f))
+      );
+      if (activeNodeId === _old) setActiveNodeId(newName);
+    }
+  };
+
+  const deleteNode = async (id: string | undefined) => {
+    if (!id) return;
+    await supabase.from("project_nodes").delete().eq("id", id);
+    setNodes((prev) => prev.filter((f) => f.id !== id));
+    if (currentFile?.id === id) setActiveNodeId("");
+  };
 
   return (
     <div className="h-full w-full overflow-hidden">
@@ -2571,24 +2250,169 @@ export default function ProjectWorkspace({
         >
           {showSidebar && (
             <div className="h-full min-w-0">
-              <FileExplorer
-                files={nodes}
-                activeFile={activeNodeId}
-                onFileSelect={setActiveNodeId}
-                onCreateFile={createFile}
-                onCreateFolder={createFolder}
-                onRename={renameNode}
-                onDelete={deleteNode}
-                projectId={projectId}
-                onFilesUploaded={(uploadedFiles) => {
-                  // Add uploaded files to the project
-                  uploadedFiles.forEach((file) => {
-                    if (file.content && file.status === "success") {
-                      createFile(file.name, null, file.content);
-                    }
-                  });
-                }}
-              />
+              <Tabs
+                defaultValue="files"
+                className="flex-1 flex flex-col h-full"
+              >
+                <TabsList className="grid w-full grid-cols-3 text-xs">
+                  <TabsTrigger value="files" className="text-xs px-2">
+                    <span className="hidden sm:inline">Files</span>
+                    <FileText className="h-4 w-4 sm:hidden" />
+                  </TabsTrigger>
+                  <TabsTrigger value="extensions" className="text-xs px-2">
+                    <span className="hidden sm:inline">Extensions</span>
+                    <Zap className="h-4 w-4 sm:hidden" />
+                  </TabsTrigger>
+                  <TabsTrigger value="settings" className="text-xs px-2">
+                    <span className="hidden sm:inline">Settings</span>
+                    <Settings className="h-4 w-4 sm:hidden" />
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent
+                  value="files"
+                  className="flex-1 overflow-y-auto p-0"
+                >
+                  <FileExplorer
+                    files={nodes}
+                    activeFile={activeNodeId}
+                    onFileSelect={setActiveNodeId}
+                    onCreateFile={createFile}
+                    onCreateFolder={createFolder}
+                    onRename={renameNode}
+                    onDelete={deleteNode}
+                    projectId={projectId}
+                    onFilesUploaded={(uploadedFiles) => {
+                      // Add uploaded files to the project
+                      uploadedFiles.forEach((file) => {
+                        if (file.content && file.status === "success") {
+                          createFile(file.name, null, file.content);
+                        }
+                      });
+                    }}
+                  />
+                </TabsContent>
+                <TabsContent
+                  value="extensions"
+                  className="flex-1 overflow-y-auto p-0"
+                >
+                  <div className="h-full flex flex-col">
+                    <div className="p-3 border-b">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-medium">Extensions</h3>
+                        <Button variant="ghost" size="sm">
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search extensions..."
+                          className="pl-10"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex-1 overflow-auto p-2 space-y-2">
+                      {extensions.map((ext) => (
+                        <div
+                          key={ext.id}
+                          className="flex flex-col border rounded-md p-3 hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <img
+                                src={ext.icon || "/placeholder.svg"}
+                                alt={ext.name}
+                                className="w-6 h-6 rounded"
+                              />
+                              <div>
+                                <h4 className="text-sm font-medium">
+                                  {ext.name}
+                                </h4>
+                                <p className="text-xs text-muted-foreground">
+                                  {ext.author}
+                                </p>
+                              </div>
+                            </div>
+                            <Switch checked={ext.installed && ext.enabled} />
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-2">
+                            {ext.description}
+                          </p>
+                          <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+                            <span>v{ext.version}</span>
+                            <span>
+                              {ext.downloads.toLocaleString()} downloads
+                            </span>
+                          </div>
+                          {!ext.installed && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-2 w-full"
+                            >
+                              <Download className="h-3 w-3 mr-1" />
+                              Install
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </TabsContent>
+                <TabsContent
+                  value="settings"
+                  className="flex-1 overflow-y-auto p-0"
+                >
+                  <div className="h-full overflow-auto p-4 space-y-4">
+                    <div>
+                      <h3 className="text-sm font-medium mb-2">
+                        Editor Settings
+                      </h3>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">Font Size</span>
+                          <Select defaultValue="14">
+                            <SelectTrigger className="w-20">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="12">12px</SelectItem>
+                              <SelectItem value="14">14px</SelectItem>
+                              <SelectItem value="16">16px</SelectItem>
+                              <SelectItem value="18">18px</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">Tab Size</span>
+                          <Select defaultValue="2">
+                            <SelectTrigger className="w-20">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="2">2</SelectItem>
+                              <SelectItem value="4">4</SelectItem>
+                              <SelectItem value="8">8</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">Word Wrap</span>
+                          <Switch defaultChecked />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">Line Numbers</span>
+                          <Switch defaultChecked />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">Auto Save</span>
+                          <Switch defaultChecked />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
           )}
         </ResizablePanel>
@@ -2648,10 +2472,6 @@ export default function ProjectWorkspace({
                   {/* Backend status */}
                   <div className="hidden lg:block">
                     <BackendStatus showRefresh={false} />
-                  </div>
-
-                  <div className="hidden sm:inline-flex">
-                    <Badge variant={autosaveBadgeVariant}>{autosaveLabel}</Badge>
                   </div>
 
                   {/* Save and Run buttons */}
@@ -2792,7 +2612,7 @@ export default function ProjectWorkspace({
                 >
                   <TabsList
                     className={`grid w-full ${
-                      isAIAssistantOpen ? "grid-cols-3" : "grid-cols-2"
+                      isAIAssistantOpen ? "grid-cols-4" : "grid-cols-3"
                     } bg-muted/50 rounded-none border-b`}
                   >
                     <TabsTrigger
@@ -2816,6 +2636,13 @@ export default function ProjectWorkspace({
                           {problems.length}
                         </Badge>
                       )}
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="history"
+                      className="gap-1 sm:gap-2 px-2 sm:px-4"
+                    >
+                      <History className="h-4 w-4" />
+                      <span className="hidden sm:inline">History</span>
                     </TabsTrigger>
                     {isAIAssistantOpen && (
                       <TabsTrigger
@@ -2852,6 +2679,23 @@ export default function ProjectWorkspace({
                       problems={problems}
                       onClear={() => setProblems([])}
                     />
+                  </TabsContent>
+
+                  <TabsContent
+                    value="history"
+                    className="flex-1 overflow-hidden p-0 m-0 h-full"
+                  >
+                    <div className="p-4 h-full flex items-center justify-center">
+                      <ExecutionHistory
+                        projectId={projectId}
+                        onReplayExecution={(record) => {
+                          // Handle replay execution
+                          if (record.fileName) {
+                            setActiveBottomTab("terminal");
+                          }
+                        }}
+                      />
+                    </div>
                   </TabsContent>
 
                   {isAIAssistantOpen && (
