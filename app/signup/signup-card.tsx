@@ -18,6 +18,7 @@ import Link from "next/link";
 import { LoginGithub } from "@/components/login-github";
 import { LoginGoogle } from "@/components/login-google";
 import { getSupabaseClient } from "@/lib/supabaseClient"; // adjust the path if needed
+import { DEFAULT_AVATAR } from "@/lib/constants";
 import { useRouter } from "next/navigation";
 
 export default function SignupCard() {
@@ -93,6 +94,7 @@ export default function SignupCard() {
         options: {
           data: {
             full_name: formData.name,
+            user_avatar: DEFAULT_AVATAR,
           },
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },

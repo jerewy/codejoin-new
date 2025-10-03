@@ -22,6 +22,7 @@ This documentation outlines the authentication system used in the project. It us
 
    - Supabase creates the user in `auth.users`
    - A database **trigger** inserts the corresponding row into `profiles`
+   - Each profile row receives a `user_avatar` that defaults to the shared placeholder URL
    - A confirmation email is sent (if enabled)
 
 ---
@@ -33,12 +34,16 @@ Create this trigger to automatically add a row to `profiles` when a user signs u
 ```sql
 create or replace function handle_new_user()
 returns trigger as $$
+declare
+  default_avatar constant text :=
+    'https://izngyuhawwlxopcdmfry.supabase.co/storage/v1/object/public/assets/user.svg';
 begin
-  insert into profiles (id, email, full_name)
+  insert into profiles (id, email, full_name, user_avatar)
   values (
     new.id,
     new.email,
-    coalesce(new.raw_user_meta_data->>'full_name', '')
+    coalesce(new.raw_user_meta_data->>'full_name', ''),
+    coalesce(new.raw_user_meta_data->>'user_avatar', default_avatar)
   )
   on conflict (id) do nothing;
 
@@ -62,6 +67,7 @@ create table profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text,
   full_name text,
+  user_avatar text default 'https://izngyuhawwlxopcdmfry.supabase.co/storage/v1/object/public/assets/user.svg',
   created_at timestamptz default now()
 );
 ```
@@ -111,12 +117,15 @@ using (true);
 ## 🧪 Frontend: Sign Up with Validation
 
 ```ts
+import { DEFAULT_AVATAR } from "@/lib/constants";
+
 const { data, error } = await supabase.auth.signUp({
   email: formData.email,
   password: formData.password,
   options: {
     data: {
       full_name: formData.name,
+      user_avatar: DEFAULT_AVATAR,
     },
     emailRedirectTo: `${window.location.origin}/auth/callback`,
   },
