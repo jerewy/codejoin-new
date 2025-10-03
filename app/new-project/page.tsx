@@ -26,6 +26,9 @@ type ProjectTemplate = StarterProject;
 
 const projectTemplates: ReadonlyArray<ProjectTemplate> = starterProjects;
 
+const DEFAULT_PROJECT_THUMBNAIL_URL =
+  "https://izngyuhawwlxopcdmfry.supabase.co/storage/v1/object/public/assets/project_placeholder.jpg";
+
 const languageOptions = starterProjectLanguages.map((language) => ({
   value: language.id,
   label: language.name,
@@ -110,6 +113,7 @@ export default function NewProjectPage() {
           tags: tags,
           language: template ? template.tags : [],
           status: "active",
+          thumbnail: template?.thumbnail ?? DEFAULT_PROJECT_THUMBNAIL_URL,
         })
         .select()
         .single();
