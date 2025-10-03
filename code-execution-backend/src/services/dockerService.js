@@ -20,34 +20,66 @@ class DockerService {
   }
 
   buildDockerOptions() {
-    if (process.platform === 'win32') {
-      const socketPath = process.env.DOCKER_SOCKET || '//./pipe/docker_engine';
-      const socketOptions = { socketPath };
+    const dockerHost = process.env.DOCKER_HOST || '';
+    const isWindows = process.platform === 'win32';
+    const defaultSocketPath = isWindows
+      ? process.env.DOCKER_SOCKET || '//./pipe/docker_engine'
+      : '/var/run/docker.sock';
+    const defaultOptions = { socketPath: defaultSocketPath };
 
-      const dockerHost = process.env.DOCKER_HOST || '';
-      if (dockerHost.startsWith('tcp://')) {
-        const url = new URL(dockerHost);
-        const protocol = url.protocol.replace(':', '');
-        const tcpOptions = {
-          host: url.hostname,
-          port: parseInt(url.port) || 2375,
-          protocol: protocol === 'tcp' ? 'http' : protocol || 'http'
-        };
-
-        return {
-          primary: tcpOptions,
-          fallback: socketOptions
-        };
-      }
-
+    if (!dockerHost) {
       return {
-        primary: socketOptions,
+        primary: defaultOptions,
         fallback: null
       };
     }
 
+    try {
+      if (dockerHost.startsWith('unix://')) {
+        const socketPath = dockerHost.replace(/^unix:\/\//, '') || defaultSocketPath;
+
+        return {
+          primary: { socketPath },
+          fallback: defaultOptions
+        };
+      }
+
+      if (dockerHost.startsWith('tcp://')) {
+        const url = new URL(dockerHost);
+        const normalizedProtocol = url.protocol.replace(':', '');
+
+        const tcpOptions = {
+          host: url.hostname,
+          port: url.port ? parseInt(url.port, 10) : 2375,
+          protocol: normalizedProtocol === 'tcp' ? 'http' : normalizedProtocol || 'http'
+        };
+
+        return {
+          primary: tcpOptions,
+          fallback: defaultOptions
+        };
+      }
+
+      if (isWindows && dockerHost.startsWith('npipe://')) {
+        const pipePath = dockerHost.replace(/^npipe:\/\//, '');
+        const normalizedPath = pipePath.startsWith('\\\\')
+          ? pipePath
+          : `//${pipePath.replace(/^\/+/g, '')}`;
+
+        return {
+          primary: { socketPath: normalizedPath },
+          fallback: defaultOptions
+        };
+      }
+    } catch (error) {
+      logger.warn('Failed to parse DOCKER_HOST, falling back to default Docker options', {
+        dockerHost,
+        error: error.message
+      });
+    }
+
     return {
-      primary: { socketPath: '/var/run/docker.sock' },
+      primary: defaultOptions,
       fallback: null
     };
   }

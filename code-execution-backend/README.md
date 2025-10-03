@@ -187,12 +187,20 @@ RATE_LIMIT_MAX_REQUESTS=100
 CONTAINER_TIMEOUT_MS=30000
 CONTAINER_MEMORY_LIMIT=128m
 CONTAINER_CPU_LIMIT=0.5
+# Optional overrides (all platforms respect DOCKER_HOST; Windows can also set DOCKER_SOCKET)
+# DOCKER_HOST=tcp://127.0.0.1:2375
+# DOCKER_SOCKET=//./pipe/docker_engine
 
 # Execution Limits
 MAX_EXECUTION_TIME_MS=10000
 MAX_OUTPUT_SIZE_BYTES=10485760
 MAX_CODE_SIZE_BYTES=1048576
 ```
+
+The backend now respects the standard `DOCKER_HOST` environment variable across platforms. Provide a `unix://` socket path or a
+`tcp://` endpoint to point the service at a remote or custom Docker daemon. When an override is present, the service will still
+fall back to the default local socket (`/var/run/docker.sock` on Linux/macOS or the Windows named pipe) if the connection test
+fails, and Windows environments can continue to customize the pipe via `DOCKER_SOCKET`.
 
 ### Language Configuration
 
