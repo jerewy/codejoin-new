@@ -191,11 +191,13 @@ class DockerService {
             ? fallbackError.message
             : 'Unknown error';
           logger.error('Docker fallback connection failed', { error: fallbackMessage });
-          throw new Error(`Docker connection failed: ${fallbackMessage}`);
+          fallbackError.message = `Docker connection failed: ${fallbackMessage}`;
+          throw fallbackError;
         }
       }
 
-      throw new Error(`Docker connection failed: ${message}`);
+      error.message = `Docker connection failed: ${message}`;
+      throw error;
     }
   }
 
