@@ -3,6 +3,10 @@
 ## Overview
 This document explains how the CodeJoin code execution system works and the current issues with C/C++ execution in the terminal.
 
+> **Quick fix for "Docker connection failed" errors**
+>
+> If the backend logs show `Docker connection test failed {"error":"Unknown error"}` followed by `Docker connection failed: Unknown error`, the Docker daemon is offline or unreachable from the backend. Start Docker Desktop (or `dockerd` on Linux) and re-run `npm run dev` for the `code-execution-backend`. When Docker is healthy, `docker info` should succeed and the backend will build or pull the required images automatically.
+
 ## System Architecture
 
 ### 1. Execution Flow Components
