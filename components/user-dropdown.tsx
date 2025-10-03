@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import {
@@ -15,6 +17,69 @@ import Link from "next/link";
 export default function UserDropdown() {
   const router = useRouter();
   const supabase = getSupabaseClient();
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProfileAvatar = async () => {
+      if (!supabase) {
+        if (isMounted) {
+          setAvatarUrl(null);
+        }
+        return;
+      }
+
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+          if (isMounted) {
+            setAvatarUrl(null);
+          }
+          return;
+        }
+
+        const { data: profileRow, error: profileError } = await supabase
+          .from("profiles")
+          .select("user_avatar")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (profileError && profileError.code !== "PGRST116") {
+          console.error("Failed to load profile avatar", profileError);
+        }
+
+        const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+        const metadataAvatar = [
+          metadata.avatar_url,
+          metadata.avatarUrl,
+          metadata.picture,
+        ].find(
+          (value): value is string =>
+            typeof value === "string" && value.trim().length > 0
+        ) ?? null;
+
+        if (isMounted) {
+          setAvatarUrl(profileRow?.user_avatar ?? metadataAvatar ?? null);
+        }
+      } catch (error) {
+        console.error("Unexpected error loading avatar", error);
+        if (isMounted) {
+          setAvatarUrl(null);
+        }
+      }
+    };
+
+    loadProfileAvatar();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [supabase]);
 
   const handleLogout = async () => {
     if (!supabase) {
@@ -33,7 +98,7 @@ export default function UserDropdown() {
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="icon">
           <Image
-            src="/user.svg"
+            src={avatarUrl && avatarUrl.trim() ? avatarUrl : "/user.svg"}
             alt="Profile"
             width={24}
             height={24}
