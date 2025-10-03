@@ -4,45 +4,52 @@ const logger = require('../utils/logger');
 
 class DockerService {
   constructor() {
-    // Configure Docker connection based on platform
-    let dockerOptions = {};
+    const { primary, fallback } = this.buildDockerOptions();
 
-    if (process.platform === 'win32') {
-      // Windows-specific configuration
-      dockerOptions = {
-        socketPath: process.env.DOCKER_SOCKET || '//./pipe/docker_engine',
-        // Alternative: use TCP connection
-        // host: 'localhost',
-        // port: 2375,
-        // protocol: 'http'
-      };
+    this.dockerOptions = primary;
+    this.fallbackDockerOptions = fallback;
+    this.hasRetriedConnection = false;
 
-      // Try TCP connection as fallback if socket fails
-      if (process.env.DOCKER_HOST) {
-        const dockerHost = process.env.DOCKER_HOST;
-        if (dockerHost.startsWith('tcp://')) {
-          const url = new URL(dockerHost);
-          dockerOptions = {
-            host: url.hostname,
-            port: parseInt(url.port) || 2375,
-            protocol: 'http'
-          };
-        }
-      }
-    } else {
-      // Unix/Linux configuration (default)
-      dockerOptions = {
-        socketPath: '/var/run/docker.sock'
-      };
-    }
-
-    this.docker = new Docker(dockerOptions);
+    this.docker = new Docker(this.dockerOptions);
     this.runningContainers = new Map();
 
     logger.info('Docker service initialized', {
       platform: process.platform,
-      options: JSON.stringify(dockerOptions, null, 2)
+      options: JSON.stringify(this.dockerOptions, null, 2)
     });
+  }
+
+  buildDockerOptions() {
+    if (process.platform === 'win32') {
+      const socketPath = process.env.DOCKER_SOCKET || '//./pipe/docker_engine';
+      const socketOptions = { socketPath };
+
+      const dockerHost = process.env.DOCKER_HOST || '';
+      if (dockerHost.startsWith('tcp://')) {
+        const url = new URL(dockerHost);
+        const protocol = url.protocol.replace(':', '');
+        const tcpOptions = {
+          host: url.hostname,
+          port: parseInt(url.port) || 2375,
+          protocol: protocol === 'tcp' ? 'http' : protocol || 'http'
+        };
+
+        return {
+          primary: tcpOptions,
+          fallback: socketOptions
+        };
+      }
+
+      return {
+        primary: socketOptions,
+        fallback: null
+      };
+    }
+
+    return {
+      primary: { socketPath: '/var/run/docker.sock' },
+      fallback: null
+    };
   }
 
   async executeCode(languageConfig, code, input = '') {
@@ -103,8 +110,31 @@ class DockerService {
       await this.docker.ping();
       logger.debug('Docker connection test successful');
     } catch (error) {
-      logger.error('Docker connection test failed', { error: error.message });
-      throw new Error(`Docker connection failed: ${error.message}`);
+      const message = error && error.message ? error.message : 'Unknown error';
+      logger.error('Docker connection test failed', { error: message });
+
+      if (!this.hasRetriedConnection && this.fallbackDockerOptions) {
+        this.hasRetriedConnection = true;
+        logger.warn('Retrying Docker connection with fallback options', {
+          options: JSON.stringify(this.fallbackDockerOptions, null, 2)
+        });
+
+        this.docker = new Docker(this.fallbackDockerOptions);
+
+        try {
+          await this.docker.ping();
+          logger.info('Docker fallback connection successful');
+          return;
+        } catch (fallbackError) {
+          const fallbackMessage = fallbackError && fallbackError.message
+            ? fallbackError.message
+            : 'Unknown error';
+          logger.error('Docker fallback connection failed', { error: fallbackMessage });
+          throw new Error(`Docker connection failed: ${fallbackMessage}`);
+        }
+      }
+
+      throw new Error(`Docker connection failed: ${message}`);
     }
   }
 
