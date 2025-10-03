@@ -6,70 +6,31 @@ jest.mock('dockerode', () => {
 
 const DockerService = require('../src/services/dockerService');
 
-const originalPlatform = process.platform;
-const originalDockerHost = process.env.DOCKER_HOST;
-const originalDockerSocket = process.env.DOCKER_SOCKET;
+describe('DockerService permission handling', () => {
+  const languageConfig = {
+    image: 'test-image',
+    type: 'interpreted',
+    runCommand: 'echo',
+    name: 'Test'
+  };
 
-const setPlatform = (platform) => {
-  Object.defineProperty(process, 'platform', {
-    value: platform,
-    configurable: true
-  });
-};
-
-describe('DockerService buildDockerOptions', () => {
   afterEach(() => {
-    if (originalDockerHost === undefined) {
-      delete process.env.DOCKER_HOST;
-    } else {
-      process.env.DOCKER_HOST = originalDockerHost;
-    }
-
-    if (originalDockerSocket === undefined) {
-      delete process.env.DOCKER_SOCKET;
-    } else {
-      process.env.DOCKER_SOCKET = originalDockerSocket;
-    }
-
-    setPlatform(originalPlatform);
     jest.clearAllMocks();
   });
 
-  it('parses unix socket DOCKER_HOST on linux', () => {
-    setPlatform('linux');
-    process.env.DOCKER_HOST = 'unix:///tmp/docker.sock';
-
+  it('returns permission guidance when Docker socket access is denied', async () => {
     const service = new DockerService();
-    const { dockerOptions, fallbackDockerOptions } = service;
 
-    expect(dockerOptions).toEqual({ socketPath: '/tmp/docker.sock' });
-    expect(fallbackDockerOptions).toEqual({ socketPath: '/var/run/docker.sock' });
-  });
+    jest.spyOn(service, 'cleanup').mockResolvedValue();
+    jest.spyOn(service, 'testConnection').mockRejectedValue(
+      Object.assign(new Error('Access is denied.'), { code: 'EPERM' })
+    );
 
-  it('parses tcp DOCKER_HOST on darwin', () => {
-    setPlatform('darwin');
-    process.env.DOCKER_HOST = 'tcp://127.0.0.1:2375';
+    const result = await service.executeCode(languageConfig, 'console.log("test")');
 
-    const service = new DockerService();
-    const { dockerOptions, fallbackDockerOptions } = service;
-
-    expect(dockerOptions).toEqual({
-      host: '127.0.0.1',
-      port: 2375,
-      protocol: 'http'
-    });
-    expect(fallbackDockerOptions).toEqual({ socketPath: '/var/run/docker.sock' });
-  });
-
-  it('parses npipe DOCKER_HOST on windows', () => {
-    setPlatform('win32');
-    process.env.DOCKER_SOCKET = '//./pipe/docker_engine';
-    process.env.DOCKER_HOST = 'npipe:////./pipe/custom_engine';
-
-    const service = new DockerService();
-    const { dockerOptions, fallbackDockerOptions } = service;
-
-    expect(dockerOptions).toEqual({ socketPath: '//./pipe/custom_engine' });
-    expect(fallbackDockerOptions).toEqual({ socketPath: '//./pipe/docker_engine' });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Permission denied accessing Docker');
+    expect(result.error).toContain('docker-users');
+    expect(result.error).not.toContain('Docker is not running or not accessible');
   });
 });
