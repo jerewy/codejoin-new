@@ -1,6 +1,8 @@
+const mockPing = jest.fn();
+
 jest.mock('dockerode', () => {
   return jest.fn().mockImplementation(() => ({
-    ping: jest.fn().mockResolvedValue()
+    ping: mockPing
   }));
 });
 
@@ -16,15 +18,19 @@ describe('DockerService permission handling', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    mockPing.mockReset();
   });
 
   it('returns permission guidance when Docker socket access is denied', async () => {
     const service = new DockerService();
 
     jest.spyOn(service, 'cleanup').mockResolvedValue();
-    jest.spyOn(service, 'testConnection').mockRejectedValue(
-      Object.assign(new Error('Access is denied.'), { code: 'EPERM' })
-    );
+
+    const permissionError = Object.assign(new Error('Access is denied.'), {
+      code: 'EPERM'
+    });
+
+    mockPing.mockRejectedValue(permissionError);
 
     const result = await service.executeCode(languageConfig, 'console.log("test")');
 
@@ -32,5 +38,6 @@ describe('DockerService permission handling', () => {
     expect(result.error).toContain('Permission denied accessing Docker');
     expect(result.error).toContain('docker-users');
     expect(result.error).not.toContain('Docker is not running or not accessible');
+    expect(mockPing).toHaveBeenCalled();
   });
 });
