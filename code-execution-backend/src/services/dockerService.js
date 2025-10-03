@@ -79,17 +79,46 @@ class DockerService {
       };
 
     } catch (error) {
-      logger.error(`Docker execution error: ${error.message}`, { containerId, error });
+      const rawMessage = error && error.message ? error.message : 'Unknown error';
+      const errorCode = error && error.code ? error.code : undefined;
 
-      let errorMessage = error.message;
+      const isPermissionError =
+        errorCode === 'EPERM' ||
+        errorCode === 'EACCES' ||
+        /permission denied/i.test(rawMessage) ||
+        /Access is denied/i.test(rawMessage);
 
-      // Provide better error messages for common issues
-      if (error.message.includes('ENOENT') || error.message.includes('connect')) {
+      let errorMessage = rawMessage;
+
+      if (isPermissionError) {
+        logger.error('Docker permission error during execution', {
+          containerId,
+          errorCode,
+          errorMessage: rawMessage,
+          guidance: 'Ensure your user can access the Docker socket/pipe (e.g., add to "docker-users" on Windows).'
+        });
+        errorMessage = 'Permission denied accessing Docker. On Windows, add your user to the "docker-users" group or grant access to the Docker pipe, then restart Docker Desktop.';
+      } else if (rawMessage.includes('ENOENT') || rawMessage.includes('connect')) {
+        logger.error('Docker connection error during execution', {
+          containerId,
+          errorCode,
+          errorMessage: rawMessage
+        });
         errorMessage = 'Docker is not running or not accessible. Please start Docker Desktop and try again.';
-      } else if (error.message.includes('permission denied')) {
-        errorMessage = 'Permission denied accessing Docker. Make sure your user has access to Docker.';
-      } else if (error.message.includes('no such image')) {
+      } else if (rawMessage.includes('no such image')) {
+        logger.error('Docker image missing during execution', {
+          containerId,
+          errorCode,
+          errorMessage: rawMessage,
+          image: languageConfig.image
+        });
         errorMessage = `Docker image '${languageConfig.image}' not found. Please pull the required images.`;
+      } else {
+        logger.error(`Docker execution error: ${rawMessage}`, {
+          containerId,
+          errorCode,
+          errorMessage: rawMessage
+        });
       }
 
       return {
