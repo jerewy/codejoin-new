@@ -226,9 +226,9 @@ export default function DashboardPage() {
   const [pendingProjects, setPendingProjects] = useState<Set<string>>(
     new Set()
   );
-  const supabase = getSupabaseClient();
+  const supabaseClient = getSupabaseClient();
 
-  if (!supabase) {
+  if (!supabaseClient) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted">
         <div className="max-w-md text-center space-y-4">
@@ -246,27 +246,31 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    const client = supabaseClient;
+    if (!client) return;
+
     async function getDashboardData() {
+      if (!client) return;
       try {
         const {
           data: { user },
-        } = await supabase.auth.getUser();
+        } = await client.auth.getUser();
 
         if (user) {
           const [profileResponse, projectsResponse, activityResponse] =
             await Promise.all([
               // Query 1: Fetch user profile
-              supabase
+              client
                 .from("profiles")
                 .select("full_name")
                 .eq("id", user.id)
                 .single(),
 
               // Query 2: Fetch projects
-              supabase.rpc("get_projects_for_user"),
+              client.rpc("get_projects_for_user"),
 
               // Query 3: Fetch recent activities
-              supabase
+              client
                 .from("activities")
                 .select(
                   `
@@ -344,11 +348,12 @@ export default function DashboardPage() {
     }
 
     getDashboardData();
-  }, []);
+  }, [supabaseClient]);
 
   // Handle project deletion
   const handleDeleteProject = async () => {
     if (!projectToDelete) return;
+    if (!supabaseClient) return;
 
     setIsDeleting(true);
 
@@ -359,13 +364,13 @@ export default function DashboardPage() {
       const {
         data: { user },
         error: authError,
-      } = await supabase.auth.getUser();
+      } = await supabaseClient.auth.getUser();
       if (authError || !user) {
         throw new Error("You must be logged in to delete a project");
       }
 
       // Verify user owns this project
-      const { data: projectCheck, error: checkError } = await supabase
+      const { data: projectCheck, error: checkError } = await supabaseClient
         .from("projects")
         .select("user_id")
         .eq("id", projectToDelete.id)
@@ -381,7 +386,7 @@ export default function DashboardPage() {
       }
 
       // First, delete all project nodes (files and folders)
-      const { error: nodesError } = await supabase
+      const { error: nodesError } = await supabaseClient
         .from("project_nodes")
         .delete()
         .eq("project_id", projectToDelete.id);
@@ -392,7 +397,7 @@ export default function DashboardPage() {
       }
 
       // Then delete the project itself
-      const { error: projectError } = await supabase
+      const { error: projectError } = await supabaseClient
         .from("projects")
         .delete()
         .eq("id", projectToDelete.id);
@@ -460,6 +465,8 @@ export default function DashboardPage() {
   };
 
   const handleToggleStar = async (project: Project, nextValue: boolean) => {
+    if (!supabaseClient) return;
+
     updatePendingState(project.id, true);
     const previousValue = Boolean(project.isStarred);
 
@@ -470,7 +477,7 @@ export default function DashboardPage() {
     );
 
     try {
-      const { error } = await supabase
+      const { error } = await supabaseClient
         .from("projects")
         .update({ isStarred: nextValue })
         .eq("id", project.id);
@@ -504,6 +511,7 @@ export default function DashboardPage() {
 
   const handleStatusChange = async (project: Project, nextStatus: string) => {
     if (project.status === nextStatus) return;
+    if (!supabaseClient) return;
 
     updatePendingState(project.id, true);
     const previousStatus = project.status;
@@ -515,7 +523,7 @@ export default function DashboardPage() {
     );
 
     try {
-      const { error } = await supabase
+      const { error } = await supabaseClient
         .from("projects")
         .update({ status: nextStatus })
         .eq("id", project.id);
