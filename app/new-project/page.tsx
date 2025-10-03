@@ -120,6 +120,19 @@ export default function NewProjectPage() {
 
       if (projectError) throw projectError;
       if (!newProject) throw new Error("Project creation failed.");
+      const { error: collaboratorError } = await supabase
+        .from("project_collaborators")
+        .insert({
+          project_id: newProject.id,
+          user_id: user.id,
+          role: "owner",
+        })
+        .select("id")
+        .single();
+
+      if (collaboratorError) {
+        console.warn("Failed to create owner collaborator record", collaboratorError);
+      }
 
       // This function will handle nested structures reliably
       const createNodesRecursively = async (
@@ -521,3 +534,4 @@ export default function NewProjectPage() {
     </div>
   );
 }
+

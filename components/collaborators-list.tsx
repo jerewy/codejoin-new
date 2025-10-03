@@ -3,7 +3,9 @@ import { Users } from "lucide-react";
 import { type Collaborator } from "@/lib/types";
 import { useSocket } from "@/lib/socket";
 
-type RealtimeCollaborator = ReturnType<typeof useSocket>["collaborators"][number];
+type RealtimeCollaborator = ReturnType<
+  typeof useSocket
+>["collaborators"][number];
 type AnyCollaborator = Collaborator | RealtimeCollaborator;
 
 interface CollaboratorsListProps {
