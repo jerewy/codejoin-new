@@ -137,8 +137,7 @@ export default function ProjectCard({
                     if (typeof navigator !== "undefined" && navigator.share) {
                       navigator.share({
                         title: project.name,
-                        text:
-                          project.description || "Check out this project",
+                        text: project.description || "Check out this project",
                         url: `${window.location.origin}/project/${project.id}`,
                       });
                     } else if (
@@ -167,7 +166,7 @@ export default function ProjectCard({
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    console.log('ProjectCard delete clicked!', project);
+                    console.log("ProjectCard delete clicked!", project);
                     handleDelete();
                   }}
                 >
@@ -182,7 +181,7 @@ export default function ProjectCard({
       <CardContent>
         <div className="aspect-video bg-muted rounded-lg mb-4 overflow-hidden">
           <img
-            src={project.thumbnail || "/placeholder.svg"}
+            src={project.thumbnail ?? "@/public/project_placeholder.jpg"}
             alt={project.name}
             className="w-full h-full object-cover"
           />
