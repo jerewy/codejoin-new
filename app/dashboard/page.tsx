@@ -912,12 +912,6 @@ export default function DashboardPage() {
                     Browse Templates
                   </Button>
                 </Link>
-                <Link href="/new-project">
-                  <Button className="w-full justify-start" variant="outline">
-                    <GitBranch className="h-4 w-4 mr-2" />
-                    Import from GitHub
-                  </Button>
-                </Link>
               </CardContent>
             </Card>
 
