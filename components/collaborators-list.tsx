@@ -13,20 +13,26 @@ interface CollaboratorsListProps {
 const getCollaboratorId = (collaborator: AnyCollaborator) =>
   "socketId" in collaborator ? collaborator.socketId : collaborator.user_id;
 
+const resolveAvatar = (value?: string | null) =>
+  value && value.trim().length > 0 ? value : "/placeholder.svg";
+
 const getCollaboratorAvatar = (collaborator: AnyCollaborator) => {
   if ("userAvatar" in collaborator) {
-    return collaborator.userAvatar ?? "/placeholder.svg";
+    return resolveAvatar(collaborator.userAvatar);
   }
 
-  return collaborator.user_avatar ?? "/placeholder.svg";
+  return resolveAvatar(collaborator.user_avatar);
 };
+
+const resolveName = (value?: string | null) =>
+  value && value.trim().length > 0 ? value : "Collaborator";
 
 const getCollaboratorName = (collaborator: AnyCollaborator) => {
   if ("userName" in collaborator) {
-    return collaborator.userName || "Collaborator";
+    return resolveName(collaborator.userName);
   }
 
-  return collaborator.full_name ?? "Collaborator";
+  return resolveName(collaborator.full_name);
 };
 
 export default function CollaboratorsList({
@@ -34,8 +40,34 @@ export default function CollaboratorsList({
 }: CollaboratorsListProps) {
   const { collaborators: realtimeCollaborators } = useSocket();
 
+  const fallbackCollaborators = new Map(
+    collaborators.map((collaborator) => [collaborator.user_id, collaborator])
+  );
+
   const activeCollaborators: AnyCollaborator[] =
-    realtimeCollaborators.length > 0 ? realtimeCollaborators : collaborators;
+    realtimeCollaborators.length > 0
+      ? realtimeCollaborators.map((collaborator) => {
+          const fallback = fallbackCollaborators.get(collaborator.userId);
+          if (!fallback) {
+            return collaborator;
+          }
+
+          const enriched = {
+            ...collaborator,
+            userName:
+              collaborator.userName && collaborator.userName.trim().length > 0
+                ? collaborator.userName
+                : fallback.full_name ?? collaborator.userName,
+            userAvatar:
+              collaborator.userAvatar &&
+              collaborator.userAvatar.trim().length > 0
+                ? collaborator.userAvatar
+                : fallback.user_avatar ?? collaborator.userAvatar,
+          } satisfies RealtimeCollaborator;
+
+          return enriched;
+        })
+      : collaborators;
   const onlineCount = activeCollaborators.length;
 
   return (

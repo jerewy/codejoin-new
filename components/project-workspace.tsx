@@ -1691,6 +1691,18 @@ export default function ProjectWorkspace({
 
 
   const supabase = getSupabaseClient();
+  const fallbackCollaboratorRef = useRef({
+    userId: createClientId(),
+    userName: "Guest",
+    userAvatar: "/placeholder.svg",
+  });
+  const [collaboratorIdentity, setCollaboratorIdentity] = useState<
+    {
+      userId: string;
+      userName: string;
+      userAvatar?: string;
+    } | null
+  >(null);
   const localPersistenceEnabled = !supabase;
   const localStorageKey = `${LOCAL_STORAGE_PREFIX}:${projectId}:nodes`;
   const [storageReady, setStorageReady] = useState(!localPersistenceEnabled);
@@ -1757,6 +1769,85 @@ export default function ProjectWorkspace({
       setStorageReady(true);
     }
   }, [localPersistenceEnabled, localStorageKey, storageReady]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const pickString = (value: unknown) =>
+      typeof value === "string" && value.trim().length > 0 ? value : null;
+
+    const resolveCollaboratorIdentity = async () => {
+      if (!supabase) {
+        if (isMounted) {
+          setCollaboratorIdentity(fallbackCollaboratorRef.current);
+        }
+        return;
+      }
+
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+          if (authError) {
+            console.warn("Failed to fetch authenticated user", authError);
+          }
+          if (isMounted) {
+            setCollaboratorIdentity(fallbackCollaboratorRef.current);
+          }
+          return;
+        }
+
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("full_name, user_avatar")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (profileError && profileError.code !== "PGRST116") {
+          console.warn("Failed to load collaborator profile", profileError);
+        }
+
+        const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+
+        const resolvedName =
+          pickString(profile?.full_name) ??
+          pickString(metadata["full_name"]) ??
+          pickString(metadata["name"]) ??
+          pickString(metadata["user_name"]) ??
+          pickString(user.email) ??
+          fallbackCollaboratorRef.current.userName;
+
+        const resolvedAvatar =
+          pickString(profile?.user_avatar) ??
+          pickString(metadata["avatar_url"]) ??
+          pickString(metadata["avatarUrl"]) ??
+          pickString(metadata["picture"]) ??
+          undefined;
+
+        if (isMounted) {
+          setCollaboratorIdentity({
+            userId: user.id,
+            userName: resolvedName,
+            userAvatar: resolvedAvatar,
+          });
+        }
+      } catch (error) {
+        console.warn("Failed to resolve collaborator identity", error);
+        if (isMounted) {
+          setCollaboratorIdentity(fallbackCollaboratorRef.current);
+        }
+      }
+    };
+
+    resolveCollaboratorIdentity();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [supabase, fallbackCollaboratorRef]);
 
   useEffect(() => {
     if (!localPersistenceEnabled || !storageReady) {
@@ -2448,15 +2539,14 @@ export default function ProjectWorkspace({
 
   // Join project for real-time collaboration
   useEffect(() => {
-    if (isConnected && projectId) {
-      // Mock user data - in production, get from auth context
+    if (isConnected && projectId && collaboratorIdentity) {
       joinProject(projectId, {
-        userId: "user-id-placeholder",
-        userName: "Anonymous User",
-        userAvatar: "/placeholder.svg",
+        userId: collaboratorIdentity.userId,
+        userName: collaboratorIdentity.userName,
+        userAvatar: collaboratorIdentity.userAvatar,
       });
     }
-  }, [isConnected, projectId, joinProject]);
+  }, [isConnected, projectId, joinProject, collaboratorIdentity]);
 
   // Handle remote file changes
   useEffect(() => {
