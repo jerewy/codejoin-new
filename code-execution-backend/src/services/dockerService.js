@@ -213,8 +213,8 @@ class DockerService {
       AttachStdout: true,
       AttachStderr: true,
       Tty: false,
-      OpenStdin: false,
-      StdinOnce: false,
+      OpenStdin: true,
+      StdinOnce: true,
       NetworkMode: 'none', // No network access
       User: 'nobody', // Run as non-root user
       WorkingDir: '/tmp',
