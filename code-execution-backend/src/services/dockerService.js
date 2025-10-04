@@ -1,4 +1,5 @@
 const Docker = require('dockerode');
+const { PassThrough } = require('stream');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');
 
@@ -99,7 +100,7 @@ class DockerService {
       this.runningContainers.set(containerId, container);
 
       // Start container and capture output
-      const result = await this.runContainer(container, languageConfig);
+      const result = await this.runContainer(container, languageConfig, input);
       const success = result.exitCode === 0;
 
       return {
@@ -410,18 +411,90 @@ class DockerService {
     await container.putArchive(pack, { path: '/tmp' });
   }
 
-  async runContainer(container, languageConfig) {
+  async runContainer(container, languageConfig, input = '') {
     const startTime = Date.now();
     let output = '';
     let error = '';
     let exitCode = 0;
+    let stream = null;
+    let timeoutId = null;
+
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    const stdoutStream = new PassThrough();
+    const stderrStream = new PassThrough();
+
+    stdoutStream.on('data', (chunk) => stdoutChunks.push(chunk));
+    stderrStream.on('data', (chunk) => stderrChunks.push(chunk));
+
+    let stdoutEndPromise;
+    let stderrEndPromise;
+    let streamEndPromise;
 
     try {
+      stream = await container.attach({
+        stream: true,
+        stdin: true,
+        stdout: true,
+        stderr: true
+      });
+
+      streamEndPromise = new Promise((resolve) => {
+        let resolved = false;
+        const finish = () => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        };
+        stream.on('end', finish);
+        stream.on('close', finish);
+        stream.on('error', finish);
+      });
+
+      stdoutEndPromise = new Promise((resolve) => {
+        let resolved = false;
+        const finish = () => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        };
+        stdoutStream.on('end', finish);
+        stdoutStream.on('close', finish);
+        stdoutStream.on('error', finish);
+      });
+
+      stderrEndPromise = new Promise((resolve) => {
+        let resolved = false;
+        const finish = () => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        };
+        stderrStream.on('end', finish);
+        stderrStream.on('close', finish);
+        stderrStream.on('error', finish);
+      });
+
+      this.docker.modem.demuxStream(stream, stdoutStream, stderrStream);
+
       await container.start();
+
+      const stdinPayload = this.normalizeInput(input);
+
+      try {
+        if (stdinPayload.length > 0) {
+          stream.write(stdinPayload);
+        }
+      } finally {
+        stream.end();
+      }
 
       // Set up timeout promise
       const timeoutPromise = new Promise((resolve) => {
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           resolve({ timedOut: true });
         }, languageConfig.timeout);
       });
@@ -436,29 +509,34 @@ class DockerService {
         } catch (e) {
           logger.warn(`Failed to kill timed out container: ${e.message}`);
         }
+        await resultPromise.catch(() => {});
         error = 'Execution timed out';
         exitCode = 124;
       } else {
         exitCode = result.StatusCode || 0;
       }
 
-      // Get logs from container
-      const logs = await container.logs({
-        stdout: true,
-        stderr: true,
-        timestamps: false
-      });
+      clearTimeout(timeoutId);
 
-      // Parse logs
-      const parsedOutput = this.parseDockerStream(logs);
-      output = parsedOutput.stdout;
+      await Promise.all([streamEndPromise, stdoutEndPromise, stderrEndPromise]);
+
+      output = Buffer.concat(stdoutChunks).toString('utf-8');
       if (!result.timedOut) {
-        error = parsedOutput.stderr;
+        error = Buffer.concat(stderrChunks).toString('utf-8');
       }
 
     } catch (e) {
       error = `Container execution error: ${e.message}`;
       exitCode = 1;
+    } finally {
+      if (stream) {
+        try {
+          stream.end();
+        } catch (endError) {
+          logger.debug(`Stream end error: ${endError.message}`);
+        }
+      }
+      clearTimeout(timeoutId);
     }
 
     const executionTime = Date.now() - startTime;
