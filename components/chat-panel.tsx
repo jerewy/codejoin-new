@@ -248,9 +248,46 @@ export default function ChatPanel({
     [resolveAuthor]
   );
 
+  const formattedInitialMessages = useMemo(
+    () => initialMessages.map((record) => formatMessage(record)),
+    [initialMessages, formatMessage]
+  );
+
   useEffect(() => {
-    setMessages(initialMessages.map((record) => formatMessage(record)));
-  }, [initialMessages, formatMessage]);
+    setMessages((previous) => {
+      if (previous.length === 0) {
+        return formattedInitialMessages;
+      }
+
+      const initialMap = new Map(
+        formattedInitialMessages.map((message) => [message.id, message])
+      );
+
+      return previous.map((existing) => {
+        const refreshed = initialMap.get(existing.id);
+        if (refreshed) {
+          return {
+            ...refreshed,
+            isPending: existing.isPending && refreshed.isPending,
+          };
+        }
+
+        const resolvedAuthor = resolveAuthor(
+          existing.userId,
+          existing.authorName,
+          existing.authorAvatar,
+          existing.metadata
+        );
+
+        return {
+          ...existing,
+          authorName: resolvedAuthor.name,
+          authorAvatar:
+            resolvedAuthor.avatar ?? existing.authorAvatar ?? null,
+        };
+      });
+    });
+  }, [formattedInitialMessages, resolveAuthor]);
 
   useEffect(() => {
     if (!supabase || !conversationId) {
