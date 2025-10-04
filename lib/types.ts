@@ -73,6 +73,7 @@ export interface ProjectChatMessageWithAuthor {
   content: string;
   created_at: string;
   user_id: string | null;
+  role: string | null;
   user_full_name: string | null;
   user_avatar: string | null;
   metadata: Record<string, unknown> | null;

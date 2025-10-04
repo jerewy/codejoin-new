@@ -197,6 +197,7 @@ export default async function ProjectPage({
           content: string | null;
           created_at: string;
           metadata: Record<string, unknown> | null;
+          role?: string | null;
           user_id?: string | null;
         } & Record<string, unknown>;
 
@@ -244,6 +245,7 @@ export default async function ProjectPage({
             content: row.content ?? "",
             created_at: row.created_at,
             user_id: resolvedUserId ?? null,
+            role: row.role ?? null,
             user_full_name: profile?.full_name ?? null,
             user_avatar: profile?.user_avatar ?? null,
             metadata: row.metadata ?? null,
