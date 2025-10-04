@@ -1,5 +1,9 @@
 require('dotenv').config();
 
+delete process.env.DOCKER_HOST;                    // kill any injected tcp://localhost:2375
+process.env.DOCKER_SOCKET = '//./pipe/docker_engine'; // optional hint for your builder
+console.log('DOCKER_HOST in this process =', process.env.DOCKER_HOST || '<unset>');
+
 const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
