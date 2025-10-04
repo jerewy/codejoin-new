@@ -248,9 +248,67 @@ export default function ChatPanel({
     [resolveAuthor]
   );
 
+  const formattedInitialMessages = useMemo(
+    () => initialMessages.map((record) => formatMessage(record)),
+    [initialMessages, formatMessage]
+  );
+
   useEffect(() => {
-    setMessages(initialMessages.map((record) => formatMessage(record)));
-  }, [initialMessages, formatMessage]);
+    setMessages((previous) => {
+      if (previous.length === 0) {
+        return formattedInitialMessages;
+      }
+
+      const previousById = new Map(previous.map((msg) => [msg.id, msg]));
+      const next: DisplayMessage[] = [];
+      const seen = new Set<string>();
+
+      for (const formatted of formattedInitialMessages) {
+        const clientRef =
+          metadataString(formatted.metadata, "client_ref") ??
+          metadataString(formatted.metadata, "clientRef");
+
+        let existing = previousById.get(formatted.id);
+        if (!existing && clientRef) {
+          existing = previousById.get(clientRef);
+        }
+
+        if (existing) {
+          seen.add(existing.id);
+        }
+
+        seen.add(formatted.id);
+
+        next.push({
+          ...formatted,
+          isPending:
+            existing?.isPending && formatted.isPending ? true : formatted.isPending,
+        });
+      }
+
+      for (const existing of previous) {
+        if (seen.has(existing.id)) {
+          continue;
+        }
+
+        const resolvedAuthor = resolveAuthor(
+          existing.userId,
+          existing.authorName,
+          existing.authorAvatar,
+          existing.metadata
+        );
+
+        next.push({
+          ...existing,
+          authorName: resolvedAuthor.name,
+          authorAvatar:
+            resolvedAuthor.avatar ?? existing.authorAvatar ?? null,
+        });
+      }
+
+      return next;
+    });
+  }, [formattedInitialMessages, resolveAuthor]);
 
   useEffect(() => {
     if (!supabase || !conversationId) {
@@ -425,6 +483,16 @@ export default function ChatPanel({
       return;
     }
 
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.id === clientRef
+          ? {
+              ...msg,
+              isPending: false,
+            }
+          : msg
+      )
+    );
     setIsSending(false);
     setIsAskingAI(false);
   }, [
