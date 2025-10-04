@@ -193,7 +193,14 @@ class DockerService {
         });
 
         this.docker = new Docker(this.fallbackDockerOptions);
-
+        const modem = this.docker.modem;
+        logger.info('Docker modem target', {
+          host: modem.host,
+          port: modem.port,
+          socketPath: modem.socketPath,
+          protocol: modem.protocol
+        });
+        
         try {
           await this.docker.ping();
           logger.info('Docker fallback connection successful');
