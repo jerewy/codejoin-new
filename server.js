@@ -1,6 +1,7 @@
 // server.js - Custom Next.js server with Socket.IO
 const { createServer } = require('http')
 const { Server } = require('socket.io')
+const { createClient } = require('@supabase/supabase-js')
 const next = require('next')
 const DockerService = require('./code-execution-backend/src/services/dockerService')
 const {
@@ -26,6 +27,17 @@ const handler = app.getRequestHandler()
 const collaborators = new Map()
 const documentStates = new Map()
 const dockerService = new DockerService()
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabaseServerClient =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          persistSession: false,
+          detectSessionInUrl: false,
+        },
+      })
+    : null
 
 const CTRL_C = '\u0003'
 const CTRL_C_CHAR_CODE = CTRL_C.charCodeAt(0)
@@ -96,6 +108,122 @@ app.prepare().then(() => {
   })
 
   const terminalSessionRegistry = new Map()
+  const conversationProjectCache = new Map()
+
+  const resolveProjectIdForConversation = async (conversationId, metadata = null) => {
+    let parsedMetadata = metadata
+
+    if (metadata && typeof metadata === 'string') {
+      try {
+        parsedMetadata = JSON.parse(metadata)
+      } catch (error) {
+        parsedMetadata = null
+      }
+    }
+
+    if (!conversationId && !parsedMetadata) {
+      return null
+    }
+
+    const metadataProjectId =
+      parsedMetadata &&
+      typeof parsedMetadata === 'object' &&
+      parsedMetadata !== null &&
+      (parsedMetadata.project_id || parsedMetadata.projectId)
+
+    if (metadataProjectId) {
+      if (typeof metadataProjectId === 'string') {
+        return metadataProjectId
+      }
+      if (typeof metadataProjectId === 'number') {
+        return `${metadataProjectId}`
+      }
+    }
+
+    if (!conversationId) {
+      return null
+    }
+
+    if (conversationProjectCache.has(conversationId)) {
+      return conversationProjectCache.get(conversationId)
+    }
+
+    if (!supabaseServerClient) {
+      return null
+    }
+
+    try {
+      const { data, error } = await supabaseServerClient
+        .from('conversations')
+        .select('project_id')
+        .eq('id', conversationId)
+        .maybeSingle()
+
+      if (error) {
+        console.warn('Failed to resolve project for conversation', error.message)
+        return null
+      }
+
+      const projectId = data?.project_id || null
+      if (projectId) {
+        conversationProjectCache.set(conversationId, projectId)
+      }
+      return projectId
+    } catch (error) {
+      console.warn('Unexpected error resolving conversation project', error)
+      return null
+    }
+  }
+
+  const startChatRelay = () => {
+    if (!supabaseServerClient) {
+      return null
+    }
+
+    const channel = supabaseServerClient
+      .channel('server-chat-relay')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        async (payload) => {
+          const record = payload?.new
+          if (!record) {
+            return
+          }
+
+          const projectId = await resolveProjectIdForConversation(
+            record.conversation_id || null,
+            record.metadata || null
+          )
+
+          if (!projectId) {
+            return
+          }
+
+          io.to(projectId).emit('chat:message', {
+            projectId,
+            conversationId: record.conversation_id || null,
+            message: record,
+          })
+        }
+      )
+
+    channel
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Supabase chat relay subscribed')
+        } else if (status === 'CHANNEL_ERROR') {
+          console.warn('Supabase chat relay channel error')
+        }
+      })
+      .catch((error) => {
+        console.warn('Supabase chat relay subscription failed', error)
+      })
+
+    return channel
+  }
+
+  const chatRelayChannel = startChatRelay()
 
   const emitToSocket = (socketId, event, payload) => {
     if (!socketId) {
@@ -622,6 +750,24 @@ app.prepare().then(() => {
       })
     })
 
+    socket.on('chat:message', (data = {}) => {
+      const { projectId, conversationId = null, message } = data || {}
+
+      if (!projectId || !message || typeof projectId !== 'string') {
+        return
+      }
+
+      if (collaborators.has(socket.id)) {
+        collaborators.get(socket.id).lastActivity = new Date()
+      }
+
+      socket.to(projectId).emit('chat:message', {
+        projectId,
+        conversationId,
+        message
+      })
+    })
+
     // Handle disconnect
     socket.on('disconnect', () => {
       console.log('User disconnected:', socket.id)
@@ -659,6 +805,23 @@ app.prepare().then(() => {
       })
     })
   })
+
+  const stopChatRelay = () => {
+    if (chatRelayChannel && typeof chatRelayChannel.unsubscribe === 'function') {
+      chatRelayChannel
+        .unsubscribe()
+        .catch((error) =>
+          console.warn('Failed to unsubscribe chat relay channel', error)
+        )
+    }
+  }
+
+  const handleShutdown = () => {
+    stopChatRelay()
+  }
+
+  process.on('SIGTERM', handleShutdown)
+  process.on('SIGINT', handleShutdown)
 
   httpServer.listen(port, () => {
     console.log(`> Ready on http://${hostname}:${port}`)
