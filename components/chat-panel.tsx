@@ -259,17 +259,36 @@ export default function ChatPanel({
         return formattedInitialMessages;
       }
 
-      const initialMap = new Map(
-        formattedInitialMessages.map((message) => [message.id, message])
-      );
+      const previousById = new Map(previous.map((msg) => [msg.id, msg]));
+      const next: DisplayMessage[] = [];
+      const seen = new Set<string>();
 
-      return previous.map((existing) => {
-        const refreshed = initialMap.get(existing.id);
-        if (refreshed) {
-          return {
-            ...refreshed,
-            isPending: existing.isPending && refreshed.isPending,
-          };
+      for (const formatted of formattedInitialMessages) {
+        const clientRef =
+          metadataString(formatted.metadata, "client_ref") ??
+          metadataString(formatted.metadata, "clientRef");
+
+        let existing = previousById.get(formatted.id);
+        if (!existing && clientRef) {
+          existing = previousById.get(clientRef);
+        }
+
+        if (existing) {
+          seen.add(existing.id);
+        }
+
+        seen.add(formatted.id);
+
+        next.push({
+          ...formatted,
+          isPending:
+            existing?.isPending && formatted.isPending ? true : formatted.isPending,
+        });
+      }
+
+      for (const existing of previous) {
+        if (seen.has(existing.id)) {
+          continue;
         }
 
         const resolvedAuthor = resolveAuthor(
@@ -279,13 +298,15 @@ export default function ChatPanel({
           existing.metadata
         );
 
-        return {
+        next.push({
           ...existing,
           authorName: resolvedAuthor.name,
           authorAvatar:
             resolvedAuthor.avatar ?? existing.authorAvatar ?? null,
-        };
-      });
+        });
+      }
+
+      return next;
     });
   }, [formattedInitialMessages, resolveAuthor]);
 
