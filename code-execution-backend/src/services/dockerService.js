@@ -436,6 +436,7 @@ class DockerService {
     let error = '';
     let exitCode = 0;
     let stdinStream = null;
+    let stdinStreamClosed = false;
 
     if (typeof container.attach === 'function') {
       try {
@@ -525,7 +526,8 @@ class DockerService {
       const resultPromise = container.wait();
 
       if (stdinStream) {
-        await this.writeInputToStream(stdinStream, input);
+        stdinStreamClosed =
+          (await this.writeInputToStream(stdinStream, input)) === true;
       }
 
       const result = await Promise.race([resultPromise, timeoutPromise]);
@@ -556,14 +558,15 @@ class DockerService {
       error = `Container execution error: ${e.message}`;
       exitCode = 1;
     } finally {
-      if (stream) {
+      if (stdinStream && !stdinStreamClosed && typeof stdinStream.end === 'function') {
         try {
-          stream.end();
+          stdinStream.end();
         } catch (endError) {
-          logger.debug(`Stream end error: ${endError.message}`);
+          logger.warn(
+            `Failed to close container stdin after run error: ${endError.message}`
+          );
         }
       }
-      clearTimeout(timeoutId);
     }
 
     const executionTime = Date.now() - startTime;
@@ -594,7 +597,7 @@ class DockerService {
             `Failed to close container stdin: ${endError.message}`
           );
         }
-        resolve();
+        resolve(true);
       };
 
       if (!normalizedInput) {

@@ -109,4 +109,31 @@ describe('DockerService runContainer stdin handling', () => {
       expect.stringContaining('Failed to write to container stdin')
     );
   });
+
+  it('closes stdin in finally when writeInputToStream rejects', async () => {
+    const container = createMockContainer({
+      write: jest.fn(),
+      end: jest.fn()
+    });
+    const failure = new Error('write helper failure');
+    const writeSpy = jest
+      .spyOn(service, 'writeInputToStream')
+      .mockRejectedValue(failure);
+
+    const result = await service.runContainer(
+      container,
+      languageConfig,
+      'some data'
+    );
+
+    expect(container.stream.end).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(
+      expect.objectContaining({
+        exitCode: 1,
+        error: expect.stringContaining(failure.message)
+      })
+    );
+
+    writeSpy.mockRestore();
+  });
 });
