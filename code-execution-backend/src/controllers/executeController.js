@@ -20,14 +20,14 @@ const MAX_INPUT_SIZE_BYTES = Number.isFinite(envInputLimit) ? envInputLimit : DE
 const executeSchema = Joi.object({
   language: Joi.string().required(),
   code: Joi.string().max(MAX_CODE_SIZE_BYTES).required(),
-  input: Joi.string().max(MAX_INPUT_SIZE_BYTES).allow('').optional().default(''),
+  stdin: Joi.string().max(MAX_INPUT_SIZE_BYTES).allow('').optional().default(''),
   timeout: Joi.number().min(1000).max(30000).optional()
 }).custom((value, helpers) => {
   if (Buffer.byteLength(value.code || '', 'utf8') > MAX_CODE_SIZE_BYTES) {
     return helpers.error('any.custom', { message: 'Code exceeds maximum allowed size' });
   }
 
-  if (Buffer.byteLength(value.input || '', 'utf8') > MAX_INPUT_SIZE_BYTES) {
+  if (Buffer.byteLength(value.stdin || '', 'utf8') > MAX_INPUT_SIZE_BYTES) {
     return helpers.error('any.custom', { message: 'Input exceeds maximum allowed size' });
   }
 
@@ -40,7 +40,13 @@ class ExecuteController {
 
     try {
       // Validate request
-      const { error, value } = executeSchema.validate(req.body);
+      const requestPayload = { ...req.body };
+
+      if (requestPayload.stdin === undefined && typeof requestPayload.input === 'string') {
+        requestPayload.stdin = requestPayload.input;
+      }
+
+      const { error, value } = executeSchema.validate(requestPayload);
       if (error) {
         return res.status(400).json({
           success: false,
@@ -49,7 +55,7 @@ class ExecuteController {
         });
       }
 
-      const { language, code, input, timeout } = value;
+      const { language, code, stdin, timeout } = value;
 
       // Check if language is supported
       if (!isLanguageSupported(language)) {
@@ -71,12 +77,12 @@ class ExecuteController {
         requestId,
         language,
         codeLength: code.length,
-        inputLength: input.length,
+        stdinLength: stdin.length,
         timeout: languageConfig.timeout
       });
 
       // Execute code
-      const result = await dockerService.executeCode(languageConfig, code, input);
+      const result = await dockerService.executeCode(languageConfig, code, stdin);
 
       logger.info('Code execution completed', {
         requestId,
