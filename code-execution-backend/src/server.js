@@ -82,19 +82,47 @@ app.use(errorHandler);
 
 // Initialize Terminal Service for Socket.IO
 const TerminalService = require('./services/terminalService');
+const { DockerUnavailableError } = TerminalService;
 const terminalService = new TerminalService(io);
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   logger.info('Client connected to terminal service', { socketId: socket.id });
-  
+
+  if (!socket.data) {
+    socket.data = {};
+  }
+
   // Handle terminal session lifecycle
   socket.on('terminal:start', async (data) => {
     try {
       const { projectId, userId, language } = data;
       await terminalService.startSession(socket, { projectId, userId, language });
+      socket.data.dockerUnavailableNotified = false;
     } catch (error) {
-      logger.error('Failed to start terminal session', { error: error.message });
+      const shouldLog = error && error.shouldLog !== false;
+
+      if (error instanceof DockerUnavailableError) {
+        if (shouldLog) {
+          logger.error('Failed to start terminal session', { error: error.message });
+        } else {
+          logger.debug('Docker unavailable while starting terminal session', { message: error.message });
+        }
+
+        if (!socket.data.dockerUnavailableNotified) {
+          socket.emit('terminal:error', { message: error.message, code: error.code });
+          socket.data.dockerUnavailableNotified = true;
+        }
+
+        return;
+      }
+
+      if (shouldLog) {
+        logger.error('Failed to start terminal session', { error: error.message });
+      } else {
+        logger.debug('Suppressed terminal session error log', { message: error.message });
+      }
+
       socket.emit('terminal:error', { message: error.message });
     }
   });

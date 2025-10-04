@@ -1,6 +1,15 @@
-﻿const { getLanguageConfig, isLanguageSupported } = require('../config/languages');
+const { getLanguageConfig, isLanguageSupported } = require('../config/languages');
 const DockerService = require('./dockerService');
 const logger = require('../utils/logger');
+
+class DockerUnavailableError extends Error {
+  constructor(message, { shouldLog = true } = {}) {
+    super(message);
+    this.name = 'DockerUnavailableError';
+    this.code = 'DOCKER_UNAVAILABLE';
+    this.shouldLog = shouldLog;
+  }
+}
 
 const DEFAULT_LANGUAGE = 'javascript';
 const CTRL_C = '\u0003';
@@ -61,6 +70,7 @@ class TerminalService {
     this.dockerService = new DockerService();
     this.sessions = new Map();
     this.socketSessions = new Map();
+    this.hasLoggedDockerUnavailable = false;
   }
 
   async startSession(socket, { projectId, userId, language }) {
@@ -92,7 +102,23 @@ class TerminalService {
       throw new Error(`Unable to load configuration for language '${languageKey}'`);
     }
 
-    const { sessionId, stream } = await this.dockerService.createInteractiveContainer(languageConfig);
+    let sessionId;
+    let stream;
+
+    try {
+      ({ sessionId, stream } = await this.dockerService.createInteractiveContainer(languageConfig));
+      this.hasLoggedDockerUnavailable = false;
+    } catch (error) {
+      if (this.isDockerUnavailableError(error)) {
+        const message = error.message || 'Docker is not running or not accessible. Please start Docker Desktop and try again.';
+        const shouldLog = !this.hasLoggedDockerUnavailable;
+        this.hasLoggedDockerUnavailable = true;
+        throw new DockerUnavailableError(message, { shouldLog });
+      }
+
+      throw error;
+    }
+
     stream.setEncoding('utf-8');
 
     const session = {
@@ -282,6 +308,22 @@ class TerminalService {
 
     await this.dockerService.cleanupAll();
   }
+
+  isDockerUnavailableError(error) {
+    if (!error) {
+      return false;
+    }
+
+    const message = typeof error.message === 'string' ? error.message.toLowerCase() : '';
+    if (message.includes('docker connection failed') || message.includes('docker is not running')) {
+      return true;
+    }
+
+    const code = typeof error.code === 'string' ? error.code.toUpperCase() : '';
+    return code === 'ECONNREFUSED' || code === 'ENOENT';
+  }
 }
+
+TerminalService.DockerUnavailableError = DockerUnavailableError;
 
 module.exports = TerminalService;
