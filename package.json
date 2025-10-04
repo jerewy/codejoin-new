@@ -52,6 +52,7 @@
     "embla-carousel-react": "8.5.1",
     "input-otp": "1.4.1",
     "lucide-react": "^0.454.0",
+    "jszip": "^3.10.1",
     "monaco-editor": "^0.53.0",
     "monaco-editor-webpack-plugin": "^7.1.0",
     "monaco-emmet": "^3.1.1",
