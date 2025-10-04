@@ -446,10 +446,10 @@ export default function ProjectExportModal({
           </div>
 
           {/* Export Options */}
-          <div className="w-80 flex flex-col">
+          <div className="w-80 flex flex-col min-h-0">
             <h3 className="font-medium mb-4">Export Options</h3>
 
-            <div className="space-y-4 flex-1">
+            <div className="space-y-4 flex-1 overflow-y-auto pr-1 min-h-0">
               {/* Format */}
               <div className="space-y-2">
                 <Label>Format</Label>
@@ -556,7 +556,7 @@ export default function ProjectExportModal({
             </div>
 
             {/* Actions */}
-            <div className="flex flex-col gap-2 pt-4">
+            <div className="flex flex-col gap-2 mt-auto border-t border-border/60 pt-4">
               <Button
                 onClick={createDownload}
                 disabled={selectedNodes.length === 0 || isExporting}
