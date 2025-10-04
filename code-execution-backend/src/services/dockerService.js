@@ -212,6 +212,7 @@ class DockerService {
       name: `code-exec-${containerId}`,
       AttachStdout: true,
       AttachStderr: true,
+      AttachStdin: true,
       Tty: false,
       OpenStdin: true,
       StdinOnce: true,
@@ -263,11 +264,11 @@ class DockerService {
         commandParts.push(compileCmd);
       }
 
-      if (base64Input) {
-        commandParts.push(`echo '${base64Input}' | base64 -d > /tmp/input.txt`);
-      }
+      const finalRunCommand = base64Input
+        ? `echo '${base64Input}' | base64 -d | ${runCommand}`
+        : runCommand;
 
-      commandParts.push(runCommand);
+      commandParts.push(finalRunCommand);
 
       containerConfig.Cmd = ['sh', '-c', commandParts.join(' && ')];
     }
@@ -523,18 +524,12 @@ class DockerService {
 
     if (languageConfig.type === 'interpreted') {
       const needsSourceArg = !languageConfig.runCommand.includes('/tmp/');
-      const commandWithSource = needsSourceArg
+      return needsSourceArg
         ? `${languageConfig.runCommand} /tmp/${fileName}`
         : languageConfig.runCommand;
-      return hasInput
-        ? `cat /tmp/input.txt | ${commandWithSource}`
-        : commandWithSource;
     }
 
-    const compiledRunCmd = languageConfig.runCommand;
-    return hasInput
-      ? `cat /tmp/input.txt | ${compiledRunCmd}`
-      : compiledRunCmd;
+    return languageConfig.runCommand;
   }
 
   normalizeInput(input) {
