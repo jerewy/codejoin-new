@@ -92,14 +92,25 @@ class DockerService {
       // Test Docker connection first
       await this.testConnection();
 
+      const normalizedInput = this.normalizeInput(input);
+
       // Create container with security restrictions
-      container = await this.createSecureContainer(languageConfig, code, containerId, input);
+      container = await this.createSecureContainer(
+        languageConfig,
+        code,
+        containerId,
+        normalizedInput
+      );
 
       // Store reference for cleanup
       this.runningContainers.set(containerId, container);
 
       // Start container and capture output
-      const result = await this.runContainer(container, languageConfig);
+      const result = await this.runContainer(
+        container,
+        languageConfig,
+        normalizedInput
+      );
       const success = result.exitCode === 0;
 
       return {
@@ -410,11 +421,29 @@ class DockerService {
     await container.putArchive(pack, { path: '/tmp' });
   }
 
-  async runContainer(container, languageConfig) {
+  async runContainer(container, languageConfig, input = '') {
     const startTime = Date.now();
     let output = '';
     let error = '';
     let exitCode = 0;
+    let stdinStream = null;
+    let stdinStreamClosed = false;
+
+    if (typeof container.attach === 'function') {
+      try {
+        stdinStream = await container.attach({
+          stream: true,
+          stdin: true,
+          stdout: true,
+          stderr: true,
+          tty: false
+        });
+      } catch (attachError) {
+        logger.warn(
+          `Failed to attach to container stdin: ${attachError.message}`
+        );
+      }
+    }
 
     try {
       await container.start();
@@ -428,6 +457,12 @@ class DockerService {
 
       // Wait for container to complete or timeout
       const resultPromise = container.wait();
+
+      if (stdinStream) {
+        stdinStreamClosed =
+          (await this.writeInputToStream(stdinStream, input)) === true;
+      }
+
       const result = await Promise.race([resultPromise, timeoutPromise]);
 
       if (result.timedOut) {
@@ -459,6 +494,16 @@ class DockerService {
     } catch (e) {
       error = `Container execution error: ${e.message}`;
       exitCode = 1;
+    } finally {
+      if (stdinStream && !stdinStreamClosed && typeof stdinStream.end === 'function') {
+        try {
+          stdinStream.end();
+        } catch (endError) {
+          logger.warn(
+            `Failed to close container stdin after run error: ${endError.message}`
+          );
+        }
+      }
     }
 
     const executionTime = Date.now() - startTime;
@@ -469,6 +514,50 @@ class DockerService {
       exitCode,
       executionTime
     };
+  }
+
+  async writeInputToStream(stream, input) {
+    const normalizedInput = this.normalizeInput(input);
+
+    return new Promise((resolve) => {
+      let finalized = false;
+
+      const finalize = () => {
+        if (finalized) {
+          return;
+        }
+        finalized = true;
+        try {
+          stream.end();
+        } catch (endError) {
+          logger.warn(
+            `Failed to close container stdin: ${endError.message}`
+          );
+        }
+        resolve(true);
+      };
+
+      if (!normalizedInput) {
+        finalize();
+        return;
+      }
+
+      try {
+        stream.write(normalizedInput, (writeError) => {
+          if (writeError) {
+            logger.warn(
+              `Failed to write to container stdin: ${writeError.message}`
+            );
+          }
+          finalize();
+        });
+      } catch (writeError) {
+        logger.warn(
+          `Failed to write to container stdin: ${writeError.message}`
+        );
+        finalize();
+      }
+    });
   }
 
   parseDockerStream(buffer) {
