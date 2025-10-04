@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Play, Save, Share2, Settings, Download, MoreVertical } from "lucide-react";
+import Link from "next/link";
 import ProjectSharingModal from "./project-sharing-modal";
 import ProjectExportModal from "./project-export-modal";
 
@@ -61,10 +62,23 @@ export default function ProjectActions({
               Export Project
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <Settings className="h-4 w-4 mr-2" />
-              Project Settings
-            </DropdownMenuItem>
+            {projectId ? (
+              <DropdownMenuItem asChild>
+                <Link
+                  href={`/project/${projectId}/settings`}
+                  className="flex w-full items-center"
+                  prefetch
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Project Settings
+                </Link>
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem disabled>
+                <Settings className="h-4 w-4 mr-2" />
+                Project Settings
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
