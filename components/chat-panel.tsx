@@ -462,6 +462,16 @@ export default function ChatPanel({
       return;
     }
 
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.id === clientRef
+          ? {
+              ...msg,
+              isPending: false,
+            }
+          : msg
+      )
+    );
     setIsSending(false);
     setIsAskingAI(false);
   }, [
