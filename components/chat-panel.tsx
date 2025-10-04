@@ -407,6 +407,10 @@ export default function ChatPanel({
       },
     };
 
+    if (selfIdentity?.userId) {
+      payload.user_id = selfIdentity.userId;
+    }
+
     const { error } = await supabase.from("messages").insert(payload);
 
     if (error) {
