@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Download, Folder, Code, Database, Image, File } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 interface ProjectExportModalProps {
@@ -559,11 +560,17 @@ export default function ProjectExportModal({
               <Button
                 onClick={createDownload}
                 disabled={selectedNodes.length === 0 || isExporting}
-                className="w-full"
+                className={cn(
+                  "w-full justify-center font-semibold text-slate-950 bg-gradient-to-r from-orange-500 via-orange-400 to-amber-300",
+                  "shadow-[0_22px_45px_-20px_rgba(249,115,22,0.65)] border border-orange-500/40",
+                  "hover:from-orange-400 hover:via-orange-300 hover:to-amber-200 hover:shadow-[0_25px_55px_-18px_rgba(249,115,22,0.7)]",
+                  "focus-visible:ring-orange-400/60 focus-visible:border-orange-400 focus-visible:ring-offset-2",
+                  isExporting && "opacity-90"
+                )}
               >
                 {isExporting ? (
                   <>
-                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    <div className="h-4 w-4 rounded-full border-2 border-white/80 border-t-transparent animate-spin mr-2" />
                     Exporting...
                   </>
                 ) : (
