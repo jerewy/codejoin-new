@@ -1,63 +1,52 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
-import { Progress } from "@/components/ui/progress"
+import { useMemo, useState } from "react";
+import JSZip from "jszip";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue
-} from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import {
-  Download,
-  Archive,
-  FileText,
-  Folder,
-  Check,
-  Settings,
-  Code,
-  Database,
-  Image,
-  File
-} from "lucide-react"
-import { toast } from "sonner"
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Download, Folder, Code, Database, Image, File } from "lucide-react";
+import { toast } from "sonner";
 
 interface ProjectExportModalProps {
-  projectId: string
-  projectName: string
+  projectId: string;
+  projectName: string;
   files: Array<{
-    id: string
-    name: string
-    type: 'file' | 'folder'
-    content?: string | null
-    language?: string | null
-    parent_id?: string | null
-  }>
-  isOpen: boolean
-  onOpenChange: (open: boolean) => void
+    id: string;
+    name: string;
+    type: "file" | "folder";
+    content?: string | null;
+    language?: string | null;
+    parent_id?: string | null;
+  }>;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 interface ExportOptions {
-  format: 'zip' | 'tar' | 'folder'
-  includeMetadata: boolean
-  includeHistory: boolean
-  includeSettings: boolean
-  selectedFiles: string[]
-  compressionLevel: 'none' | 'fast' | 'best'
+  format: "zip" | "json";
+  includeMetadata: boolean;
+  includeHistory: boolean;
+  includeSettings: boolean;
+  selectedFiles: string[];
+  compressionLevel: "none" | "fast" | "best";
 }
 
 export default function ProjectExportModal({
@@ -68,175 +57,322 @@ export default function ProjectExportModal({
   onOpenChange,
 }: ProjectExportModalProps) {
   const [exportOptions, setExportOptions] = useState<ExportOptions>({
-    format: 'zip',
+    format: "zip",
     includeMetadata: true,
     includeHistory: false,
     includeSettings: true,
-    selectedFiles: files.map(f => f.id),
-    compressionLevel: 'fast'
-  })
-  const [isExporting, setIsExporting] = useState(false)
-  const [exportProgress, setExportProgress] = useState(0)
+    selectedFiles: files.map((f) => f.id),
+    compressionLevel: "fast",
+  });
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+
+  /**
+   * Memoize a quick lookup map so we can rebuild folder paths while exporting.
+   * Having this map prevents repeatedly searching the array every time a file
+   * needs to discover who its parent folder is.
+   */
+  const filesById = useMemo(() => {
+    return new Map(files.map((file) => [file.id, file]));
+  }, [files]);
+
+  /**
+   * Only keep nodes that the user explicitly checked in the UI.
+   * We filter against the `files` prop rather than the memoised map so that
+   * folder children are always sourced from the most up-to-date data.
+   */
+  const selectedNodes = useMemo(
+    () => files.filter((file) => exportOptions.selectedFiles.includes(file.id)),
+    [files, exportOptions.selectedFiles]
+  );
 
   const getFileIcon = (file: any) => {
-    if (file.type === 'folder') {
-      return <Folder className="h-4 w-4" />
+    if (file.type === "folder") {
+      return <Folder className="h-4 w-4" />;
     }
 
-    const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
+    const ext = file.name.toLowerCase().substring(file.name.lastIndexOf("."));
 
-    if (['.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.cpp', '.c', '.cs', '.php', '.rb', '.go', '.rs'].includes(ext)) {
-      return <Code className="h-4 w-4" />
+    if (
+      [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".py",
+        ".java",
+        ".cpp",
+        ".c",
+        ".cs",
+        ".php",
+        ".rb",
+        ".go",
+        ".rs",
+      ].includes(ext)
+    ) {
+      return <Code className="h-4 w-4" />;
     }
-    if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico'].includes(ext)) {
-      return <Image className="h-4 w-4" />
+    if ([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico"].includes(ext)) {
+      return <Image className="h-4 w-4" />;
     }
-    if (ext === '.sql') {
-      return <Database className="h-4 w-4" />
+    if (ext === ".sql") {
+      return <Database className="h-4 w-4" />;
     }
 
-    return <File className="h-4 w-4" />
-  }
+    return <File className="h-4 w-4" />;
+  };
 
-  const formatFileSize = (files: any[]): string => {
-    const totalSize = files.reduce((acc, file) => {
-      if (file.content) {
-        return acc + new Blob([file.content]).size
+  /**
+   * Calculate a rough size estimate so users know how big their download will be.
+   * We prefer TextEncoder here because it mimics how strings will actually be
+   * stored inside the Blob created for the download (UTF-8 bytes).
+   */
+  const formatFileSize = (nodes: typeof files): string => {
+    const totalSize = nodes.reduce((acc, node) => {
+      if (node.type === "file" && typeof node.content === "string") {
+        return acc + new TextEncoder().encode(node.content).byteLength;
       }
-      return acc + 1024 // Estimate for folders
-    }, 0)
 
-    if (totalSize === 0) return '0 Bytes'
-    const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(totalSize) / Math.log(k))
-    return parseFloat((totalSize / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
+      // Folders do not carry content, so we add a tiny overhead to avoid 0B results.
+      return acc + 256;
+    }, 0);
 
-  const selectedFiles = files.filter(f => exportOptions.selectedFiles.includes(f.id))
+    if (totalSize <= 0) {
+      return "0 Bytes";
+    }
+
+    const units = ["Bytes", "KB", "MB", "GB"] as const;
+    const exponent = Math.min(Math.floor(Math.log(totalSize) / Math.log(1024)), units.length - 1);
+    const value = totalSize / Math.pow(1024, exponent);
+    return `${value.toFixed(value > 100 ? 0 : 2)} ${units[exponent]}`;
+  };
 
   const toggleFileSelection = (fileId: string) => {
-    setExportOptions(prev => ({
+    setExportOptions((prev) => ({
       ...prev,
       selectedFiles: prev.selectedFiles.includes(fileId)
-        ? prev.selectedFiles.filter(id => id !== fileId)
-        : [...prev.selectedFiles, fileId]
-    }))
-  }
+        ? prev.selectedFiles.filter((id) => id !== fileId)
+        : [...prev.selectedFiles, fileId],
+    }));
+  };
 
   const selectAllFiles = () => {
-    setExportOptions(prev => ({
+    setExportOptions((prev) => ({
       ...prev,
-      selectedFiles: files.map(f => f.id)
-    }))
-  }
+      selectedFiles: files.map((f) => f.id),
+    }));
+  };
 
   const deselectAllFiles = () => {
-    setExportOptions(prev => ({
+    setExportOptions((prev) => ({
       ...prev,
-      selectedFiles: []
-    }))
-  }
+      selectedFiles: [],
+    }));
+  };
 
-  const createZipFile = async () => {
-    setIsExporting(true)
-    setExportProgress(0)
+  /**
+   * Utility helper to resolve the full path of a node, including all parent folders.
+   * Example: a file named "App.tsx" inside "src/components" becomes
+   * ["src", "components", "App.tsx"]
+   */
+  const getPathSegments = (nodeId: string): string[] => {
+    const segments: string[] = [];
+    let current = filesById.get(nodeId);
+    const visited = new Set<string>();
+
+    while (current && !visited.has(current.id)) {
+      segments.unshift(current.name);
+      visited.add(current.id);
+      if (!current.parent_id) {
+        break;
+      }
+      current = filesById.get(current.parent_id);
+    }
+
+    return segments;
+  };
+
+  const downloadBlob = (blob: Blob, extension: "zip" | "json") => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${projectName.replace(/[^a-zA-Z0-9-_]/g, "_")}.${extension}`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  };
+
+  const createDownload = async () => {
+    if (selectedNodes.length === 0) {
+      toast.error("Select at least one file or folder to export");
+      return;
+    }
+
+    setIsExporting(true);
+    setExportProgress(0);
 
     try {
-      // Simulate export progress
-      const totalSteps = selectedFiles.length + 3 // Files + metadata + compression + finalization
-      let completedSteps = 0
+      if (exportOptions.format === "json") {
+        // JSON export keeps the structure human-readable for quick inspection.
+        const exportPayload = {
+          project: {
+            id: projectId,
+            name: projectName,
+            exportedAt: new Date().toISOString(),
+          },
+          files: selectedNodes.map((node) => ({
+            id: node.id,
+            name: node.name,
+            type: node.type,
+            parent_id: node.parent_id,
+            language: node.language,
+            content: node.type === "file" ? node.content ?? "" : undefined,
+            path: getPathSegments(node.id),
+          })),
+          options: exportOptions,
+        };
 
-      // Create a simple zip-like structure (in a real implementation, you'd use JSZip or similar)
-      const exportData: any = {
-        project: {
-          id: projectId,
-          name: projectName,
-          exportedAt: new Date().toISOString(),
-          version: '1.0.0'
-        },
-        files: {},
-        metadata: exportOptions.includeMetadata ? {
-          totalFiles: selectedFiles.length,
-          languages: [...new Set(selectedFiles.map(f => f.language).filter(Boolean))],
-          exportOptions
-        } : undefined,
-        settings: exportOptions.includeSettings ? {
-          theme: 'dark',
-          fontSize: 14,
-          tabSize: 2
-        } : undefined
-      }
-
-      // Process each selected file
-      for (const file of selectedFiles) {
-        await new Promise(resolve => setTimeout(resolve, 100)) // Simulate processing time
-
-        if (file.type === 'file') {
-          exportData.files[file.name] = {
-            content: file.content || '',
-            language: file.language,
-            type: 'file'
-          }
-        } else {
-          exportData.files[file.name] = {
-            type: 'folder',
-            children: []
-          }
+        if (!exportOptions.includeMetadata) {
+          delete (exportPayload as any).options;
         }
 
-        completedSteps++
-        setExportProgress((completedSteps / totalSteps) * 100)
+        const blob = new Blob([JSON.stringify(exportPayload, null, 2)], {
+          type: "application/json",
+        });
+        downloadBlob(blob, "json");
+        setExportProgress(100);
+        toast.success(`Project "${projectName}" exported successfully!`);
+        onOpenChange(false);
+        return;
       }
 
-      // Add metadata
-      if (exportOptions.includeHistory) {
-        exportData.history = {
-          executions: [
-            {
-              id: '1',
-              fileName: 'example.js',
-              timestamp: new Date(Date.now() - 3600000).toISOString(),
-              status: 'success',
-              output: 'Hello World!'
+      const zip = new JSZip();
+      const folderCache = new Map<string, JSZip>();
+      folderCache.set("", zip);
+
+      const ensureFolder = (pathSegments: string[]) => {
+        let currentPath = "";
+        let folder = zip;
+
+        for (const segment of pathSegments) {
+          currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+          if (!folderCache.has(currentPath)) {
+            const nextFolder = folder.folder(segment);
+            if (nextFolder) {
+              folderCache.set(currentPath, nextFolder);
+              folder = nextFolder;
             }
-          ]
+          } else {
+            folder = folderCache.get(currentPath)!;
+          }
         }
+
+        return folder;
+      };
+
+      // Reserve the first 40% of the progress bar for iterating the selection.
+      const stepWeight = selectedNodes.length > 0 ? 40 / selectedNodes.length : 40;
+      let progress = 0;
+
+      for (const node of selectedNodes) {
+        const path = getPathSegments(node.id);
+
+        if (node.type === "folder") {
+          ensureFolder(path);
+        } else {
+          const folderPath = path.slice(0, -1);
+          const folder = ensureFolder(folderPath);
+          const fileName = path[path.length - 1];
+          folder.file(fileName, node.content ?? "");
+        }
+
+        progress += stepWeight;
+        setExportProgress(Math.min(progress, 40));
       }
-      completedSteps++
-      setExportProgress((completedSteps / totalSteps) * 100)
 
-      // Simulate compression
-      await new Promise(resolve => setTimeout(resolve, 500))
-      completedSteps++
-      setExportProgress((completedSteps / totalSteps) * 100)
+      if (exportOptions.includeMetadata) {
+        zip.file(
+          "metadata.json",
+          JSON.stringify(
+            {
+              projectId,
+              projectName,
+              exportedAt: new Date().toISOString(),
+              selectedCount: selectedNodes.length,
+              languages: [
+                ...new Set(
+                  selectedNodes
+                    .map((node) => node.language)
+                    .filter((language): language is string => Boolean(language))
+                ),
+              ],
+            },
+            null,
+            2
+          )
+        );
+      }
 
-      // Create and download the file
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-        type: exportOptions.format === 'zip' ? 'application/zip' : 'application/json'
-      })
+      if (exportOptions.includeSettings) {
+        zip.file(
+          "settings.json",
+          JSON.stringify(
+            {
+              compressionLevel: exportOptions.compressionLevel,
+              includeHistory: exportOptions.includeHistory,
+            },
+            null,
+            2
+          )
+        );
+      }
 
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${projectName.replace(/[^a-zA-Z0-9]/g, '_')}.${exportOptions.format === 'zip' ? 'zip' : 'json'}`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      if (exportOptions.includeHistory) {
+        zip.file(
+          "history.json",
+          JSON.stringify(
+            {
+              exportedAt: new Date().toISOString(),
+              executions: [],
+            },
+            null,
+            2
+          )
+        );
+      }
 
-      completedSteps++
-      setExportProgress(100)
+      const compression = exportOptions.compressionLevel === "none" ? "STORE" : "DEFLATE";
+      const compressionOptions =
+        compression === "DEFLATE"
+          ? { level: exportOptions.compressionLevel === "best" ? 9 : 1 }
+          : undefined;
 
-      toast.success(`Project "${projectName}" exported successfully!`)
-      onOpenChange(false)
+      const blob = await zip.generateAsync(
+        {
+          type: "blob",
+          compression,
+          compressionOptions,
+        },
+        (metadata) => {
+          // Use the remaining 60% of the progress bar for compression feedback.
+          setExportProgress(40 + (metadata.percent * 0.6));
+        }
+      );
+
+      downloadBlob(blob, "zip");
+      setExportProgress(100);
+      toast.success(`Project "${projectName}" exported successfully!`);
+      onOpenChange(false);
     } catch (error) {
-      toast.error('Export failed: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      toast.error(
+        "Export failed: " + (error instanceof Error ? error.message : "Unknown error")
+      );
     } finally {
-      setIsExporting(false)
-      setExportProgress(0)
+      setIsExporting(false);
+      setExportProgress(0);
     }
-  }
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -255,7 +391,7 @@ export default function ProjectExportModal({
           {/* File Selection */}
           <div className="flex-1 flex flex-col">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-medium">Select Files ({selectedFiles.length}/{files.length})</h3>
+              <h3 className="font-medium">Select Files ({selectedNodes.length}/{files.length})</h3>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
@@ -302,8 +438,8 @@ export default function ProjectExportModal({
 
             <div className="mt-4 p-3 bg-muted rounded-lg">
               <div className="text-sm text-muted-foreground">
-                <p>Selected: {selectedFiles.length} files</p>
-                <p>Estimated size: {formatFileSize(selectedFiles)}</p>
+                <p>Selected: {selectedNodes.length} files</p>
+                <p>Estimated size: {formatFileSize(selectedNodes)}</p>
               </div>
             </div>
           </div>
@@ -318,8 +454,8 @@ export default function ProjectExportModal({
                 <Label>Format</Label>
                 <Select
                   value={exportOptions.format}
-                  onValueChange={(value: 'zip' | 'tar' | 'folder') =>
-                    setExportOptions(prev => ({ ...prev, format: value }))
+                  onValueChange={(value: "zip" | "json") =>
+                    setExportOptions((prev) => ({ ...prev, format: value }))
                   }
                   disabled={isExporting}
                 >
@@ -328,8 +464,7 @@ export default function ProjectExportModal({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="zip">ZIP Archive</SelectItem>
-                    <SelectItem value="tar">TAR Archive</SelectItem>
-                    <SelectItem value="folder">JSON Export</SelectItem>
+                    <SelectItem value="json">JSON Export</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -339,8 +474,8 @@ export default function ProjectExportModal({
                 <Label>Compression Level</Label>
                 <Select
                   value={exportOptions.compressionLevel}
-                  onValueChange={(value: 'none' | 'fast' | 'best') =>
-                    setExportOptions(prev => ({ ...prev, compressionLevel: value }))
+                  onValueChange={(value: "none" | "fast" | "best") =>
+                    setExportOptions((prev) => ({ ...prev, compressionLevel: value }))
                   }
                   disabled={isExporting}
                 >
@@ -366,7 +501,7 @@ export default function ProjectExportModal({
                     id="metadata"
                     checked={exportOptions.includeMetadata}
                     onCheckedChange={(checked) =>
-                      setExportOptions(prev => ({ ...prev, includeMetadata: !!checked }))
+                      setExportOptions((prev) => ({ ...prev, includeMetadata: !!checked }))
                     }
                     disabled={isExporting}
                   />
@@ -380,7 +515,7 @@ export default function ProjectExportModal({
                     id="history"
                     checked={exportOptions.includeHistory}
                     onCheckedChange={(checked) =>
-                      setExportOptions(prev => ({ ...prev, includeHistory: !!checked }))
+                      setExportOptions((prev) => ({ ...prev, includeHistory: !!checked }))
                     }
                     disabled={isExporting}
                   />
@@ -394,7 +529,7 @@ export default function ProjectExportModal({
                     id="settings"
                     checked={exportOptions.includeSettings}
                     onCheckedChange={(checked) =>
-                      setExportOptions(prev => ({ ...prev, includeSettings: !!checked }))
+                      setExportOptions((prev) => ({ ...prev, includeSettings: !!checked }))
                     }
                     disabled={isExporting}
                   />
@@ -422,8 +557,8 @@ export default function ProjectExportModal({
             {/* Actions */}
             <div className="flex flex-col gap-2 pt-4">
               <Button
-                onClick={createZipFile}
-                disabled={selectedFiles.length === 0 || isExporting}
+                onClick={createDownload}
+                disabled={selectedNodes.length === 0 || isExporting}
                 className="w-full"
               >
                 {isExporting ? (
