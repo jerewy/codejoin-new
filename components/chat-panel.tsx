@@ -47,6 +47,7 @@ type DisplayMessage = {
   content: string;
   createdAt: string;
   userId: string | null;
+  role: string | null;
   authorName: string;
   authorAvatar: string | null;
   metadata: Record<string, unknown> | null;
@@ -59,6 +60,7 @@ type MessageRecord = {
   content: string | null;
   created_at: string;
   metadata: Record<string, unknown> | null;
+  role?: string | null;
   user_full_name?: string | null;
   user_avatar?: string | null;
   user_id?: string | null;
@@ -67,6 +69,7 @@ type MessageRecord = {
 type MessageLike = {
   user_id?: string | null;
   metadata?: Record<string, unknown> | null;
+  role?: string | null;
 };
 
 const pickString = (value: unknown) =>
@@ -216,6 +219,8 @@ export default function ChatPanel({
         metadataString(record.metadata, "avatar");
 
       const resolvedUserId = resolveRecordUserId(record);
+      const resolvedRole =
+        pickString(record.role) ?? metadataString(record.metadata, "role") ?? null;
 
       const author = resolveAuthor(
         resolvedUserId ?? null,
@@ -229,10 +234,12 @@ export default function ChatPanel({
         content: pickString(record.content) ?? record.content?.toString() ?? "",
         createdAt: record.created_at ?? new Date().toISOString(),
         userId: resolvedUserId ?? null,
+        role: resolvedRole,
         authorName: author.name,
         authorAvatar: author.avatar ?? fallbackAvatar ?? null,
         metadata: record.metadata ?? null,
         isAI:
+          resolvedRole === "assistant" ||
           metadataBoolean(record.metadata, "is_ai") ||
           author.name === "AI Assistant",
         isPending: false,
@@ -317,6 +324,7 @@ export default function ChatPanel({
         content: trimmed,
         createdAt: timestamp,
         userId: selfIdentity?.userId ?? null,
+        role: "user",
         authorName: isAskingAI ? `${displayName} → AI` : displayName,
         authorAvatar: selfIdentity?.userAvatar ?? null,
         metadata: null,
@@ -336,6 +344,7 @@ export default function ChatPanel({
               content: "I'm analyzing your request. Let me help you with that...",
               createdAt: new Date().toISOString(),
               userId: null,
+              role: "assistant",
               authorName: "AI Assistant",
               authorAvatar: null,
               metadata: { is_ai: true },
@@ -376,6 +385,7 @@ export default function ChatPanel({
       content: trimmed,
       createdAt: timestamp,
       userId: selfIdentity?.userId ?? null,
+      role: "user",
       authorName: selfIdentity?.userName ?? "You",
       authorAvatar: selfIdentity?.userAvatar ?? null,
       metadata: optimisticMetadata,
@@ -390,11 +400,16 @@ export default function ChatPanel({
     const payload: Record<string, unknown> = {
       conversation_id: conversationId,
       content: trimmed,
+      role: "user",
       metadata: {
         ...optimisticMetadata,
         ai_request: isAskingAI || undefined,
       },
     };
+
+    if (selfIdentity?.userId) {
+      payload.user_id = selfIdentity.userId;
+    }
 
     const { error } = await supabase.from("messages").insert(payload);
 
