@@ -61,7 +61,7 @@ export function PageHeader({
       </div>
       {showSecondaryRow && (
         <div className="border-t">
-          <div className="container py-6">
+          <div className="container py-6 mx-auto text-center">
             <div
               className={cn(
                 "flex flex-col gap-4",
