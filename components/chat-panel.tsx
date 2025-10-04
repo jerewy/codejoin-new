@@ -468,6 +468,7 @@ export default function ChatPanel({
       const optimisticMetadata: Record<string, unknown> = {
         client_ref: localId,
         is_ai: false,
+        project_id: projectId,
       };
 
       if (selfIdentity?.userName) {
@@ -518,6 +519,7 @@ export default function ChatPanel({
           const aiMetadata: Record<string, unknown> = {
             is_ai: true,
             client_ref: aiId,
+            project_id: projectId,
           };
 
           const aiMessage: DisplayMessage = {
@@ -563,6 +565,7 @@ export default function ChatPanel({
     const optimisticMetadata: Record<string, unknown> = {
       client_ref: clientRef,
       is_ai: false,
+      project_id: projectId,
     };
 
     if (selfIdentity?.userName) {
