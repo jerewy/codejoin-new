@@ -1,19 +1,38 @@
 "use client";
 
-import { useState } from "react";
-import React from "react";
+import React, {
+  ChangeEvent,
+  FormEvent,
+  KeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  ImageIcon,
+  Loader2,
+  Plus,
+  Save,
+  Star,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -21,51 +40,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Settings,
-  Users,
-  Shield,
-  Webhook,
-  Trash2,
-  Plus,
-  Github,
-  Globe,
-  Lock,
-  Eye,
-  UserPlus,
-  Crown,
-  User,
-  MoreHorizontal,
-  Copy,
-  AlertTriangle,
-  Save,
-  RefreshCw,
-  Key,
-  Zap,
-  Cloud,
-  ArrowLeft,
-} from "lucide-react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { toast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
+import { getSupabaseClient } from "@/lib/supabaseClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface ProjectSettingsProps {
   params: Promise<{
@@ -73,546 +50,824 @@ interface ProjectSettingsProps {
   }>;
 }
 
+interface ProjectFormState {
+  name: string;
+  description: string;
+  language: string;
+  status: string;
+  isStarred: boolean;
+  tags: string[];
+  thumbnail: string | null;
+}
+
+const MAX_TAGS = 8;
+const MAX_THUMBNAIL_SIZE = 5 * 1024 * 1024; // 5MB
+
+const STATUS_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "active", label: "Active" },
+  { value: "archived", label: "Archived" },
+  { value: "draft", label: "Draft" },
+];
+
+const createEmptyFormState = (): ProjectFormState => ({
+  name: "",
+  description: "",
+  language: "",
+  status: "active",
+  isStarred: false,
+  tags: [],
+  thumbnail: null,
+});
+
+const formatDate = (value: string | null): string => {
+  if (!value) {
+    return "—";
+  }
+
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  } catch (error) {
+    console.warn("Failed to format date", error);
+    return value;
+  }
+};
+
 export default function ProjectSettingsPage({
   params: paramsPromise,
 }: ProjectSettingsProps) {
-  const router = useRouter();
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
-  const [deleteConfirmation, setDeleteConfirmation] = useState("");
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("member");
-  const [isLoading, setIsLoading] = useState(false);
   const params = React.use(paramsPromise);
+  const supabase = getSupabaseClient();
+  const { toast } = useToast();
 
-  const [projectSettings, setProjectSettings] = useState({
-    name: "My Awesome Project",
-    description: "A collaborative coding project built with CodeJoin",
-    visibility: "private",
-    defaultBranch: "main",
-    autoSave: true,
-    realTimeSync: true,
-    codeCompletion: true,
-    linting: true,
-    formatting: true,
-    gitIntegration: true,
-    deploymentHooks: false,
-    notifications: {
-      commits: true,
-      collaborators: true,
-      deployments: false,
-      issues: true,
-    },
-  });
+  const [projectForm, setProjectForm] = useState<ProjectFormState>(() =>
+    createEmptyFormState()
+  );
+  const [initialProject, setInitialProject] = useState<ProjectFormState | null>(
+    null
+  );
+  const [createdAt, setCreatedAt] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [isLoadingProject, setIsLoadingProject] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  const [newTag, setNewTag] = useState("");
 
-  const [collaborators] = useState([
-    {
-      id: 1,
-      name: "John Doe",
-      email: "john@example.com",
-      avatar: "/placeholder.svg?height=32&width=32",
-      role: "owner",
-      joinedAt: "2024-01-15",
-      lastActive: "2 hours ago",
+  const thumbnailObjectUrlRef = useRef<string | null>(null);
+
+  const hasLoadedProject = initialProject !== null;
+  const authUnavailable = !supabase;
+
+  const revokeThumbnailObjectUrl = useCallback(() => {
+    if (thumbnailObjectUrlRef.current) {
+      URL.revokeObjectURL(thumbnailObjectUrlRef.current);
+      thumbnailObjectUrlRef.current = null;
+    }
+  }, []);
+
+  const applyProjectState = useCallback((project: ProjectFormState) => {
+    setProjectForm(project);
+    setInitialProject(project);
+    setThumbnailPreview(project.thumbnail);
+    setThumbnailFile(null);
+    revokeThumbnailObjectUrl();
+  }, [revokeThumbnailObjectUrl]);
+
+  const fetchProject = useCallback(async () => {
+    if (!supabase) {
+      setLoadError(
+        "Supabase environment variables are not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to manage project settings."
+      );
+      setIsLoadingProject(false);
+      return;
+    }
+
+    setIsLoadingProject(true);
+    setLoadError(null);
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw userError;
+      }
+
+      if (!user) {
+        setLoadError("You need to sign in to manage this project.");
+        setInitialProject(null);
+        setProjectForm(createEmptyFormState());
+        setThumbnailPreview(null);
+        return;
+      }
+
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .select(
+          "id, user_id, name, description, language, status, isStarred, tags, thumbnail, created_at, updated_at"
+        )
+        .eq("id", params.id)
+        .maybeSingle();
+
+      if (projectError) {
+        throw projectError;
+      }
+
+      if (!project) {
+        setLoadError("We couldn't find that project.");
+        setInitialProject(null);
+        setProjectForm(createEmptyFormState());
+        setThumbnailPreview(null);
+        return;
+      }
+
+      if (project.user_id && project.user_id !== user.id) {
+        setLoadError("You do not have permission to update this project.");
+        setInitialProject(null);
+        setProjectForm(createEmptyFormState());
+        setThumbnailPreview(null);
+        return;
+      }
+
+      const sanitizedTags = Array.isArray(project.tags)
+        ? project.tags.filter((tag): tag is string => typeof tag === "string")
+        : [];
+
+      const nextState: ProjectFormState = {
+        name: typeof project.name === "string" ? project.name : "",
+        description:
+          typeof project.description === "string" ? project.description : "",
+        language:
+          typeof project.language === "string" ? project.language : "",
+        status:
+          typeof project.status === "string" && project.status
+            ? project.status
+            : "active",
+        isStarred: Boolean(project.isStarred),
+        tags: sanitizedTags,
+        thumbnail:
+          typeof project.thumbnail === "string" ? project.thumbnail : null,
+      };
+
+      applyProjectState(nextState);
+      setCreatedAt(project.created_at ?? null);
+      setUpdatedAt(project.updated_at ?? null);
+    } catch (error) {
+      console.error("Failed to load project", error);
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : "We couldn't load this project. Please try again."
+      );
+    } finally {
+      setIsLoadingProject(false);
+    }
+  }, [applyProjectState, params.id, supabase]);
+
+  useEffect(() => {
+    fetchProject();
+
+    return () => {
+      revokeThumbnailObjectUrl();
+    };
+  }, [fetchProject, revokeThumbnailObjectUrl]);
+
+  const handleNameChange = useCallback((value: string) => {
+    setProjectForm((prev) => ({
+      ...prev,
+      name: value,
+    }));
+  }, []);
+
+  const handleDescriptionChange = useCallback((value: string) => {
+    setProjectForm((prev) => ({
+      ...prev,
+      description: value,
+    }));
+  }, []);
+
+  const handleLanguageChange = useCallback((value: string) => {
+    setProjectForm((prev) => ({
+      ...prev,
+      language: value,
+    }));
+  }, []);
+
+  const handleStatusChange = useCallback((value: string) => {
+    setProjectForm((prev) => ({
+      ...prev,
+      status: value,
+    }));
+  }, []);
+
+  const handleStarredChange = useCallback((checked: boolean) => {
+    setProjectForm((prev) => ({
+      ...prev,
+      isStarred: checked,
+    }));
+  }, []);
+
+  const handleAddTag = useCallback(() => {
+    const trimmedTag = newTag.trim();
+
+    if (!trimmedTag) {
+      return;
+    }
+
+    if (projectForm.tags.includes(trimmedTag)) {
+      toast({
+        title: "Tag already added",
+        description: `"${trimmedTag}" is already part of this project.`,
+      });
+      return;
+    }
+
+    if (projectForm.tags.length >= MAX_TAGS) {
+      toast({
+        variant: "destructive",
+        title: "Tag limit reached",
+        description: `You can add up to ${MAX_TAGS} tags only.`,
+      });
+      return;
+    }
+
+    setProjectForm((prev) => ({
+      ...prev,
+      tags: [...prev.tags, trimmedTag],
+    }));
+    setNewTag("");
+  }, [newTag, projectForm.tags, toast]);
+
+  const handleTagRemove = useCallback((tagToRemove: string) => {
+    setProjectForm((prev) => ({
+      ...prev,
+      tags: prev.tags.filter((tag) => tag !== tagToRemove),
+    }));
+  }, []);
+
+  const handleTagInputKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        handleAddTag();
+      }
     },
-    {
-      id: 2,
-      name: "Sarah Chen",
-      email: "sarah@example.com",
-      avatar: "/placeholder.svg?height=32&width=32",
-      role: "admin",
-      joinedAt: "2024-02-01",
-      lastActive: "1 day ago",
+    [handleAddTag]
+  );
+
+  const handleThumbnailChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+
+      if (!file) {
+        return;
+      }
+
+      if (!file.type.startsWith("image/")) {
+        toast({
+          variant: "destructive",
+          title: "Unsupported file",
+          description: "Please choose an image file for the thumbnail.",
+        });
+        return;
+      }
+
+      if (file.size > MAX_THUMBNAIL_SIZE) {
+        toast({
+          variant: "destructive",
+          title: "Image too large",
+          description: "Please choose an image smaller than 5MB.",
+        });
+        return;
+      }
+
+      revokeThumbnailObjectUrl();
+      const objectUrl = URL.createObjectURL(file);
+      thumbnailObjectUrlRef.current = objectUrl;
+      setThumbnailFile(file);
+      setThumbnailPreview(objectUrl);
     },
-    {
-      id: 3,
-      name: "Mike Rodriguez",
-      email: "mike@example.com",
-      avatar: "/placeholder.svg?height=32&width=32",
-      role: "member",
-      joinedAt: "2024-02-10",
-      lastActive: "3 days ago",
-    },
-    {
-      id: 4,
-      name: "Alex Kim",
-      email: "alex@example.com",
-      avatar: "/placeholder.svg?height=32&width=32",
-      role: "member",
-      joinedAt: "2024-02-15",
-      lastActive: "1 week ago",
-    },
+    [revokeThumbnailObjectUrl, toast]
+  );
+
+  const handleResetThumbnail = useCallback(() => {
+    revokeThumbnailObjectUrl();
+    setThumbnailFile(null);
+    setThumbnailPreview(initialProject?.thumbnail ?? null);
+  }, [initialProject?.thumbnail, revokeThumbnailObjectUrl]);
+
+  const isDirty = useMemo(() => {
+    if (!initialProject) {
+      return false;
+    }
+
+    const normalizedCurrent: ProjectFormState = {
+      ...projectForm,
+      tags: [...projectForm.tags],
+      thumbnail: projectForm.thumbnail,
+    };
+
+    const normalizedInitial: ProjectFormState = {
+      ...initialProject,
+      tags: [...initialProject.tags],
+      thumbnail: initialProject.thumbnail,
+    };
+
+    const formChanged = JSON.stringify(normalizedCurrent) !== JSON.stringify(normalizedInitial);
+
+    return formChanged || Boolean(thumbnailFile);
+  }, [initialProject, projectForm, thumbnailFile]);
+
+  const fieldsDisabled =
+    isSaving ||
+    isLoadingProject ||
+    authUnavailable ||
+    !hasLoadedProject;
+
+  const tagsRemaining = Math.max(0, MAX_TAGS - projectForm.tags.length);
+
+  const handleSave = useCallback(async () => {
+    if (!supabase) {
+      toast({
+        variant: "destructive",
+        title: "Supabase unavailable",
+        description:
+          "Supabase isn't configured yet. Add your NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to save settings.",
+      });
+      return;
+    }
+
+    if (!initialProject) {
+      toast({
+        variant: "destructive",
+        title: "Nothing to save",
+        description: "Load a project before saving changes.",
+      });
+      return;
+    }
+
+    const trimmedName = projectForm.name.trim();
+
+    if (!trimmedName) {
+      toast({
+        variant: "destructive",
+        title: "Project name required",
+        description: "Please add a project name before saving.",
+      });
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw userError;
+      }
+
+      if (!user) {
+        throw new Error("You need to sign in before saving changes.");
+      }
+
+      let thumbnailUrl = projectForm.thumbnail ?? null;
+
+      if (thumbnailFile) {
+        const extension = thumbnailFile.name.split(".").pop() ?? "png";
+        const filePath = `project-thumbnails/${params.id}-${Date.now()}.${extension}`;
+
+        const { error: uploadError } = await supabase
+          .storage
+          .from("assets")
+          .upload(filePath, thumbnailFile, {
+            cacheControl: "3600",
+            upsert: true,
+          });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        const { data: publicUrlData } = supabase
+          .storage
+          .from("assets")
+          .getPublicUrl(filePath);
+
+        thumbnailUrl = publicUrlData.publicUrl ?? null;
+      }
+
+      const updatePayload = {
+        name: trimmedName,
+        description: projectForm.description,
+        language: projectForm.language || null,
+        status: projectForm.status,
+        isStarred: projectForm.isStarred,
+        tags: projectForm.tags,
+        thumbnail: thumbnailUrl,
+      };
+
+      const { data: updatedProject, error: updateError } = await supabase
+        .from("projects")
+        .update(updatePayload)
+        .eq("id", params.id)
+        .select(
+          "name, description, language, status, isStarred, tags, thumbnail, updated_at"
+        )
+        .single();
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      const sanitizedTags = Array.isArray(updatedProject?.tags)
+        ? updatedProject.tags.filter((tag): tag is string => typeof tag === "string")
+        : [];
+
+      const latestState: ProjectFormState = {
+        name: typeof updatedProject?.name === "string" ? updatedProject.name : trimmedName,
+        description:
+          typeof updatedProject?.description === "string"
+            ? updatedProject.description
+            : projectForm.description,
+        language:
+          typeof updatedProject?.language === "string"
+            ? updatedProject.language
+            : projectForm.language,
+        status:
+          typeof updatedProject?.status === "string"
+            ? updatedProject.status
+            : projectForm.status,
+        isStarred: Boolean(updatedProject?.isStarred ?? projectForm.isStarred),
+        tags: sanitizedTags,
+        thumbnail:
+          typeof updatedProject?.thumbnail === "string"
+            ? updatedProject.thumbnail
+            : thumbnailUrl,
+      };
+
+      applyProjectState(latestState);
+      setUpdatedAt(updatedProject?.updated_at ?? new Date().toISOString());
+      toast({
+        title: "Project updated",
+        description: "Your project settings have been saved.",
+      });
+    } catch (error) {
+      console.error("Failed to save project", error);
+      toast({
+        variant: "destructive",
+        title: "Failed to save changes",
+        description:
+          error instanceof Error
+            ? error.message
+            : "We couldn't save your changes. Please try again.",
+      });
+    } finally {
+      setIsSaving(false);
+      revokeThumbnailObjectUrl();
+    }
+  }, [
+    applyProjectState,
+    initialProject,
+    params.id,
+    projectForm.description,
+    projectForm.isStarred,
+    projectForm.language,
+    projectForm.name,
+    projectForm.status,
+    projectForm.tags,
+    projectForm.thumbnail,
+    revokeThumbnailObjectUrl,
+    supabase,
+    thumbnailFile,
+    toast,
   ]);
 
-  const handleSaveSettings = async () => {
-    setIsLoading(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setIsLoading(false);
-    toast({
-      title: "Settings saved",
-      description: "Your project settings have been updated successfully.",
-    });
-  };
+  const handleSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
 
-  const handleInviteCollaborator = async () => {
-    if (!inviteEmail) return;
+      if (isSaving) {
+        return;
+      }
 
-    setIsLoading(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setIsLoading(false);
-    setIsInviteDialogOpen(false);
-    setInviteEmail("");
-    setInviteRole("member");
+      await handleSave();
+    },
+    [handleSave, isSaving]
+  );
 
-    toast({
-      title: "Invitation sent",
-      description: `Invitation sent to ${inviteEmail}`,
-    });
-  };
-
-  const handleDeleteProject = async () => {
-    if (deleteConfirmation !== projectSettings.name) return;
-
-    setIsLoading(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    toast({
-      title: "Project deleted",
-      description: "Your project has been permanently deleted.",
-      variant: "destructive",
-    });
-
-    router.push("/dashboard");
-  };
-
-  const getRoleIcon = (role: string) => {
-    switch (role) {
-      case "owner":
-        return <Crown className="h-4 w-4 text-yellow-500" />;
-      case "admin":
-        return <Shield className="h-4 w-4 text-blue-500" />;
-      default:
-        return <User className="h-4 w-4 text-gray-500" />;
-    }
-  };
-
-  const getRoleBadgeVariant = (role: string) => {
-    switch (role) {
-      case "owner":
-        return "default";
-      case "admin":
-        return "secondary";
-      default:
-        return "outline";
-    }
-  };
+  const handleRetry = useCallback(() => {
+    fetchProject();
+  }, [fetchProject]);
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
-      {/* Header */}
-      <header className="flex items-center justify-between border-b">
+    <form
+      onSubmit={handleSubmit}
+      className="flex min-h-screen flex-col bg-background"
+    >
+      <header className="border-b">
         <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
+          <div className="flex items-center gap-3">
+            <Link href="/dashboard" className="flex items-center">
+              <Button variant="ghost" size="icon" type="button">
+                <ArrowLeft className="h-4 w-4" />
+                <span className="sr-only">Back to dashboard</span>
               </Button>
             </Link>
-
-            <div className="flex items-center gap-4">
-              <Link
-                href={`/project/${params.id}`}
-                className="flex items-center gap-2 hover:opacity-80"
-              >
-                <div className="flex items-center gap-2">
-                  <svg
-                    width="24"
-                    height="24"
-                    viewBox="0 0 32 32"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M8 6C8 4.89543 8.89543 4 10 4H22C23.1046 4 24 4.89543 24 6V26C24 27.1046 23.1046 28 22 28H10C8.89543 28 8 27.1046 8 26V6Z"
-                      fill="#FF5722"
-                    />
-                    <path
-                      d="M14 10L18 14M18 10L14 14"
-                      stroke="#0D47A1"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M14 18L18 22M18 18L14 22"
-                      stroke="#0D47A1"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <span className="font-bold text-primary">CodeJoin</span>
-                </div>
-              </Link>
-              <Separator orientation="vertical" className="h-6" />
-              <div className="flex items-center gap-2">
-                <Settings className="h-5 w-5 text-primary" />
-                <h1 className="text-lg font-semibold">Project Settings</h1>
-              </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-muted-foreground">
+                Project settings
+              </span>
+              <span className="text-base font-semibold">
+                {projectForm.name || "Untitled project"}
+              </span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button onClick={handleSaveSettings} disabled={isLoading}>
-              {isLoading ? (
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4 mr-2" />
-              )}
-              Save Changes
-            </Button>
-          </div>
+          <Button
+            type="submit"
+            disabled={
+              authUnavailable ||
+              isSaving ||
+              isLoadingProject ||
+              !isDirty
+            }
+          >
+            {isSaving ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 h-4 w-4" />
+            )}
+            Save changes
+          </Button>
         </div>
       </header>
 
-      <div className="flex-1 container py-6 overflow-y-auto">
-        <Tabs defaultValue="general" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="general">
-              <Settings className="h-4 w-4 mr-2" />
-              General
-            </TabsTrigger>
-            <TabsTrigger value="collaborators">
-              <Users className="h-4 w-4 mr-2" />
-              Collaborators
-            </TabsTrigger>
-            <TabsTrigger value="danger">
-              <AlertTriangle className="h-4 w-4 mr-2" />
-              Danger Zone
-            </TabsTrigger>
-          </TabsList>
-
-          {/* General Settings */}
-          <TabsContent value="general" className="space-y-6">
+      <main className="container flex-1 py-8">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
+          {isLoadingProject ? (
             <Card>
               <CardHeader>
-                <CardTitle>Project Information</CardTitle>
-                <CardDescription>
-                  Update your project's basic information and settings.
-                </CardDescription>
+                <Skeleton className="h-6 w-40" />
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-10 w-1/2" />
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {loadError && (
+                <Card className="border-destructive/30 bg-destructive/5">
+                  <CardHeader>
+                    <CardTitle className="text-base">{loadError}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex flex-wrap items-center gap-3">
+                    <p className="text-sm text-muted-foreground">
+                      {authUnavailable
+                        ? "Add your Supabase credentials to continue."
+                        : "Check your connection or permissions and try again."}
+                    </p>
+                    {!authUnavailable && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRetry}
+                        disabled={isSaving}
+                      >
+                        Retry
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Project information</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
                   <div className="space-y-2">
-                    <Label htmlFor="project-name">Project Name</Label>
+                    <Label htmlFor="project-name">Project name</Label>
                     <Input
                       id="project-name"
-                      value={projectSettings.name}
-                      onChange={(e) =>
-                        setProjectSettings({
-                          ...projectSettings,
-                          name: e.target.value,
-                        })
-                      }
+                      value={projectForm.name}
+                      onChange={(event) => handleNameChange(event.target.value)}
+                      placeholder="e.g. My First Awesome Project"
+                      disabled={fieldsDisabled}
                     />
                   </div>
+
                   <div className="space-y-2">
-                    <Label htmlFor="visibility">Visibility</Label>
-                    <Select
-                      value={projectSettings.visibility}
-                      onValueChange={(value) =>
-                        setProjectSettings({
-                          ...projectSettings,
-                          visibility: value,
-                        })
+                    <Label htmlFor="project-description">Description</Label>
+                    <Textarea
+                      id="project-description"
+                      value={projectForm.description}
+                      onChange={(event) =>
+                        handleDescriptionChange(event.target.value)
                       }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="private">
-                          <div className="flex items-center gap-2">
-                            <Lock className="h-4 w-4" />
-                            Private
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="public">
-                          <div className="flex items-center gap-2">
-                            <Eye className="h-4 w-4" />
-                            Public
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                      placeholder="Describe what this project is about..."
+                      rows={5}
+                      disabled={fieldsDisabled}
+                    />
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={projectSettings.description}
-                    onChange={(e) =>
-                      setProjectSettings({
-                        ...projectSettings,
-                        description: e.target.value,
-                      })
-                    }
-                    placeholder="Describe your project..."
-                  />
-                </div>
+                  <Separator />
 
-                <div className="space-y-2">
-                  <Label htmlFor="default-branch">Default Branch</Label>
-                  <Input
-                    id="default-branch"
-                    value={projectSettings.defaultBranch}
-                    onChange={(e) =>
-                      setProjectSettings({
-                        ...projectSettings,
-                        defaultBranch: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Collaborators */}
-          <TabsContent value="collaborators" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Project Collaborators</CardTitle>
-                    <CardDescription>
-                      Manage who has access to this project.
-                    </CardDescription>
-                  </div>
-                  <Dialog
-                    open={isInviteDialogOpen}
-                    onOpenChange={setIsInviteDialogOpen}
-                  >
-                    <DialogTrigger asChild>
-                      <Button>
-                        <UserPlus className="h-4 w-4 mr-2" />
-                        Invite Collaborator
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Invite Collaborator</DialogTitle>
-                        <DialogDescription>
-                          Send an invitation to collaborate on this project.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="invite-email">Email Address</Label>
-                          <Input
-                            id="invite-email"
-                            type="email"
-                            placeholder="colleague@example.com"
-                            value={inviteEmail}
-                            onChange={(e) => setInviteEmail(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="invite-role">Role</Label>
-                          <Select
-                            value={inviteRole}
-                            onValueChange={setInviteRole}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="member">Member</SelectItem>
-                              <SelectItem value="admin">Admin</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <DialogFooter>
-                        <Button
-                          variant="outline"
-                          onClick={() => setIsInviteDialogOpen(false)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          onClick={handleInviteCollaborator}
-                          disabled={!inviteEmail || isLoading}
-                        >
-                          {isLoading ? (
-                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                          ) : null}
-                          Send Invitation
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {collaborators.map((collaborator) => (
-                    <div
-                      key={collaborator.id}
-                      className="flex items-center justify-between p-3 border rounded-lg"
-                    >
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={collaborator.avatar || "/placeholder.svg"}
-                          alt={collaborator.name}
-                          className="w-10 h-10 rounded-full"
-                        />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{collaborator.name}</p>
-                            {getRoleIcon(collaborator.role)}
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {collaborator.email}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Joined {collaborator.joinedAt} • Last active{" "}
-                            {collaborator.lastActive}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={getRoleBadgeVariant(collaborator.role)}>
-                          {collaborator.role}
-                        </Badge>
-                        {collaborator.role !== "owner" && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem>Change Role</DropdownMenuItem>
-                              <DropdownMenuItem className="text-destructive">
-                                Remove Access
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </div>
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="project-language">Primary language</Label>
+                      <Input
+                        id="project-language"
+                        value={projectForm.language}
+                        onChange={(event) =>
+                          handleLanguageChange(event.target.value)
+                        }
+                        placeholder="TypeScript"
+                        disabled={fieldsDisabled}
+                      />
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
 
-          {/* Danger Zone */}
-          <TabsContent value="danger" className="space-y-6">
-            <Card className="border-destructive">
-              <CardHeader>
-                <CardTitle className="text-destructive">Danger Zone</CardTitle>
-                <CardDescription>
-                  These actions are irreversible. Please proceed with caution.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-4 border border-destructive rounded-lg">
-                  <div>
-                    <p className="font-medium">Archive Project</p>
-                    <p className="text-sm text-muted-foreground">
-                      Archive this project. It will be read-only and hidden from
-                      your dashboard.
-                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="project-status">Status</Label>
+                      <Select
+                        value={projectForm.status}
+                        onValueChange={handleStatusChange}
+                        disabled={fieldsDisabled}
+                      >
+                        <SelectTrigger id="project-status">
+                          <SelectValue placeholder="Select a status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STATUS_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <Button variant="outline">Archive</Button>
-                </div>
 
-                <div className="flex items-center justify-between p-4 border border-destructive rounded-lg">
-                  <div>
-                    <p className="font-medium">Transfer Ownership</p>
-                    <p className="text-sm text-muted-foreground">
-                      Transfer this project to another user or organization.
-                    </p>
+                  <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="project-starred" className="flex items-center gap-2">
+                        <Star className="h-4 w-4 text-amber-500" />
+                        Starred project
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        Starred projects show up first in your dashboard.
+                      </p>
+                    </div>
+                    <Switch
+                      id="project-starred"
+                      checked={projectForm.isStarred}
+                      onCheckedChange={handleStarredChange}
+                      disabled={fieldsDisabled}
+                      aria-label="Toggle starred project"
+                    />
                   </div>
-                  <Button variant="outline">Transfer</Button>
-                </div>
+                </CardContent>
+              </Card>
 
-                <div className="flex items-center justify-between p-4 border border-destructive rounded-lg">
-                  <div>
-                    <p className="font-medium text-destructive">
-                      Delete Project
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Permanently delete this project and all of its data. This
-                      cannot be undone.
-                    </p>
-                  </div>
-                  <Dialog
-                    open={isDeleteDialogOpen}
-                    onOpenChange={setIsDeleteDialogOpen}
-                  >
-                    <DialogTrigger asChild>
-                      <Button variant="destructive">Delete Project</Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Delete Project</DialogTitle>
-                        <DialogDescription>
-                          This action cannot be undone. This will permanently
-                          delete the project and all of its data.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label>
-                            Type{" "}
-                            <code className="bg-muted px-1 rounded">
-                              {projectSettings.name}
-                            </code>{" "}
-                            to confirm:
-                          </Label>
-                          <Input
-                            value={deleteConfirmation}
-                            onChange={(e) =>
-                              setDeleteConfirmation(e.target.value)
-                            }
-                            placeholder={projectSettings.name}
-                          />
+              <Card>
+                <CardHeader>
+                  <CardTitle>Thumbnail & tags</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="project-thumbnail">Project thumbnail</Label>
+                    <div className="overflow-hidden rounded-lg border bg-muted">
+                      {thumbnailPreview ? (
+                        <img
+                          src={thumbnailPreview}
+                          alt="Project thumbnail preview"
+                          className="h-48 w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-48 w-full flex-col items-center justify-center gap-2 text-muted-foreground">
+                          <ImageIcon className="h-8 w-8" />
+                          <span className="text-sm">No thumbnail selected</span>
                         </div>
-                      </div>
-                      <DialogFooter>
-                        <Button
-                          variant="outline"
-                          onClick={() => setIsDeleteDialogOpen(false)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          onClick={handleDeleteProject}
-                          disabled={
-                            deleteConfirmation !== projectSettings.name ||
-                            isLoading
-                          }
-                        >
-                          {isLoading ? (
-                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                          ) : null}
-                          Delete Project
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <Input
+                        id="project-thumbnail"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleThumbnailChange}
+                        disabled={fieldsDisabled}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={handleResetThumbnail}
+                        disabled={fieldsDisabled || (!thumbnailFile && !thumbnailObjectUrlRef.current)}
+                      >
+                        Reset
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      JPG, PNG, or GIF up to 5MB. New uploads are stored in the
+                      Supabase <code>assets</code> bucket.
+                    </p>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <Label htmlFor="project-tags">Tags</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {projectForm.tags.length === 0 ? (
+                        <span className="text-sm text-muted-foreground">
+                          No tags yet. Add up to {MAX_TAGS} tags.
+                        </span>
+                      ) : (
+                        projectForm.tags.map((tag) => (
+                          <Badge
+                            key={tag}
+                            variant="secondary"
+                            className="flex items-center gap-1"
+                          >
+                            {tag}
+                            <button
+                              type="button"
+                              onClick={() => handleTagRemove(tag)}
+                              className="rounded-full p-1 hover:bg-background"
+                              disabled={fieldsDisabled}
+                              aria-label={`Remove ${tag}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        ))
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <Input
+                        id="project-tags"
+                        value={newTag}
+                        onChange={(event) => setNewTag(event.target.value)}
+                        onKeyDown={handleTagInputKeyDown}
+                        placeholder="Press Enter to add"
+                        disabled={fieldsDisabled}
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={handleAddTag}
+                        disabled={fieldsDisabled}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add tag
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {tagsRemaining} tag{tagsRemaining === 1 ? "" : "s"} remaining.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Project metadata</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Project ID
+                    </p>
+                    <p className="font-mono text-sm">{params.id}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Created
+                    </p>
+                    <p className="text-sm">{formatDate(createdAt)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Last updated
+                    </p>
+                    <p className="text-sm">{formatDate(updatedAt)}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </div>
+      </main>
+    </form>
   );
 }
