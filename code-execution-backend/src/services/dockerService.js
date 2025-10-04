@@ -222,9 +222,6 @@ class DockerService {
   async createSecureContainer(languageConfig, code, containerId, input = '') {
     const fileName = this.getFileName(languageConfig);
     const codeContent = this.prepareCode(code, languageConfig);
-    const normalizedInput = this.normalizeInput(input);
-    const hasInput = normalizedInput.length > 0;
-
     const containerConfig = {
       Image: languageConfig.image,
       name: `code-exec-${containerId}`,
@@ -271,8 +268,7 @@ class DockerService {
     } else {
       const commandParts = [];
       const base64Code = Buffer.from(codeContent, 'utf-8').toString('base64');
-      const base64Input = hasInput ? Buffer.from(normalizedInput, 'utf-8').toString('base64') : null;
-      const runCommand = this.buildRunCommand(languageConfig, fileName, hasInput);
+      const runCommand = this.buildRunCommand(languageConfig, fileName);
 
       // Always start by writing the source file into /tmp
       commandParts.push(`echo '${base64Code}' | base64 -d > /tmp/${fileName}`);
@@ -282,11 +278,7 @@ class DockerService {
         commandParts.push(compileCmd);
       }
 
-      const finalRunCommand = base64Input
-        ? `echo '${base64Input}' | base64 -d | ${runCommand}`
-        : runCommand;
-
-      commandParts.push(finalRunCommand);
+      commandParts.push(runCommand);
 
       containerConfig.Cmd = ['sh', '-c', commandParts.join(' && ')];
     }
@@ -615,7 +607,7 @@ class DockerService {
     return code;
   }
 
-  buildRunCommand(languageConfig, fileName, hasInput) {
+  buildRunCommand(languageConfig, fileName) {
     if (languageConfig.name === 'SQL') {
       return languageConfig.runCommand;
     }
