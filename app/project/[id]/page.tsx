@@ -1,23 +1,14 @@
 // app/project/[id]/page.tsx
 
 import { createServerSupabase } from "@/lib/supabaseServer";
-import { cookies } from "next/headers";
-import { notFound } from "next/navigation";
 import ProjectWorkspace from "@/components/project-workspace";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import {
-  ArrowLeft,
-  FileText,
-  Settings,
-  Share2,
-  Save,
-  Play,
-} from "lucide-react";
+import { ArrowLeft, FileText } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import CollaboratorsList from "@/components/collaborators-list";
-import { Collaborator } from "@/lib/types";
+import { Collaborator, ProjectChatMessageWithAuthor } from "@/lib/types";
 import ProjectActions from "@/components/project-actions";
 
 // This type is for your client component, so keep it exported
@@ -43,6 +34,20 @@ export default async function ProjectPage({
   // Fetch data needed for the header
   let project;
   let nodes;
+
+  type ProfileRow = {
+    id: string;
+    full_name: string | null;
+    user_avatar: string | null;
+  };
+
+  type CollaboratorRow = {
+    user_id: string;
+    role: string;
+  };
+
+  let conversationId: string | null = null;
+  let chatMessages: ProjectChatMessageWithAuthor[] = [];
 
   try {
     const { data: projectData, error: projectError } = await supabase
@@ -78,12 +83,6 @@ export default async function ProjectPage({
         if (profilesError) {
           console.warn("Failed to load collaborator profiles", profilesError);
         } else if (profilesData) {
-          type ProfileRow = {
-            id: string;
-            full_name: string | null;
-            user_avatar: string | null;
-          };
-
           profilesById = new Map(
             (profilesData as ProfileRow[]).map((profile) => [
               profile.id,
@@ -103,11 +102,6 @@ export default async function ProjectPage({
     if (collaboratorsError) {
       console.warn("Failed to load collaborators", collaboratorsError);
     } else if (collaboratorsData) {
-      type CollaboratorRow = {
-        user_id: string;
-        role: string;
-      };
-
       collaborators = (collaboratorsData as CollaboratorRow[]).map(({ user_id, role }) => {
         const profile = user_id ? profilesById.get(user_id) : undefined;
 
@@ -118,6 +112,99 @@ export default async function ProjectPage({
           user_avatar: profile?.user_avatar ?? null,
         } satisfies Collaborator;
       });
+    }
+
+    const { data: conversationData, error: conversationError } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("project_id", params.id)
+      .maybeSingle();
+
+    if (conversationError && conversationError.code !== "PGRST116") {
+      console.warn("Failed to load conversation", conversationError);
+    }
+
+    if (conversationData?.id) {
+      conversationId = conversationData.id;
+    } else if (!conversationData) {
+      const { data: createdConversation, error: createConversationError } = await supabase
+        .from("conversations")
+        .insert({ project_id: params.id })
+        .select("id")
+        .single();
+
+      if (createConversationError) {
+        console.warn("Failed to create conversation", createConversationError);
+      } else if (createdConversation?.id) {
+        conversationId = createdConversation.id;
+      }
+    }
+
+    if (conversationId) {
+      const { data: messagesData, error: messagesError } = await supabase
+        .from("messages")
+        .select("id, content, user_id, created_at, metadata")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true });
+
+      if (messagesError) {
+        console.warn("Failed to load messages", messagesError);
+      } else if (messagesData) {
+        type MessageRow = {
+          id: string;
+          content: string | null;
+          user_id: string | null;
+          created_at: string;
+          metadata: Record<string, unknown> | null;
+        };
+
+        const messageRows = messagesData as MessageRow[];
+
+        const missingProfileIds = Array.from(
+          new Set(
+            messageRows
+              .map((row) => row.user_id)
+              .filter(
+                (id): id is string =>
+                  typeof id === "string" &&
+                  id.length > 0 &&
+                  !profilesById.has(id)
+              )
+          )
+        );
+
+        if (missingProfileIds.length > 0) {
+          const { data: extraProfiles, error: extraProfilesError } = await supabase
+            .from("profiles")
+            .select("id, full_name, user_avatar")
+            .in("id", missingProfileIds);
+
+          if (extraProfilesError) {
+            console.warn("Failed to load message author profiles", extraProfilesError);
+          } else if (extraProfiles) {
+            for (const profile of extraProfiles as ProfileRow[]) {
+              profilesById.set(profile.id, {
+                full_name: profile.full_name ?? null,
+                user_avatar: profile.user_avatar ?? null,
+              });
+            }
+          }
+        }
+
+        chatMessages = messageRows.map((row) => {
+          const profile = row.user_id ? profilesById.get(row.user_id) : undefined;
+
+          return {
+            id: row.id,
+            content: row.content ?? "",
+            created_at: row.created_at,
+            user_id: row.user_id ?? null,
+            user_full_name: profile?.full_name ?? null,
+            user_avatar: profile?.user_avatar ?? null,
+            metadata: row.metadata ?? null,
+          } satisfies ProjectChatMessageWithAuthor;
+        });
+      }
     }
 
     // If database queries fail, provide mock data for development
@@ -157,6 +244,8 @@ export default async function ProjectPage({
           parent_id: null
         }
       ];
+      conversationId = null;
+      chatMessages = [];
     }
   } catch (error) {
     console.error("Supabase error:", error);
@@ -183,6 +272,8 @@ export default async function ProjectPage({
         parent_id: null
       }
     ];
+    conversationId = null;
+    chatMessages = [];
   }
 
   return (
@@ -211,7 +302,13 @@ export default async function ProjectPage({
         />
       </header>
       <main className="flex-1 min-h-0 overflow-hidden">
-        <ProjectWorkspace initialNodes={nodes} projectId={params.id} />
+        <ProjectWorkspace
+          initialNodes={nodes}
+          projectId={params.id}
+          conversationId={conversationId}
+          initialChatMessages={chatMessages}
+          teamMembers={collaborators}
+        />
       </main>
     </div>
   );

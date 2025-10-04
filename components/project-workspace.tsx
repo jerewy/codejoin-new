@@ -57,7 +57,6 @@ import VideoCall from "@/components/video-call";
 import ChatPanel from "@/components/chat-panel";
 import ExecutionHistory from "@/components/execution-history";
 import FileExplorer from "@/components/file-explorer";
-import CollaboratorsList from "@/components/collaborators-list";
 import ConsoleOutput from "@/components/console-output";
 import BackendStatus from "@/components/backend-status";
 import {
@@ -83,7 +82,11 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { getSupabaseClient } from "@/lib/supabaseClient";
-import { ProjectNodeFromDB } from "@/lib/types";
+import type {
+  Collaborator,
+  ProjectChatMessageWithAuthor,
+  ProjectNodeFromDB,
+} from "@/lib/types";
 import { Input } from "@/components/ui/input";
 
 // Define execution result interface
@@ -109,6 +112,9 @@ interface Problem {
 interface ProjectWorkspaceProps {
   initialNodes: ProjectNodeFromDB[];
   projectId: string;
+  conversationId: string | null;
+  initialChatMessages: ProjectChatMessageWithAuthor[];
+  teamMembers: Collaborator[];
 }
 
 type AutosaveState = "idle" | "saving" | "saved" | "error";
@@ -1636,9 +1642,12 @@ function ProblemsPanel({
 export default function ProjectWorkspace({
   initialNodes,
   projectId,
+  conversationId,
+  initialChatMessages,
+  teamMembers,
 }: ProjectWorkspaceProps) {
   // Socket integration for real-time collaboration
-  const { joinProject, isConnected, collaborators } = useSocket();
+  const { joinProject, isConnected, collaborators: liveCollaborators } = useSocket();
   const { toast } = useToast();
 
   const [isVideoCallActive, setIsVideoCallActive] = useState(false);
@@ -1682,7 +1691,7 @@ export default function ProjectWorkspace({
   const [showSidebar, setShowSidebar] = useState(true);
 
   // Get dynamic collaborators count from real-time data
-  const membersCount = collaborators.length;
+  const membersCount = liveCollaborators.length;
 
   const [nodes, setNodes] = useState(initialNodes);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(
@@ -3020,13 +3029,11 @@ export default function ProjectWorkspace({
                 {/* Chat Panel Component */}
                 <div className="flex-1 min-h-0">
                   <ChatPanel
-                    collaborators={collaborators.map((collab, index) => ({
-                      id: index + 1,
-                      name: collab.userName,
-                      avatar:
-                        collab.userAvatar ||
-                        "/placeholder.svg?height=32&width=32",
-                    }))}
+                    conversationId={conversationId}
+                    initialMessages={initialChatMessages}
+                    teamMembers={teamMembers}
+                    collaborators={liveCollaborators}
+                    selfIdentity={collaboratorIdentity}
                   />
                 </div>
               </aside>
