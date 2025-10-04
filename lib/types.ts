@@ -67,3 +67,13 @@ export interface ProjectNodeFromDB {
   content: string | null; // The code content for files
   language: string | null; // The programming language
 }
+
+export interface ProjectChatMessageWithAuthor {
+  id: string;
+  content: string;
+  created_at: string;
+  user_id: string | null;
+  user_full_name: string | null;
+  user_avatar: string | null;
+  metadata: Record<string, unknown> | null;
+}
