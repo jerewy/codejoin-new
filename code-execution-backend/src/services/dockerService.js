@@ -1,4 +1,5 @@
 const Docker = require('dockerode');
+const { PassThrough } = require('stream');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');
 
@@ -223,6 +224,7 @@ class DockerService {
       name: `code-exec-${containerId}`,
       AttachStdout: true,
       AttachStderr: true,
+      AttachStdin: true,
       Tty: false,
       OpenStdin: true,
       StdinOnce: true,
@@ -274,11 +276,11 @@ class DockerService {
         commandParts.push(compileCmd);
       }
 
-      if (base64Input) {
-        commandParts.push(`echo '${base64Input}' | base64 -d > /tmp/input.txt`);
-      }
+      const finalRunCommand = base64Input
+        ? `echo '${base64Input}' | base64 -d | ${runCommand}`
+        : runCommand;
 
-      commandParts.push(runCommand);
+      commandParts.push(finalRunCommand);
 
       containerConfig.Cmd = ['sh', '-c', commandParts.join(' && ')];
     }
@@ -445,11 +447,69 @@ class DockerService {
     }
 
     try {
+      stream = await container.attach({
+        stream: true,
+        stdin: true,
+        stdout: true,
+        stderr: true
+      });
+
+      streamEndPromise = new Promise((resolve) => {
+        let resolved = false;
+        const finish = () => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        };
+        stream.on('end', finish);
+        stream.on('close', finish);
+        stream.on('error', finish);
+      });
+
+      stdoutEndPromise = new Promise((resolve) => {
+        let resolved = false;
+        const finish = () => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        };
+        stdoutStream.on('end', finish);
+        stdoutStream.on('close', finish);
+        stdoutStream.on('error', finish);
+      });
+
+      stderrEndPromise = new Promise((resolve) => {
+        let resolved = false;
+        const finish = () => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        };
+        stderrStream.on('end', finish);
+        stderrStream.on('close', finish);
+        stderrStream.on('error', finish);
+      });
+
+      this.docker.modem.demuxStream(stream, stdoutStream, stderrStream);
+
       await container.start();
+
+      const stdinPayload = this.normalizeInput(input);
+
+      try {
+        if (stdinPayload.length > 0) {
+          stream.write(stdinPayload);
+        }
+      } finally {
+        stream.end();
+      }
 
       // Set up timeout promise
       const timeoutPromise = new Promise((resolve) => {
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           resolve({ timedOut: true });
         }, languageConfig.timeout);
       });
@@ -469,29 +529,34 @@ class DockerService {
         } catch (e) {
           logger.warn(`Failed to kill timed out container: ${e.message}`);
         }
+        await resultPromise.catch(() => {});
         error = 'Execution timed out';
         exitCode = 124;
       } else {
         exitCode = result.StatusCode || 0;
       }
 
-      // Get logs from container
-      const logs = await container.logs({
-        stdout: true,
-        stderr: true,
-        timestamps: false
-      });
+      clearTimeout(timeoutId);
 
-      // Parse logs
-      const parsedOutput = this.parseDockerStream(logs);
-      output = parsedOutput.stdout;
+      await Promise.all([streamEndPromise, stdoutEndPromise, stderrEndPromise]);
+
+      output = Buffer.concat(stdoutChunks).toString('utf-8');
       if (!result.timedOut) {
-        error = parsedOutput.stderr;
+        error = Buffer.concat(stderrChunks).toString('utf-8');
       }
 
     } catch (e) {
       error = `Container execution error: ${e.message}`;
       exitCode = 1;
+    } finally {
+      if (stream) {
+        try {
+          stream.end();
+        } catch (endError) {
+          logger.debug(`Stream end error: ${endError.message}`);
+        }
+      }
+      clearTimeout(timeoutId);
     }
 
     const executionTime = Date.now() - startTime;
@@ -600,18 +665,12 @@ class DockerService {
 
     if (languageConfig.type === 'interpreted') {
       const needsSourceArg = !languageConfig.runCommand.includes('/tmp/');
-      const commandWithSource = needsSourceArg
+      return needsSourceArg
         ? `${languageConfig.runCommand} /tmp/${fileName}`
         : languageConfig.runCommand;
-      return hasInput
-        ? `cat /tmp/input.txt | ${commandWithSource}`
-        : commandWithSource;
     }
 
-    const compiledRunCmd = languageConfig.runCommand;
-    return hasInput
-      ? `cat /tmp/input.txt | ${compiledRunCmd}`
-      : compiledRunCmd;
+    return languageConfig.runCommand;
   }
 
   normalizeInput(input) {
