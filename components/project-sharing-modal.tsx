@@ -29,6 +29,7 @@ import {
   UserPlus,
   Lock,
   Loader2,
+  Crown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getSupabaseClient } from "@/lib/supabaseClient";
@@ -41,6 +42,27 @@ interface ProjectSharingModalProps {
 }
 
 type SharedUserRole = "viewer" | "editor" | "admin";
+
+const ROLE_OPTIONS: ReadonlyArray<{
+  value: SharedUserRole;
+  label: string;
+}> = [
+  { value: "viewer", label: "Viewer" },
+  { value: "editor", label: "Editor" },
+  { value: "admin", label: "Co-owner" },
+];
+
+const getRoleLabel = (role: SharedUserRole) => {
+  switch (role) {
+    case "admin":
+      return "Co-owner";
+    case "editor":
+      return "Editor";
+    case "viewer":
+    default:
+      return "Viewer";
+  }
+};
 
 interface SharedUser {
   id: string;
@@ -63,7 +85,7 @@ export default function ProjectSharingModal({
     "private"
   );
   const [emailToAdd, setEmailToAdd] = useState("");
-  const [roleToAdd, setRoleToAdd] = useState<"viewer" | "editor">("viewer");
+  const [roleToAdd, setRoleToAdd] = useState<SharedUserRole>("viewer");
   const [sharedUsers, setSharedUsers] = useState<SharedUser[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [isAddingUser, setIsAddingUser] = useState(false);
@@ -345,9 +367,7 @@ export default function ProjectSharingModal({
 
   const roleOptions = useMemo(
     () => [
-      { value: "viewer" satisfies SharedUserRole, label: "Viewer" },
-      { value: "editor" satisfies SharedUserRole, label: "Editor" },
-      { value: "admin" satisfies SharedUserRole, label: "Admin" },
+      ...ROLE_OPTIONS,
     ],
     []
   );
@@ -355,7 +375,7 @@ export default function ProjectSharingModal({
   const getRoleColor = (role: SharedUserRole) => {
     switch (role) {
       case "admin":
-        return "bg-red-100 text-red-800";
+        return "bg-purple-100 text-purple-800";
       case "editor":
         return "bg-blue-100 text-blue-800";
       case "viewer":
@@ -367,7 +387,7 @@ export default function ProjectSharingModal({
   const getRoleIcon = (role: SharedUserRole) => {
     switch (role) {
       case "admin":
-        return <Lock className="h-3 w-3" />;
+        return <Crown className="h-3 w-3" />;
       case "editor":
         return <Edit3 className="h-3 w-3" />;
       case "viewer":
@@ -456,15 +476,18 @@ export default function ProjectSharingModal({
               <div className="flex gap-2">
                 <Select
                   value={roleToAdd}
-                  onValueChange={(value: "viewer" | "editor") => setRoleToAdd(value)}
+                  onValueChange={(value: SharedUserRole) => setRoleToAdd(value)}
                   disabled={isSupabaseUnavailable || isAddingUser}
                 >
                   <SelectTrigger className="w-full sm:w-32">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="viewer">Viewer</SelectItem>
-                    <SelectItem value="editor">Editor</SelectItem>
+                    {roleOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Button
@@ -534,7 +557,7 @@ export default function ProjectSharingModal({
                         className={`${getRoleColor(user.role)} flex items-center gap-1`}
                       >
                         {getRoleIcon(user.role)}
-                        {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                        {getRoleLabel(user.role)}
                       </Badge>
 
                       <Select
