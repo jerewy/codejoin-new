@@ -6,7 +6,6 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { LoadingScreen } from "@/components/LoadingScreen";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { Button } from "@/components/button";
 import Link from "next/link";
@@ -20,7 +19,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const supabaseClient = useMemo(() => getSupabaseClient(), []);
   const isAuthConfigured = !!supabaseClient;
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isHydrated, setIsHydrated] = useState(false);
 
   // Define which routes should have the sidebar
   const sidebarRoutes = [
@@ -43,45 +41,61 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Handle hydration and read sidebar state from localStorage on mount
   useEffect(() => {
-    setIsHydrated(true);
-    const savedState = localStorage.getItem("sidebarOpen");
-    if (savedState !== null) {
-      const savedOpen = JSON.parse(savedState);
-      // On project pages, always close sidebar regardless of saved state
-      setIsSidebarOpen(isSidebarClosed ? false : savedOpen);
+    if (typeof window === "undefined") {
+      return;
     }
-  }, []);
+
+    const savedState = window.localStorage.getItem("sidebarOpen");
+
+    if (savedState !== null) {
+      try {
+        const savedOpen = JSON.parse(savedState);
+        // On project pages, always close sidebar regardless of saved state
+        setIsSidebarOpen(isSidebarClosed ? false : savedOpen);
+      } catch (error) {
+        console.warn("Failed to parse sidebar state from localStorage", error);
+        window.localStorage.removeItem("sidebarOpen");
+        setIsSidebarOpen(false);
+      }
+    } else if (isSidebarClosed) {
+      setIsSidebarOpen(false);
+    }
+  }, [isSidebarClosed]);
 
   // Handle route changes - close sidebar when entering project, restore when leaving
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
     if (isSidebarClosed) {
       // Always close sidebar on project pages
       setIsSidebarOpen(false);
     } else {
       // Restore saved state when leaving project pages
-      const savedState = localStorage.getItem("sidebarOpen");
+      const savedState = window.localStorage.getItem("sidebarOpen");
       if (savedState !== null) {
-        setIsSidebarOpen(JSON.parse(savedState));
+        try {
+          setIsSidebarOpen(JSON.parse(savedState));
+        } catch (error) {
+          console.warn("Failed to parse sidebar state from localStorage", error);
+          window.localStorage.removeItem("sidebarOpen");
+          setIsSidebarOpen(false);
+        }
       }
     }
   }, [isSidebarClosed]);
 
   // Save sidebar state to localStorage (but not when on project pages)
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
     if (!isSidebarClosed) {
-      localStorage.setItem("sidebarOpen", JSON.stringify(isSidebarOpen));
+      window.localStorage.setItem("sidebarOpen", JSON.stringify(isSidebarOpen));
     }
   }, [isSidebarOpen, isSidebarClosed]);
-
-  // Show loading during hydration to prevent mismatch
-  if (!isHydrated) {
-    return (
-      <LoadingScreen
-        message="Reconnecting to your workspace…"
-        description="Hang tight while we restore your dashboard state."
-      />
-    );
-  }
 
   if (isProtectedRoute && (!isAuthConfigured || !isLoggedIn)) {
     return (
