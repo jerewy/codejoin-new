@@ -42,6 +42,11 @@ interface SocketContextType {
     result: any;
     userId: string;
   }) => void;
+  emitChatMessage: (data: {
+    projectId: string;
+    conversationId?: string | null;
+    message: Record<string, unknown>;
+  }) => void;
   startTerminalSession: (data: TerminalSocketEvents["terminal:start"]) => void;
   sendTerminalInput: (data: TerminalSocketEvents["terminal:input"]) => void;
   stopTerminalSession: (data: TerminalSocketEvents["terminal:stop"]) => void;
@@ -67,6 +72,7 @@ const SocketContext = createContext<SocketContextType>({
   emitCursorPosition: () => {},
   emitFileSelect: () => {},
   emitExecutionResult: () => {},
+  emitChatMessage: () => {},
   startTerminalSession: () => {},
   sendTerminalInput: () => {},
   stopTerminalSession: () => {},
@@ -303,6 +309,19 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
     [socket]
   );
 
+  const emitChatMessage = useCallback(
+    (data: {
+      projectId: string;
+      conversationId?: string | null;
+      message: Record<string, unknown>;
+    }) => {
+      if (socket) {
+        socket.emit("chat:message", data);
+      }
+    },
+    [socket]
+  );
+
   const startTerminalSession = useCallback(
     (data: TerminalSocketEvents["terminal:start"]) => {
       emitTerminalEvent("terminal:start", data);
@@ -349,6 +368,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
         emitCursorPosition,
         emitFileSelect,
         emitExecutionResult,
+        emitChatMessage,
         startTerminalSession,
         sendTerminalInput,
         stopTerminalSession,

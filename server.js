@@ -622,6 +622,24 @@ app.prepare().then(() => {
       })
     })
 
+    socket.on('chat:message', (data = {}) => {
+      const { projectId, conversationId = null, message } = data || {}
+
+      if (!projectId || !message || typeof projectId !== 'string') {
+        return
+      }
+
+      if (collaborators.has(socket.id)) {
+        collaborators.get(socket.id).lastActivity = new Date()
+      }
+
+      socket.to(projectId).emit('chat:message', {
+        projectId,
+        conversationId,
+        message
+      })
+    })
+
     // Handle disconnect
     socket.on('disconnect', () => {
       console.log('User disconnected:', socket.id)

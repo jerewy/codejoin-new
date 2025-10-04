@@ -19,6 +19,7 @@ import {
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import type { Collaborator, ProjectChatMessageWithAuthor } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
+import { useSocket } from "@/lib/socket";
 
 interface LiveCollaborator {
   userId: string;
@@ -35,6 +36,7 @@ interface Identity {
 }
 
 interface ChatPanelProps {
+  projectId: string;
   conversationId: string | null;
   initialMessages: ProjectChatMessageWithAuthor[];
   teamMembers: Collaborator[];
@@ -64,6 +66,7 @@ type MessageRecord = {
   user_full_name?: string | null;
   user_avatar?: string | null;
   user_id?: string | null;
+  conversation_id?: string | null;
 } & Record<string, unknown>;
 
 type MessageLike = {
@@ -125,6 +128,7 @@ const resolveRecordUserId = (record: MessageLike) => {
 };
 
 export default function ChatPanel({
+  projectId,
   conversationId,
   initialMessages,
   teamMembers,
@@ -133,6 +137,7 @@ export default function ChatPanel({
 }: ChatPanelProps) {
   const supabase = getSupabaseClient();
   const { toast } = useToast();
+  const { socket, emitChatMessage } = useSocket();
   const [message, setMessage] = useState("");
   const [isAskingAI, setIsAskingAI] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -248,6 +253,32 @@ export default function ChatPanel({
     [resolveAuthor]
   );
 
+  const createSocketRecord = useCallback(
+    (details: {
+      id: string;
+      content: string;
+      createdAt: string;
+      role: string;
+      metadata?: Record<string, unknown> | null;
+      userId?: string | null;
+      authorName?: string | null;
+      authorAvatar?: string | null;
+    }): MessageRecord => {
+      return {
+        id: details.id,
+        content: details.content,
+        created_at: details.createdAt,
+        role: details.role,
+        metadata: details.metadata ?? null,
+        user_id: details.userId ?? null,
+        user_full_name: details.authorName ?? null,
+        user_avatar: details.authorAvatar ?? null,
+        conversation_id: conversationId,
+      } satisfies MessageRecord;
+    },
+    [conversationId]
+  );
+
   const formattedInitialMessages = useMemo(
     () => initialMessages.map((record) => formatMessage(record)),
     [initialMessages, formatMessage]
@@ -309,6 +340,63 @@ export default function ChatPanel({
       return next;
     });
   }, [formattedInitialMessages, resolveAuthor]);
+
+  useEffect(() => {
+    if (!socket) {
+      return;
+    }
+
+    const handleChatMessage = (payload: {
+      projectId?: string;
+      conversationId?: string | null;
+      message?: MessageRecord;
+    }) => {
+      if (!payload || payload.projectId !== projectId) {
+        return;
+      }
+
+      if (
+        conversationId &&
+        payload.conversationId &&
+        payload.conversationId !== conversationId
+      ) {
+        return;
+      }
+
+      const record = payload.message;
+      if (!record) {
+        return;
+      }
+
+      setMessages((prev) => {
+        const formatted = formatMessage(record);
+        const clientRef =
+          metadataString(record.metadata, "client_ref") ??
+          metadataString(record.metadata, "clientRef");
+        const nextMessage = { ...formatted, isPending: false };
+
+        const existingIndex = prev.findIndex(
+          (msg) =>
+            msg.id === nextMessage.id ||
+            (clientRef && msg.id === clientRef)
+        );
+
+        if (existingIndex === -1) {
+          return [...prev, nextMessage];
+        }
+
+        const next = [...prev];
+        next[existingIndex] = nextMessage;
+        return next;
+      });
+    };
+
+    socket.on("chat:message", handleChatMessage);
+
+    return () => {
+      socket.off("chat:message", handleChatMessage);
+    };
+  }, [socket, projectId, conversationId, formatMessage]);
 
   useEffect(() => {
     if (!supabase || !conversationId) {
@@ -377,6 +465,21 @@ export default function ChatPanel({
 
       const displayName = selfIdentity?.userName ?? "You";
 
+      const optimisticMetadata: Record<string, unknown> = {
+        client_ref: localId,
+        is_ai: false,
+      };
+
+      if (selfIdentity?.userName) {
+        optimisticMetadata.author_name = selfIdentity.userName;
+      }
+      if (selfIdentity?.userAvatar) {
+        optimisticMetadata.avatar = selfIdentity.userAvatar;
+      }
+      if (selfIdentity?.userId) {
+        optimisticMetadata.author_id = selfIdentity.userId;
+      }
+
       const localMessage: DisplayMessage = {
         id: localId,
         content: trimmed,
@@ -385,7 +488,7 @@ export default function ChatPanel({
         role: "user",
         authorName: isAskingAI ? `${displayName} → AI` : displayName,
         authorAvatar: selfIdentity?.userAvatar ?? null,
-        metadata: null,
+        metadata: optimisticMetadata,
         isAI: false,
         isPending: false,
       };
@@ -393,23 +496,58 @@ export default function ChatPanel({
       setMessages((prev) => [...prev, localMessage]);
       setMessage("");
 
+      emitChatMessage({
+        projectId,
+        conversationId,
+        message: createSocketRecord({
+          id: localId,
+          content: trimmed,
+          createdAt: timestamp,
+          role: "user",
+          metadata: optimisticMetadata,
+          userId: selfIdentity?.userId ?? null,
+          authorName: selfIdentity?.userName ?? displayName,
+          authorAvatar: selfIdentity?.userAvatar ?? null,
+        }),
+      });
+
       if (isAskingAI) {
         setTimeout(() => {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `${localId}-ai`,
-              content: "I'm analyzing your request. Let me help you with that...",
-              createdAt: new Date().toISOString(),
-              userId: null,
+          const aiTimestamp = new Date().toISOString();
+          const aiId = `${localId}-ai`;
+          const aiMetadata: Record<string, unknown> = {
+            is_ai: true,
+            client_ref: aiId,
+          };
+
+          const aiMessage: DisplayMessage = {
+            id: aiId,
+            content: "I'm analyzing your request. Let me help you with that...",
+            createdAt: aiTimestamp,
+            userId: null,
+            role: "assistant",
+            authorName: "AI Assistant",
+            authorAvatar: null,
+            metadata: aiMetadata,
+            isAI: true,
+            isPending: false,
+          };
+
+          setMessages((prev) => [...prev, aiMessage]);
+          emitChatMessage({
+            projectId,
+            conversationId,
+            message: createSocketRecord({
+              id: aiId,
+              content: aiMessage.content,
+              createdAt: aiTimestamp,
               role: "assistant",
-              authorName: "AI Assistant",
+              metadata: aiMetadata,
+              userId: null,
+              authorName: aiMessage.authorName,
               authorAvatar: null,
-              metadata: { is_ai: true },
-              isAI: true,
-              isPending: false,
-            },
-          ]);
+            }),
+          });
           setIsAskingAI(false);
         }, 1000);
       }
@@ -455,21 +593,27 @@ export default function ChatPanel({
     setMessage("");
     setIsSending(true);
 
+    const messageMetadata: Record<string, unknown> = {
+      ...optimisticMetadata,
+      ai_request: isAskingAI || undefined,
+    };
+
     const payload: Record<string, unknown> = {
       conversation_id: conversationId,
       content: trimmed,
       role: "user",
-      metadata: {
-        ...optimisticMetadata,
-        ai_request: isAskingAI || undefined,
-      },
+      metadata: messageMetadata,
     };
 
     if (selfIdentity?.userId) {
       payload.author_id = selfIdentity.userId;
     }
 
-    const { error } = await supabase.from("messages").insert(payload);
+    const { data: insertedMessage, error } = await supabase
+      .from("messages")
+      .insert(payload)
+      .select("*")
+      .single();
 
     if (error) {
       console.warn("Failed to send chat message", error);
@@ -483,16 +627,42 @@ export default function ChatPanel({
       return;
     }
 
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.id === clientRef
-          ? {
-              ...msg,
-              isPending: false,
-            }
-          : msg
-      )
-    );
+    const record: MessageRecord = insertedMessage
+      ? (insertedMessage as MessageRecord)
+      : createSocketRecord({
+          id: clientRef,
+          content: trimmed,
+          createdAt: timestamp,
+          role: "user",
+          metadata: messageMetadata,
+          userId: selfIdentity?.userId ?? null,
+          authorName: selfIdentity?.userName ?? optimistic.authorName,
+          authorAvatar: selfIdentity?.userAvatar ?? null,
+        });
+
+    if (!record.metadata) {
+      record.metadata = messageMetadata;
+    }
+
+    const formattedRecord = formatMessage(record);
+
+    setMessages((prev) => {
+      const next = [...prev];
+      const existingIndex = next.findIndex((msg) => msg.id === clientRef);
+
+      if (existingIndex !== -1) {
+        next[existingIndex] = { ...formattedRecord, isPending: false };
+        return next;
+      }
+
+      return [...next, { ...formattedRecord, isPending: false }];
+    });
+
+    emitChatMessage({
+      projectId,
+      conversationId,
+      message: record,
+    });
     setIsSending(false);
     setIsAskingAI(false);
   }, [
@@ -502,6 +672,10 @@ export default function ChatPanel({
     selfIdentity,
     isAskingAI,
     toast,
+    projectId,
+    emitChatMessage,
+    createSocketRecord,
+    formatMessage,
   ]);
 
   return (
