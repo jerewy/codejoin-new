@@ -57,11 +57,16 @@ type DisplayMessage = {
 type MessageRecord = {
   id: string;
   content: string | null;
-  user_id: string | null;
   created_at: string;
   metadata: Record<string, unknown> | null;
   user_full_name?: string | null;
   user_avatar?: string | null;
+  user_id?: string | null;
+} & Record<string, unknown>;
+
+type MessageLike = {
+  user_id?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 const pickString = (value: unknown) =>
@@ -81,6 +86,39 @@ const metadataBoolean = (
 ) => {
   const value = metadata?.[key];
   return typeof value === "boolean" ? value : false;
+};
+
+const metadataUserId = (metadata: Record<string, unknown> | null | undefined) => {
+  if (!metadata) {
+    return null;
+  }
+
+  const candidateKeys = [
+    "author_id",
+    "authorId",
+    "user_id",
+    "userId",
+    "profile_id",
+    "profileId",
+  ];
+
+  for (const key of candidateKeys) {
+    const value = metadata[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+
+  return null;
+};
+
+const resolveRecordUserId = (record: MessageLike) => {
+  const directId = record.user_id;
+  if (typeof directId === "string" && directId.trim().length > 0) {
+    return directId;
+  }
+
+  return metadataUserId(record.metadata);
 };
 
 export default function ChatPanel({
@@ -177,8 +215,10 @@ export default function ChatPanel({
         pickString(record.user_avatar) ??
         metadataString(record.metadata, "avatar");
 
+      const resolvedUserId = resolveRecordUserId(record);
+
       const author = resolveAuthor(
-        record.user_id ?? null,
+        resolvedUserId ?? null,
         fallbackName,
         fallbackAvatar,
         record.metadata
@@ -188,7 +228,7 @@ export default function ChatPanel({
         id: record.id,
         content: pickString(record.content) ?? record.content?.toString() ?? "",
         createdAt: record.created_at ?? new Date().toISOString(),
-        userId: record.user_id ?? null,
+        userId: resolvedUserId ?? null,
         authorName: author.name,
         authorAvatar: author.avatar ?? fallbackAvatar ?? null,
         metadata: record.metadata ?? null,
@@ -327,6 +367,10 @@ export default function ChatPanel({
       optimisticMetadata.avatar = selfIdentity.userAvatar;
     }
 
+    if (selfIdentity?.userId) {
+      optimisticMetadata.author_id = selfIdentity.userId;
+    }
+
     const optimistic: DisplayMessage = {
       id: clientRef,
       content: trimmed,
@@ -351,10 +395,6 @@ export default function ChatPanel({
         ai_request: isAskingAI || undefined,
       },
     };
-
-    if (selfIdentity?.userId) {
-      payload.user_id = selfIdentity.userId;
-    }
 
     const { error } = await supabase.from("messages").insert(payload);
 

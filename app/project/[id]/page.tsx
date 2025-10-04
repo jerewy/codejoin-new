@@ -21,6 +21,48 @@ export type ProjectNode = {
   parent_id: string | null;
 };
 
+const extractMessageAuthorId = (
+  record:
+    | {
+        user_id?: string | null;
+        metadata?: Record<string, unknown> | null;
+        [key: string]: unknown;
+      }
+    | null
+) => {
+  if (!record) {
+    return null;
+  }
+
+  const directId = record.user_id;
+  if (typeof directId === "string" && directId.trim().length > 0) {
+    return directId;
+  }
+
+  const metadata = record.metadata as Record<string, unknown> | null | undefined;
+  if (!metadata) {
+    return null;
+  }
+
+  const candidateKeys = [
+    "author_id",
+    "authorId",
+    "user_id",
+    "userId",
+    "profile_id",
+    "profileId",
+  ];
+
+  for (const key of candidateKeys) {
+    const value = metadata[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+
+  return null;
+};
+
 export default async function ProjectPage({
   params: paramsPromise,
 }: {
@@ -143,7 +185,7 @@ export default async function ProjectPage({
     if (conversationId) {
       const { data: messagesData, error: messagesError } = await supabase
         .from("messages")
-        .select("id, content, user_id, created_at, metadata")
+        .select("*")
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true });
 
@@ -153,17 +195,17 @@ export default async function ProjectPage({
         type MessageRow = {
           id: string;
           content: string | null;
-          user_id: string | null;
           created_at: string;
           metadata: Record<string, unknown> | null;
-        };
+          user_id?: string | null;
+        } & Record<string, unknown>;
 
         const messageRows = messagesData as MessageRow[];
 
         const missingProfileIds = Array.from(
           new Set(
             messageRows
-              .map((row) => row.user_id)
+              .map((row) => extractMessageAuthorId(row))
               .filter(
                 (id): id is string =>
                   typeof id === "string" &&
@@ -192,13 +234,16 @@ export default async function ProjectPage({
         }
 
         chatMessages = messageRows.map((row) => {
-          const profile = row.user_id ? profilesById.get(row.user_id) : undefined;
+          const resolvedUserId = extractMessageAuthorId(row);
+          const profile = resolvedUserId
+            ? profilesById.get(resolvedUserId)
+            : undefined;
 
           return {
             id: row.id,
             content: row.content ?? "",
             created_at: row.created_at,
-            user_id: row.user_id ?? null,
+            user_id: resolvedUserId ?? null,
             user_full_name: profile?.full_name ?? null,
             user_avatar: profile?.user_avatar ?? null,
             metadata: row.metadata ?? null,
