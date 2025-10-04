@@ -436,7 +436,6 @@ class DockerService {
     let error = '';
     let exitCode = 0;
     let stdinStream = null;
-    let stdinStreamClosed = false;
 
     if (typeof container.attach === 'function') {
       try {
@@ -526,8 +525,7 @@ class DockerService {
       const resultPromise = container.wait();
 
       if (stdinStream) {
-        stdinStreamClosed =
-          (await this.writeInputToStream(stdinStream, input)) === true;
+        await this.writeInputToStream(stdinStream, input);
       }
 
       const result = await Promise.race([resultPromise, timeoutPromise]);
@@ -558,7 +556,7 @@ class DockerService {
       error = `Container execution error: ${e.message}`;
       exitCode = 1;
     } finally {
-      if (stdinStream && !stdinStreamClosed && typeof stdinStream.end === 'function') {
+      if (stdinStream && typeof stdinStream.end === 'function') {
         try {
           stdinStream.end();
         } catch (endError) {
@@ -582,43 +580,31 @@ class DockerService {
   async writeInputToStream(stream, input) {
     const normalizedInput = this.normalizeInput(input);
 
-    return new Promise((resolve) => {
-      let finalized = false;
+    if (!normalizedInput) {
+      return false;
+    }
 
-      const finalize = () => {
-        if (finalized) {
-          return;
-        }
-        finalized = true;
-        try {
-          stream.end();
-        } catch (endError) {
+    return new Promise((resolve) => {
+      const handleFailure = (writeError) => {
+        if (writeError) {
           logger.warn(
-            `Failed to close container stdin: ${endError.message}`
+            `Failed to write to container stdin: ${writeError.message}`
           );
         }
-        resolve(true);
+        resolve(false);
       };
-
-      if (!normalizedInput) {
-        finalize();
-        return;
-      }
 
       try {
         stream.write(normalizedInput, (writeError) => {
           if (writeError) {
-            logger.warn(
-              `Failed to write to container stdin: ${writeError.message}`
-            );
+            handleFailure(writeError);
+            return;
           }
-          finalize();
+
+          resolve(true);
         });
       } catch (writeError) {
-        logger.warn(
-          `Failed to write to container stdin: ${writeError.message}`
-        );
-        finalize();
+        handleFailure(writeError);
       }
     });
   }
