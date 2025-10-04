@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,25 +14,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { TemplateNode } from "@/lib/types";
-import {
-  starterProjects,
-  starterProjectLanguages,
-  type StarterProject,
-} from "@/lib/data/starter-projects";
+import { starterProjects } from "@/lib/data/starter-projects";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
 
-type ProjectTemplate = StarterProject;
-
-const projectTemplates: ReadonlyArray<ProjectTemplate> = starterProjects;
-
 const DEFAULT_PROJECT_THUMBNAIL_URL =
   "https://izngyuhawwlxopcdmfry.supabase.co/storage/v1/object/public/assets/project_placeholder.jpg";
-
-const languageOptions = starterProjectLanguages.map((language) => ({
-  value: language.id,
-  label: language.name,
-}));
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -46,7 +33,6 @@ export default function NewProjectPage() {
   const [importMethod, setImportMethod] = useState("template");
   const [githubUrl, setGithubUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [language, setLanguage] = useState("javascript");
   const supabase = getSupabaseClient();
   const authUnavailable = !supabase;
 
@@ -202,7 +188,6 @@ export default function NewProjectPage() {
       setProjectName("");
       setDescription("");
       setTags([]);
-      setLanguage("javascript");
       return;
     }
 
@@ -213,7 +198,6 @@ export default function NewProjectPage() {
       setProjectName("");
       setDescription("");
       setTags([]);
-      setLanguage("javascript");
       toast({
         variant: "destructive",
         title: "Template not found",
@@ -226,7 +210,6 @@ export default function NewProjectPage() {
     setSelectedTemplate(template.id);
     setProjectName(template.name);
     setDescription(template.description);
-    setLanguage(template.language.toLowerCase() || template.id);
 
     // Create a new, mutable copy of the readonly tags array
     setTags([...template.tags]);
