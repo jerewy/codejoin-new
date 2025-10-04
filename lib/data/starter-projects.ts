@@ -1,5 +1,17 @@
-import { Code, Database } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import type { ComponentType } from "react";
+import { DiJava } from "react-icons/di";
+import {
+  SiC,
+  SiCplusplus,
+  SiCsharp,
+  SiGo,
+  SiJavascript,
+  SiMysql,
+  SiPython,
+  SiRust,
+  SiSwift,
+  SiTypescript,
+} from "react-icons/si";
 
 import type { TemplateNode } from "@/lib/types";
 
@@ -7,7 +19,7 @@ export type StarterProject = {
   id: string;
   name: string;
   description: string;
-  icon: LucideIcon;
+  icon: ComponentType<{ className?: string }>;
   tags: string[];
   color: string;
   structure: TemplateNode[];
@@ -31,7 +43,7 @@ const baseStarterProjects: BaseStarterProject[] = [
     id: "javascript",
     name: "JavaScript",
     description: "JavaScript project with Node.js",
-    icon: Code,
+    icon: SiJavascript,
     tags: ["JavaScript", "Node.js"],
     color: "bg-yellow-500",
     structure: [
@@ -51,7 +63,7 @@ const baseStarterProjects: BaseStarterProject[] = [
     id: "typescript",
     name: "TypeScript",
     description: "TypeScript project with type safety",
-    icon: Code,
+    icon: SiTypescript,
     tags: ["TypeScript", "Node.js"],
     color: "bg-blue-600",
     structure: [
@@ -76,7 +88,7 @@ const baseStarterProjects: BaseStarterProject[] = [
     id: "python",
     name: "Python",
     description: "Python project for general programming",
-    icon: Code,
+    icon: SiPython,
     tags: ["Python"],
     color: "bg-green-600",
     structure: [
@@ -96,7 +108,7 @@ const baseStarterProjects: BaseStarterProject[] = [
     id: "java",
     name: "Java",
     description: "Java project with object-oriented design",
-    icon: Code,
+    icon: DiJava,
     tags: ["Java"],
     color: "bg-red-600",
     structure: [
@@ -111,7 +123,7 @@ const baseStarterProjects: BaseStarterProject[] = [
     id: "csharp",
     name: "C#",
     description: "C# project with .NET framework",
-    icon: Code,
+    icon: SiCsharp,
     tags: ["C#", ".NET"],
     color: "bg-purple-600",
     structure: [
@@ -126,7 +138,7 @@ const baseStarterProjects: BaseStarterProject[] = [
     id: "go",
     name: "Go",
     description: "Go project for system programming",
-    icon: Code,
+    icon: SiGo,
     tags: ["Go"],
     color: "bg-cyan-600",
     structure: [
@@ -146,7 +158,7 @@ const baseStarterProjects: BaseStarterProject[] = [
     id: "rust",
     name: "Rust",
     description: "Rust project for systems programming",
-    icon: Code,
+    icon: SiRust,
     tags: ["Rust"],
     color: "bg-orange-600",
     structure: [
@@ -166,7 +178,7 @@ const baseStarterProjects: BaseStarterProject[] = [
     id: "swift",
     name: "Swift",
     description: "Swift project for iOS/macOS development",
-    icon: Code,
+    icon: SiSwift,
     tags: ["Swift"],
     color: "bg-orange-500",
     structure: [
@@ -181,7 +193,7 @@ const baseStarterProjects: BaseStarterProject[] = [
     id: "cpp",
     name: "C++",
     description: "C++ project for system programming",
-    icon: Code,
+    icon: SiCplusplus,
     tags: ["C++"],
     color: "bg-blue-800",
     structure: [
@@ -201,7 +213,7 @@ const baseStarterProjects: BaseStarterProject[] = [
     id: "c",
     name: "C",
     description: "C project for system programming",
-    icon: Code,
+    icon: SiC,
     tags: ["C"],
     color: "bg-gray-600",
     structure: [
@@ -221,7 +233,7 @@ const baseStarterProjects: BaseStarterProject[] = [
     id: "sql",
     name: "SQL",
     description: "SQL database project",
-    icon: Database,
+    icon: SiMysql,
     tags: ["SQL", "Database"],
     color: "bg-indigo-600",
     structure: [
