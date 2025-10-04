@@ -1,5 +1,4 @@
 const Docker = require('dockerode');
-const { PassThrough } = require('stream');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');
 
@@ -435,135 +434,98 @@ class DockerService {
     let output = '';
     let error = '';
     let exitCode = 0;
+    let timeoutId = null;
     let stdinStream = null;
+    let stdinClosed = false;
 
-    if (typeof container.attach === 'function') {
-      try {
-        stdinStream = await container.attach({
-          stream: true,
-          stdin: true,
-          stdout: true,
-          stderr: true,
-          tty: false
-        });
-      } catch (attachError) {
-        logger.warn(
-          `Failed to attach to container stdin: ${attachError.message}`
-        );
+    const closeStdin = () => {
+      if (stdinClosed) {
+        return;
       }
-    }
+
+      if (stdinStream && typeof stdinStream.end === 'function') {
+        stdinClosed = true;
+        try {
+          stdinStream.end();
+        } catch (endError) {
+          logger.warn(
+            `Failed to close container stdin after run error: ${endError.message}`
+          );
+        }
+      } else {
+        stdinClosed = true;
+      }
+    };
 
     try {
-      stream = await container.attach({
+      if (typeof container.attach !== 'function') {
+        throw new Error('Container does not support stdin attachment');
+      }
+
+      stdinStream = await container.attach({
         stream: true,
         stdin: true,
         stdout: true,
-        stderr: true
+        stderr: true,
+        tty: false
       });
-
-      streamEndPromise = new Promise((resolve) => {
-        let resolved = false;
-        const finish = () => {
-          if (!resolved) {
-            resolved = true;
-            resolve();
-          }
-        };
-        stream.on('end', finish);
-        stream.on('close', finish);
-        stream.on('error', finish);
-      });
-
-      stdoutEndPromise = new Promise((resolve) => {
-        let resolved = false;
-        const finish = () => {
-          if (!resolved) {
-            resolved = true;
-            resolve();
-          }
-        };
-        stdoutStream.on('end', finish);
-        stdoutStream.on('close', finish);
-        stdoutStream.on('error', finish);
-      });
-
-      stderrEndPromise = new Promise((resolve) => {
-        let resolved = false;
-        const finish = () => {
-          if (!resolved) {
-            resolved = true;
-            resolve();
-          }
-        };
-        stderrStream.on('end', finish);
-        stderrStream.on('close', finish);
-        stderrStream.on('error', finish);
-      });
-
-      this.docker.modem.demuxStream(stream, stdoutStream, stderrStream);
 
       await container.start();
 
-      const stdinPayload = this.normalizeInput(input);
-
       try {
-        if (stdinPayload.length > 0) {
-          stream.write(stdinPayload);
-        }
+        await this.writeInputToStream(stdinStream, input);
       } finally {
-        stream.end();
+        closeStdin();
       }
 
-      // Set up timeout promise
       const timeoutPromise = new Promise((resolve) => {
         timeoutId = setTimeout(() => {
           resolve({ timedOut: true });
         }, languageConfig.timeout);
       });
 
-      // Wait for container to complete or timeout
-      const resultPromise = container.wait();
+      const waitPromise = container.wait();
+      const result = await Promise.race([waitPromise, timeoutPromise]);
 
-      if (stdinStream) {
-        await this.writeInputToStream(stdinStream, input);
-      }
-
-      const result = await Promise.race([resultPromise, timeoutPromise]);
-
-      if (result.timedOut) {
+      if (result && result.timedOut) {
         try {
           await container.kill();
-        } catch (e) {
-          logger.warn(`Failed to kill timed out container: ${e.message}`);
+        } catch (killError) {
+          logger.warn(`Failed to kill timed out container: ${killError.message}`);
         }
-        await resultPromise.catch(() => {});
+
+        await waitPromise.catch(() => {});
         error = 'Execution timed out';
         exitCode = 124;
       } else {
-        exitCode = result.StatusCode || 0;
+        exitCode = result?.StatusCode ?? 0;
+
+        let logsBuffer = await container.logs({
+          stdout: true,
+          stderr: true,
+          follow: false
+        });
+
+        if (!logsBuffer) {
+          logsBuffer = Buffer.alloc(0);
+        } else if (Array.isArray(logsBuffer)) {
+          logsBuffer = Buffer.concat(logsBuffer);
+        } else if (!(logsBuffer instanceof Buffer)) {
+          logsBuffer = Buffer.from(String(logsBuffer));
+        }
+
+        const { stdout, stderr } = this.parseDockerStream(logsBuffer);
+        output = stdout;
+        error = stderr;
       }
-
-      clearTimeout(timeoutId);
-
-      await Promise.all([streamEndPromise, stdoutEndPromise, stderrEndPromise]);
-
-      output = Buffer.concat(stdoutChunks).toString('utf-8');
-      if (!result.timedOut) {
-        error = Buffer.concat(stderrChunks).toString('utf-8');
-      }
-
     } catch (e) {
       error = `Container execution error: ${e.message}`;
       exitCode = 1;
     } finally {
-      if (stream) {
-        try {
-          stream.end();
-        } catch (endError) {
-          logger.debug(`Stream end error: ${endError.message}`);
-        }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
       }
-      clearTimeout(timeoutId);
+      closeStdin();
     }
 
     const executionTime = Date.now() - startTime;
@@ -579,43 +541,31 @@ class DockerService {
   async writeInputToStream(stream, input) {
     const normalizedInput = this.normalizeInput(input);
 
-    return new Promise((resolve) => {
-      let finalized = false;
+    if (!normalizedInput) {
+      return false;
+    }
 
-      const finalize = () => {
-        if (finalized) {
-          return;
-        }
-        finalized = true;
-        try {
-          stream.end();
-        } catch (endError) {
+    return new Promise((resolve) => {
+      const handleFailure = (writeError) => {
+        if (writeError) {
           logger.warn(
-            `Failed to close container stdin: ${endError.message}`
+            `Failed to write to container stdin: ${writeError.message}`
           );
         }
-        resolve();
+        resolve(false);
       };
-
-      if (!normalizedInput) {
-        finalize();
-        return;
-      }
 
       try {
         stream.write(normalizedInput, (writeError) => {
           if (writeError) {
-            logger.warn(
-              `Failed to write to container stdin: ${writeError.message}`
-            );
+            handleFailure(writeError);
+            return;
           }
-          finalize();
+
+          resolve(true);
         });
       } catch (writeError) {
-        logger.warn(
-          `Failed to write to container stdin: ${writeError.message}`
-        );
-        finalize();
+        handleFailure(writeError);
       }
     });
   }
