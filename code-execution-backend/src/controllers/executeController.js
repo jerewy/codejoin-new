@@ -46,6 +46,11 @@ class ExecuteController {
         requestPayload.stdin = requestPayload.input;
       }
 
+      // Remove legacy aliases before validation so Joi doesn't reject the payload
+      if ('input' in requestPayload) {
+        delete requestPayload.input;
+      }
+
       const { error, value } = executeSchema.validate(requestPayload);
       if (error) {
         return res.status(400).json({
