@@ -7,6 +7,29 @@ This document explains how the CodeJoin code execution system works and the curr
 >
 > If the backend logs show `Docker connection test failed {"error":"Unknown error"}` followed by `Docker connection failed: Unknown error`, the Docker daemon is offline or unreachable from the backend. Start Docker Desktop (or `dockerd` on Linux) and re-run `npm run dev` for the `code-execution-backend`. When Docker is healthy, `docker info` should succeed and the backend will build or pull the required images automatically.
 
+## Windows Permission Denied On Docker
+
+When the backend runs on Windows and the logs show entries similar to:
+
+```
+{"level":"error","message":"Docker permission error during execution","errorCode":"EPERM"}
+```
+
+or the message `Access is denied.`, the Node process cannot open the named pipe `//./pipe/docker_engine` that Docker Desktop exposes.
+
+**Root cause**  
+Your Windows account is missing from the local `docker-users` group, so the Docker pipe rejects the connection. This frequently occurs on new PCs where Docker Desktop was installed by an administrator account.
+
+**Fix it**
+1. Open an elevated PowerShell and run `net localgroup docker-users` to inspect membership.
+2. If your username is absent, add it with `net localgroup docker-users <YourUserName> /add`.
+3. Sign out (or reboot) and restart Docker Desktop so the new group membership is applied.
+4. Re-run `npm run dev` in `code-execution-backend`; the startup log should report `Docker connection test successful`.
+
+**Verify**
+- `docker info` succeeds without elevation.
+- Backend logs stop emitting `Docker permission error during execution` and show `Docker connection test successful`.
+- Code execution requests return output instead of `Docker connection failed`.
 ## System Architecture
 
 ### 1. Execution Flow Components

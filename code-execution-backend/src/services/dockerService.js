@@ -84,6 +84,62 @@ class DockerService {
     };
   }
 
+  describeDockerConnectionError(error) {
+    const code = error && error.code ? error.code : undefined;
+    const rawMessage = error && error.message ? error.message : '';
+    const reason = error && error.reason ? error.reason : '';
+    const detail = rawMessage || reason || 'Unknown error';
+    const normalized = detail.toLowerCase();
+
+    const permissionDenied =
+      code === 'EPERM' ||
+      code === 'EACCES' ||
+      normalized.includes('permission denied') ||
+      normalized.includes('access is denied');
+
+    if (permissionDenied) {
+      return {
+        code: code || 'EACCES',
+        message: 'Permission denied accessing Docker. On Windows, add your user to the local "docker-users" group, then sign out (or restart) and relaunch Docker Desktop.',
+        guidance: 'Run "net localgroup docker-users" to confirm membership, add your account if missing, then restart Docker Desktop.'
+      };
+    }
+
+    const connectionRefused =
+      code === 'ECONNREFUSED' ||
+      normalized.includes('econnrefused') ||
+      normalized.includes('refused connection');
+
+    if (connectionRefused) {
+      return {
+        code: code || 'ECONNREFUSED',
+        message: 'Docker is running but refusing the configured connection. If you set DOCKER_HOST, enable "Expose daemon on tcp://localhost:2375" or unset DOCKER_HOST so we fall back to the named pipe.',
+        guidance: 'Open Docker Desktop settings and enable "Expose daemon on tcp://localhost:2375" or clear DOCKER_HOST so the Windows named pipe is used.'
+      };
+    }
+
+    const socketMissing =
+      code === 'ENOENT' ||
+      normalized.includes('enoent') ||
+      normalized.includes('no such file') ||
+      normalized.includes('docker daemon is not running') ||
+      normalized.includes('is the docker daemon running');
+
+    if (socketMissing) {
+      return {
+        code: code || 'ENOENT',
+        message: 'Docker Desktop is not running or the Docker socket is unreachable. Start Docker Desktop and wait for it to finish starting.',
+        guidance: 'Launch Docker Desktop and wait for the whale icon to turn solid before retrying.'
+      };
+    }
+
+    return {
+      code,
+      message: detail || 'Unknown error',
+      guidance: null
+    };
+  }
+
   async executeCode(languageConfig, code, input = '') {
     const containerId = uuidv4();
     let container = null;
@@ -182,8 +238,15 @@ class DockerService {
       await this.docker.ping();
       logger.debug('Docker connection test successful');
     } catch (error) {
-      const message = error && error.message ? error.message : 'Unknown error';
-      logger.error('Docker connection test failed', { error: message });
+      const rawMessage = error && error.message ? error.message : 'Unknown error';
+      const { code: formattedCode, message: friendlyMessage, guidance } = this.describeDockerConnectionError(error);
+
+      logger.error('Docker connection test failed', {
+        error: friendlyMessage,
+        errorCode: formattedCode || (error && error.code ? error.code : undefined),
+        rawError: rawMessage,
+        guidance
+      });
 
       if (!this.hasRetriedConnection && this.fallbackDockerOptions) {
         this.hasRetriedConnection = true;
@@ -199,22 +262,38 @@ class DockerService {
           socketPath: modem.socketPath,
           protocol: modem.protocol
         });
-        
+
         try {
           await this.docker.ping();
           logger.info('Docker fallback connection successful');
           return;
         } catch (fallbackError) {
-          const fallbackMessage = fallbackError && fallbackError.message
+          const fallbackRawMessage = fallbackError && fallbackError.message
             ? fallbackError.message
             : 'Unknown error';
-          logger.error('Docker fallback connection failed', { error: fallbackMessage });
-          fallbackError.message = `Docker connection failed: ${fallbackMessage}`;
+          const fallbackDetails = this.describeDockerConnectionError(fallbackError);
+
+          logger.error('Docker fallback connection failed', {
+            error: fallbackDetails.message,
+            errorCode: fallbackDetails.code || (fallbackError && fallbackError.code ? fallbackError.code : undefined),
+            rawError: fallbackRawMessage,
+            guidance: fallbackDetails.guidance
+          });
+
+          fallbackError.rawDockerMessage = fallbackRawMessage;
+          fallbackError.message = fallbackDetails.message;
+          if (fallbackDetails.guidance) {
+            fallbackError.guidance = fallbackDetails.guidance;
+          }
           throw fallbackError;
         }
       }
 
-      error.message = `Docker connection failed: ${message}`;
+      error.rawDockerMessage = rawMessage;
+      error.message = friendlyMessage;
+      if (guidance) {
+        error.guidance = guidance;
+      }
       throw error;
     }
   }
