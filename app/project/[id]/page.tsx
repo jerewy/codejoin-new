@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import CollaboratorsList from "@/components/collaborators-list";
 import { Collaborator, ProjectChatMessageWithAuthor } from "@/lib/types";
 import ProjectActions from "@/components/project-actions";
-import { generateFriendlyProjectName } from "@/lib/utils";
 
 // This type is for your client component, so keep it exported
 export type ProjectNode = {
@@ -75,7 +74,7 @@ export default async function ProjectPage({
   const params = await paramsPromise;
 
   // Fetch data needed for the header
-  let project;
+  let project: { name: string | null } | null = null;
   let nodes;
 
   type ProfileRow = {
@@ -262,7 +261,7 @@ export default async function ProjectPage({
         nodesError,
       });
 
-      project = { name: generateFriendlyProjectName(params.id) };
+      project = { name: params.id ?? "Project" };
       nodes = [
         {
           id: "1",
@@ -299,7 +298,7 @@ export default async function ProjectPage({
     console.error("Supabase error:", error);
 
     // Provide mock data as fallback
-    project = { name: generateFriendlyProjectName(params.id) };
+    project = { name: params.id ?? "Project" };
     nodes = [
       {
         id: "1",
@@ -324,6 +323,11 @@ export default async function ProjectPage({
     chatMessages = [];
   }
 
+  const projectName =
+    typeof project?.name === "string" && project.name.trim().length > 0
+      ? project.name
+      : params.id ?? "Project";
+
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <header className="flex items-center justify-between px-3 py-2 border-b bg-background z-10 flex-shrink-0 h-12">
@@ -335,7 +339,7 @@ export default async function ProjectPage({
           </Link>
           <Separator orientation="vertical" className="h-4" />
           <FileText className="h-4 w-4 text-primary flex-shrink-0" />
-          <h1 className="text-sm font-medium truncate">{project.name}</h1>
+          <h1 className="text-sm font-medium truncate">{projectName}</h1>
           <Badge variant="outline" className="text-xs hidden lg:inline-flex">
             Multi-language
           </Badge>
@@ -345,7 +349,7 @@ export default async function ProjectPage({
         </div>
         <ProjectActions
           projectId={params.id}
-          projectName={project.name}
+          projectName={projectName}
           files={nodes}
         />
       </header>
