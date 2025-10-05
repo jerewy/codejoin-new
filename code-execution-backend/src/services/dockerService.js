@@ -430,7 +430,9 @@ class DockerService {
 
       return { sessionId, stream };
     } catch (error) {
-      logger.error(`Failed to start interactive container: ${error.message}`, { sessionId });
+      const rawMessage = error && error.message ? error.message : 'Unknown error';
+
+      logger.error(`Failed to start interactive container: ${rawMessage}`, { sessionId });
       if (container) {
         try {
           await container.remove({ force: true });
@@ -438,6 +440,18 @@ class DockerService {
           logger.warn(`Failed to remove interactive container: ${cleanupError.message}`);
         }
       }
+
+      if (typeof rawMessage === 'string' && rawMessage.toLowerCase().includes('no such image')) {
+        const friendlyError = new Error(
+          `Docker image '${languageConfig.image}' not found. ` +
+          'Build the execution images with "cd code-execution-backend && npm run docker:build" before starting the terminal.'
+        );
+
+        friendlyError.code = 'DOCKER_IMAGE_MISSING';
+        friendlyError.cause = error;
+        throw friendlyError;
+      }
+
       throw error;
     }
   }
