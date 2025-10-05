@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import CollaboratorsList from "@/components/collaborators-list";
 import { Collaborator, ProjectChatMessageWithAuthor } from "@/lib/types";
 import ProjectActions from "@/components/project-actions";
+import { generateFriendlyProjectName } from "@/lib/utils";
 
 // This type is for your client component, so keep it exported
 export type ProjectNode = {
@@ -261,7 +262,7 @@ export default async function ProjectPage({
         nodesError,
       });
 
-      project = { name: `Project ${params.id}` };
+      project = { name: generateFriendlyProjectName(params.id) };
       nodes = [
         {
           id: "1",
@@ -298,7 +299,7 @@ export default async function ProjectPage({
     console.error("Supabase error:", error);
 
     // Provide mock data as fallback
-    project = { name: `Project ${params.id}` };
+    project = { name: generateFriendlyProjectName(params.id) };
     nodes = [
       {
         id: "1",
