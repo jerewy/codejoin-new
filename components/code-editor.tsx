@@ -677,7 +677,7 @@ const detectLanguage = (fileName: string): string => {
 
     try {
       // Dynamically import the API service
-      const { codeExecutionAPI } = await import('@/lib/api/codeExecution');
+      const { codeExecutionAPI } = await import(/* webpackChunkName: "code-execution-api" */ '@/lib/api/codeExecution');
 
       // Detect the language for the current file
       const detectedLanguage = codeExecutionAPI.detectLanguageFromFileName(file.name);
