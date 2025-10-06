@@ -1,18 +1,38 @@
 {
+  "env": {
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.5-air",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-4.6",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-4.6"
+  },
   "permissions": {
     "allow": [
       "Bash(go:*)",
       "Bash(rust --version)",
       "Bash(node:*)",
       "Bash(npm install:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(if:*)",
+      "Bash(then echo \"Found .env.local file\")",
+      "Bash(else echo \"No .env.local file found\")",
+      "Bash(fi:*)",
+      "Bash(npx mcp-supabase:*)",
+      "Bash(claude mcp list:*)",
+      "Bash(claude mcp remove:*)",
+      "mcp__supabase__get_advisors",
+      "mcp__supabase__execute_sql",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__apply_migration",
+      "mcp__supabase__list_migrations",
+      "mcp__supabase__get_logs",
+      "Bash(npm run build:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm run dev:*)",
+      "Bash(echo:*)",
+      "mcp__supabase__search_docs",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []
   },
-  "env": {
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.5-air",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-4.6",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-4.6"
-  }
+  "enableAllProjectMcpServers": true
 }

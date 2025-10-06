@@ -315,12 +315,17 @@ class TerminalService {
     }
 
     const message = typeof error.message === 'string' ? error.message.toLowerCase() : '';
-    if (message.includes('docker connection failed') || message.includes('docker is not running')) {
+    if (message.includes('docker connection failed') ||
+        message.includes('docker is not running') ||
+        message.includes('docker is unavailable')) {
       return true;
     }
 
     const code = typeof error.code === 'string' ? error.code.toUpperCase() : '';
-    return code === 'ECONNREFUSED' || code === 'ENOENT';
+    return code === 'ECONNREFUSED' ||
+           code === 'ENOENT' ||
+           code === 'DOCKER_IN_BACKOFF' ||
+           code === 'DOCKER_UNAVAILABLE';
   }
 }
 

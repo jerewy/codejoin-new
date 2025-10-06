@@ -175,12 +175,21 @@ class ExecuteController {
 
   async healthCheck(req, res) {
     try {
-      // Simple health check
+      // Simple health check that doesn't test Docker connection
+      // to avoid infinite loops when Docker is unavailable
+      const dockerConnectionState = dockerService.getConnectionState();
+
       const status = {
         status: 'healthy',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        version: process.env.npm_package_version || '1.0.0'
+        version: process.env.npm_package_version || '1.0.0',
+        docker: {
+          available: dockerConnectionState.isAvailable,
+          lastChecked: dockerConnectionState.lastChecked ? new Date(dockerConnectionState.lastChecked).toISOString() : null,
+          consecutiveFailures: dockerConnectionState.consecutiveFailures,
+          backoffActive: dockerConnectionState.isAvailable === false && dockerConnectionState.consecutiveFailures > 0
+        }
       };
 
       res.json(status);

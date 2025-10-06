@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
@@ -25,6 +25,27 @@ export default function BackendStatus({
   const [status, setStatus] = useState<BackendStatus>("unknown");
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [isChecking, setIsChecking] = useState(false);
+  const [consecutiveFailures, setConsecutiveFailures] = useState(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const consecutiveFailuresRef = useRef(0);
+
+  const getAdaptivePollingInterval = (failures: number): number => {
+    // Adaptive polling: 30s, 60s, 2m, 5m, 10m (max)
+    const intervals = [30000, 60000, 120000, 300000, 600000];
+    const index = Math.min(failures, intervals.length - 1);
+    return intervals[index];
+  };
+
+  const scheduleNextCheck = (failures: number) => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+
+    const interval = getAdaptivePollingInterval(failures);
+    intervalRef.current = setTimeout(() => {
+      checkBackendStatus();
+    }, interval);
+  };
 
   const checkBackendStatus = async () => {
     setIsChecking(true);
@@ -36,9 +57,28 @@ export default function BackendStatus({
 
       setStatus(isAvailable ? "online" : "offline");
       setLastChecked(new Date());
+
+      if (isAvailable) {
+        // Reset failures on success
+        setConsecutiveFailures(0);
+        consecutiveFailuresRef.current = 0;
+        scheduleNextCheck(0);
+      } else {
+        // Increment failures and adapt polling
+        const newFailures = consecutiveFailuresRef.current + 1;
+        setConsecutiveFailures(newFailures);
+        consecutiveFailuresRef.current = newFailures;
+        scheduleNextCheck(newFailures);
+      }
     } catch (error) {
       setStatus("offline");
       setLastChecked(new Date());
+
+      // Increment failures and adapt polling
+      const newFailures = consecutiveFailuresRef.current + 1;
+      setConsecutiveFailures(newFailures);
+      consecutiveFailuresRef.current = newFailures;
+      scheduleNextCheck(newFailures);
     } finally {
       setIsChecking(false);
     }
@@ -47,10 +87,11 @@ export default function BackendStatus({
   useEffect(() => {
     checkBackendStatus();
 
-    // Check status every 30 seconds
-    const interval = setInterval(checkBackendStatus, 30000);
-
-    return () => clearInterval(interval);
+    return () => {
+      if (intervalRef.current) {
+        clearTimeout(intervalRef.current);
+      }
+    };
   }, []);
 
   const getStatusColor = () => {
@@ -98,8 +139,18 @@ export default function BackendStatus({
       ? `Last checked: ${lastChecked.toLocaleTimeString()}`
       : "Never checked";
 
+    const nextCheckIn = intervalRef.current && consecutiveFailures > 0
+      ? `\nNext check in: ${Math.round(getAdaptivePollingInterval(consecutiveFailures) / 1000 / 60)} minutes`
+      : '';
+
     if (status === "offline") {
-      return `${statusText}\n${lastCheckedText}\n\nMake sure Docker is running and start the backend:\ncd code-execution-backend && npm run dev`;
+      let tooltipText = `${statusText}\n${lastCheckedText}${nextCheckIn}\n\nMake sure Docker is running and start the backend:\ncd code-execution-backend && npm run dev`;
+
+      if (consecutiveFailures > 0) {
+        tooltipText += `\n\nAdaptive polling enabled: ${consecutiveFailures} consecutive failures`;
+      }
+
+      return tooltipText;
     }
 
     return `${statusText}\n${lastCheckedText}`;

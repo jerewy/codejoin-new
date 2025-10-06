@@ -10,6 +10,17 @@ class DockerService {
     this.fallbackDockerOptions = fallback;
     this.hasRetriedConnection = false;
 
+    // Connection state management
+    this.connectionState = {
+      isAvailable: null, // null = unknown, true = available, false = unavailable
+      lastChecked: null,
+      consecutiveFailures: 0,
+      backoffMs: 1000, // Start with 1 second backoff
+      maxBackoffMs: 60000, // Max 1 minute backoff
+      lastErrorLogged: 0,
+      errorLogCooldownMs: 30000 // Only log errors once every 30 seconds
+    };
+
     this.docker = new Docker(this.dockerOptions);
     this.runningContainers = new Map();
 
@@ -82,6 +93,63 @@ class DockerService {
       primary: defaultOptions,
       fallback: null
     };
+  }
+
+  shouldSkipConnectionCheck() {
+    const now = Date.now();
+    const state = this.connectionState;
+
+    // If connection is known to be unavailable and we're within backoff period
+    if (state.isAvailable === false && state.lastChecked) {
+      const timeSinceLastCheck = now - state.lastChecked;
+      if (timeSinceLastCheck < state.backoffMs) {
+        return true;
+      }
+    }
+
+    // Also skip if we recently confirmed Docker is available (short-circuit happy path)
+    if (state.isAvailable === true && state.lastChecked) {
+      const timeSinceLastCheck = now - state.lastChecked;
+      if (timeSinceLastCheck < 5000) { // 5 second cache for successful connections
+        return false; // Don't skip, we want to verify quickly
+      }
+    }
+
+    return false;
+  }
+
+  updateConnectionState(isAvailable, error = null) {
+    const now = Date.now();
+    const state = this.connectionState;
+
+    state.lastChecked = now;
+
+    if (isAvailable) {
+      // Reset failure state on success
+      state.isAvailable = true;
+      state.consecutiveFailures = 0;
+      state.backoffMs = 1000;
+    } else {
+      // Update failure state with exponential backoff
+      state.isAvailable = false;
+      state.consecutiveFailures++;
+
+      // Exponential backoff with jitter
+      const baseBackoff = Math.min(state.backoffMs * 2, state.maxBackoffMs);
+      const jitter = Math.random() * 0.1 * baseBackoff; // 10% jitter
+      state.backoffMs = Math.floor(baseBackoff + jitter);
+    }
+
+    // Rate limit error logging
+    if (error && !isAvailable) {
+      const timeSinceLastError = now - state.lastErrorLogged;
+      if (timeSinceLastError >= state.errorLogCooldownMs) {
+        state.lastErrorLogged = now;
+        return true; // Should log this error
+      }
+    }
+
+    return false; // Don't log this error
   }
 
   describeDockerConnectionError(error) {
@@ -234,25 +302,44 @@ class DockerService {
   }
 
   async testConnection() {
+    // Skip connection check if we're in backoff period
+    if (this.shouldSkipConnectionCheck()) {
+      const state = this.connectionState;
+      const error = new Error(`Docker is unavailable (checked ${Math.round((Date.now() - state.lastChecked) / 1000)}s ago, retry after ${Math.round((state.backoffMs - (Date.now() - state.lastChecked)) / 1000)}s)`);
+      error.code = 'DOCKER_IN_BACKOFF';
+      throw error;
+    }
+
     try {
       await this.docker.ping();
       logger.debug('Docker connection test successful');
+      this.updateConnectionState(true);
     } catch (error) {
       const rawMessage = error && error.message ? error.message : 'Unknown error';
       const { code: formattedCode, message: friendlyMessage, guidance } = this.describeDockerConnectionError(error);
 
-      logger.error('Docker connection test failed', {
-        error: friendlyMessage,
-        errorCode: formattedCode || (error && error.code ? error.code : undefined),
-        rawError: rawMessage,
-        guidance
-      });
+      // Rate limited error logging
+      const shouldLogError = this.updateConnectionState(false, error);
+
+      if (shouldLogError) {
+        logger.error('Docker connection test failed', {
+          error: friendlyMessage,
+          errorCode: formattedCode || (error && error.code ? error.code : undefined),
+          rawError: rawMessage,
+          consecutiveFailures: this.connectionState.consecutiveFailures,
+          nextRetryIn: `${Math.round(this.connectionState.backoffMs / 1000)}s`,
+          guidance
+        });
+      }
 
       if (!this.hasRetriedConnection && this.fallbackDockerOptions) {
         this.hasRetriedConnection = true;
-        logger.warn('Retrying Docker connection with fallback options', {
-          options: JSON.stringify(this.fallbackDockerOptions, null, 2)
-        });
+
+        if (shouldLogError) {
+          logger.warn('Retrying Docker connection with fallback options', {
+            options: JSON.stringify(this.fallbackDockerOptions, null, 2)
+          });
+        }
 
         this.docker = new Docker(this.fallbackDockerOptions);
         const modem = this.docker.modem;
@@ -266,6 +353,7 @@ class DockerService {
         try {
           await this.docker.ping();
           logger.info('Docker fallback connection successful');
+          this.updateConnectionState(true);
           return;
         } catch (fallbackError) {
           const fallbackRawMessage = fallbackError && fallbackError.message
@@ -273,12 +361,14 @@ class DockerService {
             : 'Unknown error';
           const fallbackDetails = this.describeDockerConnectionError(fallbackError);
 
-          logger.error('Docker fallback connection failed', {
-            error: fallbackDetails.message,
-            errorCode: fallbackDetails.code || (fallbackError && fallbackError.code ? fallbackError.code : undefined),
-            rawError: fallbackRawMessage,
-            guidance: fallbackDetails.guidance
-          });
+          if (shouldLogError) {
+            logger.error('Docker fallback connection failed', {
+              error: fallbackDetails.message,
+              errorCode: fallbackDetails.code || (fallbackError && fallbackError.code ? fallbackError.code : undefined),
+              rawError: fallbackRawMessage,
+              guidance: fallbackDetails.guidance
+            });
+          }
 
           fallbackError.rawDockerMessage = fallbackRawMessage;
           fallbackError.message = fallbackDetails.message;
@@ -862,6 +952,16 @@ class DockerService {
       logger.error(`Failed to get Docker info: ${error.message}`);
       throw error;
     }
+  }
+
+  getConnectionState() {
+    return {
+      ...this.connectionState,
+      isAvailable: this.connectionState.isAvailable,
+      consecutiveFailures: this.connectionState.consecutiveFailures,
+      backoffMs: this.connectionState.backoffMs,
+      lastChecked: this.connectionState.lastChecked
+    };
   }
 
   getUlimitsForLanguage(languageConfig) {

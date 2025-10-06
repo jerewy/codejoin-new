@@ -41,7 +41,7 @@ interface ProjectSharingModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type SharedUserRole = "viewer" | "editor" | "admin";
+type SharedUserRole = "viewer" | "editor" | "admin" | "owner";
 
 const ROLE_OPTIONS: ReadonlyArray<{
   value: SharedUserRole;
@@ -49,13 +49,15 @@ const ROLE_OPTIONS: ReadonlyArray<{
 }> = [
   { value: "viewer", label: "Viewer" },
   { value: "editor", label: "Editor" },
-  { value: "admin", label: "Co-owner" },
+  { value: "admin", label: "Admin" },
 ];
 
 const getRoleLabel = (role: SharedUserRole) => {
   switch (role) {
+    case "owner":
+      return "Owner";
     case "admin":
-      return "Co-owner";
+      return "Admin";
     case "editor":
       return "Editor";
     case "viewer":
@@ -92,6 +94,9 @@ export default function ProjectSharingModal({
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const [isSupabaseUnavailable, setIsSupabaseUnavailable] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null);
+  const [userRole, setUserRole] = useState<SharedUserRole | null>(null);
+  const [canAddCollaborators, setCanAddCollaborators] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -101,59 +106,104 @@ export default function ProjectSharingModal({
     setShareLink(`${window.location.origin}/project/${projectId}`);
   }, [projectId]);
 
-  useEffect(() => {
-    if (!isOpen) {
+  // Helper function to load users - extracted from useEffect for reuse
+  const loadUsers = useCallback(async () => {
+    if (!projectId) {
+      console.warn("Cannot load users: projectId missing");
       return;
     }
 
-    if (!supabase) {
-      setIsSupabaseUnavailable(true);
-      return;
-    }
+    setIsLoadingUsers(true);
+    console.log("Loading collaborators for project:", projectId);
 
-    setIsSupabaseUnavailable(false);
-    let isActive = true;
-    const fetchCollaborators = async () => {
-      setIsLoadingUsers(true);
+    try {
+      // Get current user info locally first for better UX
+      let currentUserData = null;
+      if (supabase && supabase.auth) {
+        try {
+          const { data: { user }, error: authError } = await supabase.auth.getUser();
+          if (!authError && user) {
+            currentUserData = { id: user.id, email: user.email || "" };
+            setCurrentUser(currentUserData);
+          }
+        } catch (authError) {
+          console.warn("Failed to get current user locally:", authError);
+        }
+      }
 
-      const { data, error } = await supabase
-        .from("collaborators")
-        .select(
-          "user_id, role, created_at, profiles ( email, full_name, user_avatar )"
-        )
-        .eq("project_id", projectId);
+      const response = await fetch(`/api/collaborators?projectId=${projectId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-      if (!isActive) {
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("API error loading collaborators:", errorData);
+
+        // Handle specific error cases
+        if (response.status === 401) {
+          toast.error("Please sign in to view collaborators");
+          setCurrentUser(null);
+          setUserRole(null);
+          setCanAddCollaborators(false);
+        } else if (response.status === 403) {
+          toast.error("You don't have permission to view collaborators for this project");
+        } else {
+          toast.error(`Failed to load collaborators: ${errorData.error || 'Unknown error'}`);
+        }
+
+        setSharedUsers([]);
         return;
       }
 
-      if (error) {
-        console.error("Failed to load collaborators", error);
-        toast.error("Unable to load collaborators right now.");
-        setIsLoadingUsers(false);
+      const result = await response.json();
+      console.log("API response for loadUsers:", result);
+
+      const collaboratorsData = result.collaborators || [];
+
+      // Update user role and permissions based on API response
+      if (result.userRole) {
+        setUserRole(result.userRole);
+        setCanAddCollaborators(result.canAddCollaborators);
+      }
+
+      if (!collaboratorsData || collaboratorsData.length === 0) {
+        console.log("No collaborators found for project:", projectId);
+        setSharedUsers([]);
         return;
       }
+
+      // The API already returns combined data with profiles
+      const data = collaboratorsData;
+      console.log("API returned collaborators data:", { data });
 
       type CollaboratorRow = {
         user_id: string;
         role: string | null;
         created_at: string | null;
-        profiles: {
+        profile: {
+          id: string;
           email: string | null;
           full_name: string | null;
           user_avatar: string | null;
         } | null;
       };
 
-      const mappedUsers = (data as CollaboratorRow[]).map((row) => {
+      const mappedUsers = (data as unknown as CollaboratorRow[]).map((row) => {
         const resolveRole = (value: string | null): SharedUserRole => {
-          if (value === "editor" || value === "admin") {
-            return value;
+          if (value === "owner") {
+            return "owner";
+          } else if (value === "admin") {
+            return "admin";
+          } else if (value === "editor") {
+            return "editor";
           }
           return "viewer";
         };
 
-        const profile = row.profiles;
+        const profile = row.profile;
 
         return {
           id: row.user_id,
@@ -166,167 +216,239 @@ export default function ProjectSharingModal({
       });
 
       setSharedUsers(mappedUsers);
+    } catch (error) {
+      console.error("Failed to load collaborators:", error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to load collaborators: ${errorMessage}`);
+      setSharedUsers([]);
+      setCurrentUser(null);
+      setUserRole(null);
+      setCanAddCollaborators(false);
+    } finally {
       setIsLoadingUsers(false);
-    };
+    }
+  }, [supabase, projectId]);
 
-    fetchCollaborators();
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
 
-    return () => {
-      isActive = false;
-    };
-  }, [isOpen, projectId, supabase]);
+    console.log("ProjectSharingModal opened, checking Supabase client:", !!supabase);
+
+    if (!supabase) {
+      console.error("Supabase client is not available");
+      setIsSupabaseUnavailable(true);
+      toast.error("Database connection not available. Please refresh the page.");
+      return;
+    }
+
+    setIsSupabaseUnavailable(false);
+
+    // Use the loadUsers function instead of duplicating the logic
+    loadUsers();
+  }, [isOpen, projectId, supabase, loadUsers]);
 
   const addUserByEmail = useCallback(async () => {
-    if (!emailToAdd) {
+    // Initial validation
+    if (!emailToAdd.trim()) {
+      toast.error("Please enter an email address");
       return;
     }
 
     if (!supabase) {
-      toast.error("Supabase is not configured. Unable to invite collaborators.");
+      toast.error("Database connection not available. Please refresh the page.");
       return;
     }
 
+    if (!canAddCollaborators) {
+      toast.error("You don't have permission to add collaborators to this project");
+      return;
+    }
+
+    // Validate email format
+    if (!isValidEmail(emailToAdd)) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    const normalizedEmail = emailToAdd.toLowerCase().trim();
     setIsAddingUser(true);
 
     try {
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, email, full_name, user_avatar")
-        .eq("email", emailToAdd)
-        .maybeSingle();
-
-      if (profileError) {
-        console.error("Failed to look up profile", profileError);
-        toast.error("Unable to find that user right now.");
+      // Step 1: Check if user is trying to add themselves
+      if (currentUser && normalizedEmail === currentUser.email.toLowerCase()) {
+        toast.error("You cannot add yourself as a collaborator");
         return;
       }
 
-      if (!profile) {
-        toast.error("No user with that email exists.");
-        return;
-      }
+      // Step 2: Use the API to add the collaborator
+      toast.loading(`Adding ${normalizedEmail} as ${getRoleLabel(roleToAdd)}...`, { id: "add-collaborator" });
 
-      const { data: existing, error: existingError } = await supabase
-        .from("collaborators")
-        .select("user_id")
-        .eq("project_id", projectId)
-        .eq("user_id", profile.id)
-        .maybeSingle();
+      console.log("Adding collaborator via API:", {
+        projectId,
+        userEmail: normalizedEmail,
+        role: roleToAdd
+      });
 
-      if (existingError) {
-        console.error("Failed to verify collaborator", existingError);
-      }
-
-      if (existing) {
-        toast.info("That user already has access to this project.");
-        return;
-      }
-
-      const { data: inserted, error: insertError } = await supabase
-        .from("collaborators")
-        .insert({
-          project_id: projectId,
-          user_id: profile.id,
-          role: roleToAdd,
+      const response = await fetch('/api/collaborators', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          projectId,
+          userEmail: normalizedEmail,
+          role: roleToAdd
         })
-        .select(
-          "user_id, role, created_at, profiles ( email, full_name, user_avatar )"
-        )
-        .single();
+      });
 
-      if (insertError) {
-        console.error("Failed to invite collaborator", insertError);
-        toast.error("Could not add that collaborator. Please try again.");
+      toast.dismiss("add-collaborator");
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("API error adding collaborator:", errorData);
+
+        // Handle specific error cases from the API
+        if (response.status === 401) {
+          toast.error("Please sign in to add collaborators");
+        } else if (response.status === 403) {
+          toast.error("Permission denied. Only project owners and admins can add collaborators.");
+        } else if (response.status === 404) {
+          toast.error(`No user found with email "${normalizedEmail}". Ask them to sign up first.`);
+        } else if (response.status === 409) {
+          toast.error(`That user is already a collaborator on this project.`);
+        } else {
+          toast.error(errorData.error || "Failed to add collaborator");
+        }
         return;
       }
 
-      const newUser: SharedUser = {
-        id: inserted.user_id,
-        email: inserted.profiles?.email ?? profile.email ?? "",
-        name: inserted.profiles?.full_name ?? profile.full_name ?? null,
-        avatar: inserted.profiles?.user_avatar ?? profile.user_avatar ?? null,
-        role: roleToAdd,
-        addedAt: inserted.created_at ? new Date(inserted.created_at) : new Date(),
-      };
+      const result = await response.json();
+      console.log("Collaborator added successfully:", result);
 
-      setSharedUsers((prev) => [...prev, newUser]);
+      // Step 3: Refresh the collaborators list to get the updated data
+      await loadUsers();
+
+      // Clear the form
       setEmailToAdd("");
       setRoleToAdd("viewer");
-      toast.success(`Invitation sent to ${newUser.email}.`);
+
+      // Success message
+      toast.success(`${normalizedEmail} has been added as a ${getRoleLabel(roleToAdd)}!`, {
+        description: `They now have access to "${projectName}"`,
+        duration: 4000,
+      });
+
+    } catch (error) {
+      console.error("Unexpected error adding collaborator:", error);
+      toast.error("An unexpected error occurred while adding the collaborator. Please try again.");
     } finally {
       setIsAddingUser(false);
     }
-  }, [emailToAdd, projectId, roleToAdd, supabase]);
+  }, [emailToAdd, projectId, roleToAdd, supabase, currentUser, canAddCollaborators, projectName, loadUsers]);
 
   const removeUser = useCallback(
     async (userId: string) => {
-      if (!supabase) {
-        toast.error("Supabase is not configured. Unable to remove collaborators.");
+      if (!canAddCollaborators) {
+        toast.error("You don't have permission to remove collaborators from this project");
+        return;
+      }
+
+      // Prevent removing yourself
+      if (currentUser && userId === currentUser.id) {
+        toast.error("You cannot remove yourself from the project");
         return;
       }
 
       setRemovingUserId(userId);
 
       try {
-        const { error } = await supabase
-          .from("collaborators")
-          .delete()
-          .eq("project_id", projectId)
-          .eq("user_id", userId);
+        const response = await fetch('/api/collaborators', {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            projectId,
+            userId
+          })
+        });
 
-        if (error) {
-          console.error("Failed to remove collaborator", error);
-          toast.error("Could not remove that collaborator. Please try again.");
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error("API error removing collaborator:", errorData);
+
+          if (response.status === 401) {
+            toast.error("Please sign in to remove collaborators");
+          } else if (response.status === 403) {
+            toast.error("You don't have permission to remove collaborators");
+          } else {
+            toast.error(errorData.error || "Failed to remove collaborator");
+          }
           return;
         }
 
-        setSharedUsers((prev) => prev.filter((user) => user.id !== userId));
-        toast.success("User removed from project");
+        // Refresh the collaborators list
+        await loadUsers();
+        toast.success("Collaborator removed from project");
+      } catch (error) {
+        console.error("Unexpected error removing collaborator:", error);
+        toast.error("An unexpected error occurred while removing the collaborator. Please try again.");
       } finally {
         setRemovingUserId(null);
       }
     },
-    [projectId, supabase]
+    [projectId, canAddCollaborators, currentUser, loadUsers]
   );
 
   const updateUserRole = useCallback(
     async (userId: string, newRole: SharedUserRole) => {
-      if (!supabase) {
-        toast.error("Supabase is not configured. Unable to update roles.");
+      if (!canAddCollaborators) {
+        toast.error("You don't have permission to update roles in this project");
         return;
       }
 
       setUpdatingUserId(userId);
 
       try {
-        const { error } = await supabase
-          .from("collaborators")
-          .update({ role: newRole })
-          .eq("project_id", projectId)
-          .eq("user_id", userId);
+        const response = await fetch('/api/collaborators', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            projectId,
+            userId,
+            role: newRole
+          })
+        });
 
-        if (error) {
-          console.error("Failed to update collaborator role", error);
-          toast.error("Could not update that role. Please try again.");
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error("API error updating collaborator role:", errorData);
+
+          if (response.status === 401) {
+            toast.error("Please sign in to update collaborator roles");
+          } else if (response.status === 403) {
+            toast.error("You don't have permission to update roles");
+          } else {
+            toast.error(errorData.error || "Failed to update collaborator role");
+          }
           return;
         }
 
-        setSharedUsers((prev) =>
-          prev.map((user) =>
-            user.id === userId
-              ? {
-                  ...user,
-                  role: newRole,
-                }
-              : user
-          )
-        );
-        toast.success("User role updated");
+        // Refresh the collaborators list
+        await loadUsers();
+        toast.success("Collaborator role updated");
+      } catch (error) {
+        console.error("Unexpected error updating collaborator role:", error);
+        toast.error("An unexpected error occurred while updating the collaborator role. Please try again.");
       } finally {
         setUpdatingUserId(null);
       }
     },
-    [projectId, supabase]
+    [projectId, canAddCollaborators, loadUsers]
   );
 
   const copyShareLink = useCallback(async () => {
@@ -374,8 +496,10 @@ export default function ProjectSharingModal({
 
   const getRoleColor = (role: SharedUserRole) => {
     switch (role) {
-      case "admin":
+      case "owner":
         return "bg-purple-100 text-purple-800";
+      case "admin":
+        return "bg-orange-100 text-orange-800";
       case "editor":
         return "bg-blue-100 text-blue-800";
       case "viewer":
@@ -386,14 +510,29 @@ export default function ProjectSharingModal({
 
   const getRoleIcon = (role: SharedUserRole) => {
     switch (role) {
-      case "admin":
+      case "owner":
         return <Crown className="h-3 w-3" />;
+      case "admin":
+        return <Lock className="h-3 w-3" />;
       case "editor":
         return <Edit3 className="h-3 w-3" />;
       case "viewer":
       default:
         return <Eye className="h-3 w-3" />;
     }
+  };
+
+  // Helper function to validate email format
+  const isValidEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email.trim());
+  };
+
+  // Helper function to get email validation feedback
+  const getEmailValidationMessage = (email: string) => {
+    if (!email.trim()) return "";
+    if (!isValidEmail(email)) return "Please enter a valid email address";
+    return "";
   };
 
   return (
@@ -463,21 +602,34 @@ export default function ProjectSharingModal({
 
           {/* Add People */}
           <div className="space-y-4">
-            <Label className="text-base font-medium">Add people</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-base font-medium">Add people</Label>
+              {!canAddCollaborators && currentUser && (
+                <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                  {userRole === "viewer" ? "Viewers cannot add collaborators" : "Only owners and admins can add collaborators"}
+                </span>
+              )}
+            </div>
 
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Input
-                placeholder="Enter email address"
-                value={emailToAdd}
-                onChange={(e) => setEmailToAdd(e.target.value)}
-                className="flex-1"
-                disabled={isSupabaseUnavailable || isAddingUser}
-              />
-              <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  placeholder="Enter email address"
+                  value={emailToAdd}
+                  onChange={(e) => setEmailToAdd(e.target.value)}
+                  className={`flex-1 ${emailToAdd && !isValidEmail(emailToAdd) ? 'border-red-300 focus:border-red-500' : ''}`}
+                  disabled={isSupabaseUnavailable || isAddingUser || !canAddCollaborators}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && emailToAdd && !isAddingUser && canAddCollaborators && isValidEmail(emailToAdd)) {
+                      addUserByEmail();
+                    }
+                  }}
+                />
+                <div className="flex gap-2">
                 <Select
                   value={roleToAdd}
                   onValueChange={(value: SharedUserRole) => setRoleToAdd(value)}
-                  disabled={isSupabaseUnavailable || isAddingUser}
+                  disabled={isSupabaseUnavailable || isAddingUser || !canAddCollaborators}
                 >
                   <SelectTrigger className="w-full sm:w-32">
                     <SelectValue />
@@ -492,21 +644,48 @@ export default function ProjectSharingModal({
                 </Select>
                 <Button
                   onClick={addUserByEmail}
-                  disabled={!emailToAdd || isSupabaseUnavailable || isAddingUser}
+                  disabled={!emailToAdd || isSupabaseUnavailable || isAddingUser || !canAddCollaborators}
                   className="shrink-0"
                 >
                   {isAddingUser ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Adding...
+                    </>
                   ) : (
-                    <UserPlus className="h-4 w-4" />
+                    <>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Add
+                    </>
                   )}
                 </Button>
               </div>
+              </div>
+
+              {/* Email validation feedback */}
+              {emailToAdd && !isValidEmail(emailToAdd) && (
+                <p className="text-sm text-red-600">
+                  {getEmailValidationMessage(emailToAdd)}
+                </p>
+              )}
+
+              {/* Email addition hint */}
+              {emailToAdd && isValidEmail(emailToAdd) && !isAddingUser && canAddCollaborators && (
+                <p className="text-sm text-green-600">
+                  Press Enter or click Add to invite {emailToAdd}
+                </p>
+              )}
             </div>
 
             {isSupabaseUnavailable && (
               <p className="text-sm text-muted-foreground">
                 Configure Supabase environment variables to invite collaborators.
+              </p>
+            )}
+
+            {!canAddCollaborators && currentUser && (
+              <p className="text-sm text-muted-foreground">
+                Only project owners and admins can add collaborators.
               </p>
             )}
           </div>
@@ -540,9 +719,16 @@ export default function ProjectSharingModal({
                         />
                       )}
                       <div className="flex flex-col">
-                        <span className="font-medium text-sm">
-                          {user.name || user.email || "Unknown collaborator"}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">
+                            {user.name || user.email || "Unknown collaborator"}
+                          </span>
+                          {currentUser && user.id === currentUser.id && (
+                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
+                              You
+                            </span>
+                          )}
+                        </div>
                         {(user.name || user.email) && (
                           <span className="text-xs text-muted-foreground">
                             {user.email}
@@ -560,38 +746,42 @@ export default function ProjectSharingModal({
                         {getRoleLabel(user.role)}
                       </Badge>
 
-                      <Select
-                        value={user.role}
-                        onValueChange={(value: SharedUserRole) =>
-                          updateUserRole(user.id, value)
-                        }
-                        disabled={updatingUserId === user.id || isSupabaseUnavailable}
-                      >
-                        <SelectTrigger className="w-20 h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {roleOptions.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {canAddCollaborators && currentUser && user.id !== currentUser.id && (
+                        <>
+                          <Select
+                            value={user.role}
+                            onValueChange={(value: SharedUserRole) =>
+                              updateUserRole(user.id, value)
+                            }
+                            disabled={updatingUserId === user.id || isSupabaseUnavailable || !canAddCollaborators}
+                          >
+                            <SelectTrigger className="w-20 h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {roleOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
 
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeUser(user.id)}
-                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                        disabled={removingUserId === user.id || isSupabaseUnavailable}
-                      >
-                        {removingUserId === user.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeUser(user.id)}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                            disabled={removingUserId === user.id || isSupabaseUnavailable || !canAddCollaborators}
+                          >
+                            {removingUserId === user.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))
