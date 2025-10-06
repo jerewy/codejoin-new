@@ -13,6 +13,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const logger = require('./utils/logger');
 const executeController = require('./controllers/executeController');
+const AIChatController = require('./controllers/aiChatController');
 const {
   createRateLimit,
   authenticateApiKey,
@@ -24,6 +25,15 @@ const {
 const app = express();
 const server = createServer(app);
 const DEFAULT_PORT = process.env.PORT || 3001;
+
+// Initialize AI Chat Controller
+let aiChatController;
+try {
+  aiChatController = new AIChatController();
+  logger.info('AI Chat Controller initialized successfully');
+} catch (error) {
+  logger.warn('AI Chat Controller initialization failed:', error.message);
+}
 
 // Initialize Socket.IO with CORS support
 const io = new Server(server, {
@@ -58,6 +68,11 @@ const executeRateLimit = createRateLimit(
   20 // 20 executions per 5 minutes
 );
 
+const aiRateLimit = createRateLimit(
+  60 * 1000, // 1 minute
+  10 // 10 AI requests per minute
+);
+
 app.use('/api', generalRateLimit);
 
 // API routes
@@ -70,6 +85,29 @@ app.use('/api', authenticateApiKey);
 
 // Execute endpoint with stricter rate limiting and validation
 app.post('/api/execute', executeRateLimit, validateInput, executeController.execute);
+
+// AI Chat endpoint with rate limiting
+app.post('/api/ai/chat', aiRateLimit, (req, res) => {
+  if (!aiChatController) {
+    return res.status(503).json({
+      success: false,
+      error: 'AI service is currently unavailable'
+    });
+  }
+  aiChatController.chat(req, res);
+});
+
+// AI health check endpoint
+app.get('/api/ai/health', (req, res) => {
+  if (!aiChatController) {
+    return res.status(503).json({
+      success: false,
+      status: 'unhealthy',
+      error: 'AI service is not initialized'
+    });
+  }
+  aiChatController.healthCheck(req, res);
+});
 
 // 404 handler
 app.use('*', (req, res) => {

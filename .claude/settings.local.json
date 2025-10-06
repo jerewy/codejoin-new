@@ -31,7 +31,9 @@
       "mcp__supabase__search_docs",
       "Bash(curl:*)",
       "Bash(npx tsc:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

@@ -46,7 +46,10 @@ import { useToast } from "@/hooks/use-toast";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { settingsAPI } from "@/lib/settings-api";
 import { UserPreferences } from "@/types/settings";
-import { getClientTheme, setClientThemeCookie } from "@/lib/theme-cookies-client";
+import {
+  getClientTheme,
+  setClientThemeCookie,
+} from "@/lib/theme-cookies-client";
 
 type ThemeOption = "light" | "dark" | "system";
 
@@ -706,7 +709,8 @@ export default function SettingsPage() {
                     <div>
                       <CardTitle>Theme</CardTitle>
                       <CardDescription>
-                        Choose how CodeJoin should look. Theme is saved locally in your browser.
+                        Choose how CodeJoin should look. Theme is saved locally
+                        in your browser.
                       </CardDescription>
                     </div>
                     <Badge
@@ -770,8 +774,9 @@ export default function SettingsPage() {
                       })}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Your theme preference is saved locally in this browser and will persist across sessions.
-                      Theme changes apply immediately without requiring an account.
+                      Your theme preference is saved locally in this browser and
+                      will persist across sessions. Theme changes apply
+                      immediately without requiring an account.
                     </p>
                   </CardContent>
                 </Card>

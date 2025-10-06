@@ -2,10 +2,13 @@
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useSocket, useFileCollaboration } from "@/lib/socket";
+import { useAIConversations } from "@/hooks/use-ai-conversations";
+import { useUser } from "@/hooks/use-user";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import TerminalSurface, {
   type TerminalSurfaceHandle,
 } from "@/components/terminal/TerminalSurface";
@@ -122,9 +125,11 @@ type AutosaveState = "idle" | "saving" | "saved" | "error";
 const LOCAL_STORAGE_PREFIX = "codejoin:project";
 
 const createClientId = () => {
-  if (typeof globalThis !== "undefined" &&
+  if (
+    typeof globalThis !== "undefined" &&
     "crypto" in globalThis &&
-    typeof globalThis.crypto?.randomUUID === "function") {
+    typeof globalThis.crypto?.randomUUID === "function"
+  ) {
     return globalThis.crypto.randomUUID();
   }
   return `local-${Math.random().toString(36).slice(2, 11)}`;
@@ -1647,8 +1652,14 @@ export default function ProjectWorkspace({
   teamMembers,
 }: ProjectWorkspaceProps) {
   // Socket integration for real-time collaboration
-  const { joinProject, isConnected, collaborators: liveCollaborators } = useSocket();
+  const {
+    joinProject,
+    isConnected,
+    collaborators: liveCollaborators,
+  } = useSocket();
   const { toast } = useToast();
+  const { user } = useUser();
+  const userId = user?.id;
 
   const [isVideoCallActive, setIsVideoCallActive] = useState(false);
   const [isMicOn, setIsMicOn] = useState(true);
@@ -1659,6 +1670,22 @@ export default function ProjectWorkspace({
   const [selectedLanguage, setSelectedLanguage] = useState("html");
   const [isAIVoiceActive, setIsAIVoiceActive] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
+
+  // AI Conversation hook for Supabase-backed persistence
+  const {
+    conversations,
+    currentConversation,
+    messages: aiMessages,
+    loading: isAILoading,
+    error: aiError,
+    getOrCreateConversation,
+    addMessage,
+    loadConversation,
+  } = useAIConversations({
+    projectId,
+    userId,
+    autoLoad: true,
+  });
   const [viewMode, setViewMode] = useState("code");
 
   // Execution and output states
@@ -1698,20 +1725,17 @@ export default function ProjectWorkspace({
     initialNodes.find((n) => n.type === "file")?.id || null
   );
 
-
   const supabase = getSupabaseClient();
   const fallbackCollaboratorRef = useRef({
     userId: createClientId(),
     userName: "Guest",
     userAvatar: "/placeholder.svg",
   });
-  const [collaboratorIdentity, setCollaboratorIdentity] = useState<
-    {
-      userId: string;
-      userName: string;
-      userAvatar?: string;
-    } | null
-  >(null);
+  const [collaboratorIdentity, setCollaboratorIdentity] = useState<{
+    userId: string;
+    userName: string;
+    userAvatar?: string;
+  } | null>(null);
   const localPersistenceEnabled = !supabase;
   const localStorageKey = `${LOCAL_STORAGE_PREFIX}:${projectId}:nodes`;
   const [storageReady, setStorageReady] = useState(!localPersistenceEnabled);
@@ -1914,16 +1938,18 @@ export default function ProjectWorkspace({
       }
 
       setNodes((prev) =>
-        prev.map((node) =>
-          node.id === nodeId ? { ...node, content } : node
-        )
+        prev.map((node) => (node.id === nodeId ? { ...node, content } : node))
       );
     },
     [supabase]
   );
 
   const createFile = useCallback(
-    async (name: string, parentId: string | null = null, content: string = "") => {
+    async (
+      name: string,
+      parentId: string | null = null,
+      content: string = ""
+    ) => {
       const trimmedName = name.trim();
       if (!trimmedName) {
         return;
@@ -2087,12 +2113,15 @@ export default function ProjectWorkspace({
 
       setNodes((prev) => prev.filter((node) => node.id !== id));
       if (activeNodeId === id) {
-        const nextFile = nodes.find((node) => node.id !== id && node.type === "file");
+        const nextFile = nodes.find(
+          (node) => node.id !== id && node.type === "file"
+        );
         setActiveNodeId(nextFile?.id ?? null);
       }
     },
     [activeNodeId, nodes, supabase, toast]
-  );  useEffect(() => {
+  );
+  useEffect(() => {
     if (!currentFile || !hasUnsavedChanges) {
       return;
     }
@@ -2203,8 +2232,6 @@ export default function ProjectWorkspace({
       });
     }
   };
-
-
 
   const waitForTerminalExecutor = useCallback(
     (timeoutMs = 1500) => {
@@ -2426,10 +2453,80 @@ export default function ProjectWorkspace({
     dispatchNonInteractiveExecution();
   };
 
-  const handleSendAIMessage = () => {
-    if (aiMessage.trim()) {
-      console.log("Sending to AI:", aiMessage);
-      setAiMessage("");
+  const handleSendAIMessage = async () => {
+    if (!aiMessage.trim()) return;
+
+    const userMessage = aiMessage.trim();
+    setAiMessage("");
+
+    // Ensure we have a conversation
+    let conversation = currentConversation;
+    if (!conversation) {
+      conversation = await getOrCreateConversation("AI Chat");
+      if (!conversation) {
+        toast({
+          title: "Error",
+          description: "Failed to create conversation",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    // Add user message to database
+    await addMessage(conversation.id, {
+      role: "user",
+      content: userMessage,
+      author_id: userId || undefined,
+    });
+
+    try {
+      // Get code context from current file
+      const context = currentFile
+        ? `Current file: ${currentFile.name}\nLanguage: ${
+            currentFile.language || "unknown"
+          }\n\n${currentFile.content?.substring(0, 2000) || ""}`
+        : "No file selected";
+
+      // Call the AI backend API
+      const startTime = Date.now();
+      const response = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: userMessage,
+          context: context,
+        }),
+      });
+
+      const data = await response.json();
+      const responseTime = Date.now() - startTime;
+
+      if (data.success) {
+        // Add AI response to database with metadata
+        await addMessage(conversation.id, {
+          role: "assistant",
+          content: data.response,
+          ai_model: data.metadata?.model || "gemini-pro",
+          ai_response_time_ms: responseTime,
+          ai_tokens_used: data.metadata?.tokensUsed,
+        });
+      } else {
+        // Add error message to database
+        await addMessage(conversation.id, {
+          role: "assistant",
+          content: `Error: ${data.error || "Failed to get AI response"}`,
+        });
+      }
+    } catch (error) {
+      console.error("AI chat error:", error);
+      // Add error message to database
+      await addMessage(conversation.id, {
+        role: "assistant",
+        content: "Error: Failed to connect to AI service. Please try again.",
+      });
     }
   };
 
@@ -2644,7 +2741,32 @@ export default function ProjectWorkspace({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [handleSave, handleRun, showSidebar, showChat]);
 
+  // Initialize AI conversation when AI Assistant is opened
+  useEffect(() => {
+    if (
+      isAIAssistantOpen &&
+      projectId &&
+      !currentConversation &&
+      !isAILoading
+    ) {
+      getOrCreateConversation("AI Chat");
+    }
+  }, [
+    isAIAssistantOpen,
+    projectId,
+    currentConversation,
+    isAILoading,
+    getOrCreateConversation,
+  ]);
 
+  // Synchronize activeBottomTab with isAIAssistantOpen state
+  useEffect(() => {
+    if (activeBottomTab === "ai") {
+      setIsAIAssistantOpen(true);
+    } else {
+      setIsAIAssistantOpen(false);
+    }
+  }, [activeBottomTab]);
 
   if (localPersistenceEnabled && !storageReady) {
     return (
@@ -2750,7 +2872,9 @@ export default function ProjectWorkspace({
                   </div>
 
                   <div className="hidden sm:inline-flex">
-                    <Badge variant={autosaveBadgeVariant}>{autosaveLabel}</Badge>
+                    <Badge variant={autosaveBadgeVariant}>
+                      {autosaveLabel}
+                    </Badge>
                   </div>
 
                   {/* Save and Run buttons */}
@@ -2890,9 +3014,7 @@ export default function ProjectWorkspace({
                   className="flex flex-col flex-1 min-h-0 h-full"
                 >
                   <TabsList
-                    className={`grid w-full ${
-                      isAIAssistantOpen ? "grid-cols-3" : "grid-cols-2"
-                    } bg-muted/50 rounded-none border-b`}
+                    className={`grid w-full grid-cols-3 bg-muted/50 rounded-none border-b`}
                   >
                     <TabsTrigger
                       value="terminal"
@@ -2916,20 +3038,19 @@ export default function ProjectWorkspace({
                         </Badge>
                       )}
                     </TabsTrigger>
-                    {isAIAssistantOpen && (
-                      <TabsTrigger
-                        value="ai"
-                        className="gap-1 sm:gap-2 px-2 sm:px-4"
-                      >
-                        <Brain className="h-4 w-4" />
-                        <span className="hidden sm:inline">AI Assistant</span>
-                      </TabsTrigger>
-                    )}
+                    <TabsTrigger
+                      value="ai"
+                      className="gap-1 sm:gap-2 px-2 sm:px-4"
+                    >
+                      <Brain className="h-4 w-4" />
+                      <span className="hidden sm:inline">AI Assistant</span>
+                    </TabsTrigger>
                   </TabsList>
 
                   <TabsContent
                     value="terminal"
                     className="flex-1 overflow-hidden p-0 m-0 h-full"
+                    style={{ contain: 'strict' }}
                   >
                     <TerminalPanel
                       projectId={projectId}
@@ -2946,6 +3067,7 @@ export default function ProjectWorkspace({
                   <TabsContent
                     value="problems"
                     className="flex-1 overflow-hidden p-0 m-0 h-full"
+                    style={{ contain: 'strict' }}
                   >
                     <ProblemsPanel
                       problems={problems}
@@ -2956,13 +3078,160 @@ export default function ProjectWorkspace({
                   {isAIAssistantOpen && (
                     <TabsContent
                       value="ai"
-                      className="flex-1 flex flex-col min-h-0 p-0 m-0 h-full"
+                      className="flex-1 flex min-h-0 p-0 m-0 h-full"
+                      style={{ contain: 'strict' }}
                     >
-                      <div className="flex-1 flex flex-col h-full bg-background">
-                        <div className="flex-1 overflow-auto p-4">
-                          <div className="text-sm text-muted-foreground text-center py-8">
-                            AI Assistant integration coming soon...
+                      <div className="flex-1 flex h-full bg-background">
+                        {/* Conversation History Sidebar */}
+                        <div className="w-64 border-r flex flex-col bg-muted/30" style={{ contain: 'layout' }}>
+                        <div className="p-3 border-b">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-medium">
+                              Chat History
+                            </h3>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                getOrCreateConversation("New AI Chat")
+                              }
+                              className="h-6 px-2 text-xs"
+                            >
+                              New Chat
+                            </Button>
                           </div>
+                        </div>
+                        <ScrollArea className="flex-1">
+                          <div className="p-2 space-y-1">
+                            {conversations.length === 0 ? (
+                              <div className="text-center py-4 text-xs text-muted-foreground">
+                                No conversations yet
+                              </div>
+                            ) : (
+                              conversations.map((conv) => (
+                                <button
+                                  key={conv.id}
+                                  onClick={async () => {
+                                    if (conv.id !== currentConversation?.id) {
+                                      // Load the selected conversation
+                                      await loadConversation(conv.id);
+                                    }
+                                  }}
+                                  className={`w-full text-left p-2 rounded text-xs hover:bg-muted/50 transition-colors ${
+                                    currentConversation?.id === conv.id
+                                      ? "bg-muted border border-primary/20"
+                                      : ""
+                                  }`}
+                                >
+                                  <div className="font-medium truncate">
+                                    {conv.title || "Untitled Chat"}
+                                  </div>
+                                  <div className="text-muted-foreground mt-1">
+                                    {new Date(
+                                      conv.updated_at
+                                    ).toLocaleDateString()}
+                                  </div>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </ScrollArea>
+                      </div>
+
+                      {/* Main Chat Area */}
+                      <div className="flex-1 flex flex-col h-full">
+                        <div className="flex-1 overflow-auto">
+                          <ScrollArea className="h-full">
+                            <div className="p-4 space-y-4">
+                              {aiMessages.length === 0 ? (
+                                <div className="text-center py-8">
+                                  <Brain className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                                  <p className="text-sm text-muted-foreground">
+                                    Ask me anything about your code! I can help
+                                    with:
+                                  </p>
+                                  <div className="mt-4 text-xs text-muted-foreground space-y-1">
+                                    <div>• Code explanation and analysis</div>
+                                    <div>• Debugging assistance</div>
+                                    <div>• Code optimization</div>
+                                    <div>• General programming questions</div>
+                                  </div>
+                                </div>
+                              ) : (
+                                aiMessages.map((message) => (
+                                  <div
+                                    key={message.id}
+                                    className={`flex gap-3 ${
+                                      message.role === "user"
+                                        ? "justify-end"
+                                        : "justify-start"
+                                    }`}
+                                  >
+                                    {message.role === "assistant" && (
+                                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                        <Brain className="h-4 w-4 text-primary" />
+                                      </div>
+                                    )}
+                                    <div
+                                      className={`max-w-[80%] rounded-lg px-3 py-2 ${
+                                        message.role === "user"
+                                          ? "bg-primary text-primary-foreground"
+                                          : message.content.includes("Error:")
+                                          ? "bg-destructive/10 text-destructive border border-destructive/20"
+                                          : "bg-muted"
+                                      }`}
+                                    >
+                                      <div className="text-sm whitespace-pre-wrap">
+                                        {message.content}
+                                      </div>
+                                      <div className="text-xs opacity-70 mt-1">
+                                        {new Date(
+                                          message.created_at
+                                        ).toLocaleTimeString([], {
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })}
+                                      </div>
+                                    </div>
+                                    {message.role === "user" && (
+                                      <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                                        <span className="text-primary-foreground text-xs font-medium">
+                                          You
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))
+                              )}
+
+                              {/* Loading indicator */}
+                              {isAILoading && (
+                                <div className="flex gap-3 justify-start">
+                                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                    <Brain className="h-4 w-4 text-primary animate-pulse" />
+                                  </div>
+                                  <div className="max-w-[80%] rounded-lg px-3 py-2 bg-muted">
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex gap-1">
+                                        <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" />
+                                        <div
+                                          className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"
+                                          style={{ animationDelay: "0.1s" }}
+                                        />
+                                        <div
+                                          className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"
+                                          style={{ animationDelay: "0.2s" }}
+                                        />
+                                      </div>
+                                      <span className="text-sm text-muted-foreground">
+                                        Thinking...
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </ScrollArea>
                         </div>
                         <div className="flex-shrink-0 border-t p-4">
                           <div className="flex gap-2">
@@ -2976,12 +3245,22 @@ export default function ProjectWorkspace({
                                   handleSendAIMessage();
                                 }
                               }}
+                              disabled={isAILoading}
                             />
-                            <Button onClick={handleSendAIMessage} size="sm">
-                              <Send className="h-4 w-4" />
+                            <Button
+                              onClick={handleSendAIMessage}
+                              size="sm"
+                              disabled={!aiMessage.trim() || isAILoading}
+                            >
+                              {isAILoading ? (
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Send className="h-4 w-4" />
+                              )}
                             </Button>
                           </div>
                         </div>
+                      </div>
                       </div>
                     </TabsContent>
                   )}
