@@ -1,14 +1,8 @@
 "use client";
 
-import {
-  FormEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useTheme } from "next-themes";
+import { useThemePersistent } from "@/hooks/use-theme-persistent";
 import {
   ArrowLeft,
   Bell,
@@ -50,6 +44,9 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabaseClient } from "@/lib/supabaseClient";
+import { settingsAPI } from "@/lib/settings-api";
+import { UserPreferences } from "@/types/settings";
+import { getClientTheme, setClientThemeCookie } from "@/lib/theme-cookies-client";
 
 type ThemeOption = "light" | "dark" | "system";
 
@@ -74,7 +71,12 @@ type PasswordState = {
 
 const resolveLocalTimezone = (): string => {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // Ensure the detected timezone is in our options list
+    if (timezone && timezoneOptions.includes(timezone)) {
+      return timezone;
+    }
+    return "UTC";
   } catch (error) {
     console.error("Failed to resolve local timezone", error);
     return "UTC";
@@ -96,23 +98,43 @@ const formatDateTime = (value: string | null): string => {
 
 const languageOptions = [
   { value: "en", label: "English" },
-  { value: "es", label: "Spanish" },
-  { value: "fr", label: "French" },
-  { value: "de", label: "German" },
+  { value: "es", label: "Español" },
+  { value: "fr", label: "Français" },
+  { value: "de", label: "Deutsch" },
+  { value: "it", label: "Italiano" },
+  { value: "pt", label: "Português" },
+  { value: "ru", label: "Русский" },
+  { value: "ja", label: "日本語" },
+  { value: "zh", label: "中文" },
+  { value: "ko", label: "한국어" },
 ];
 
 const timezoneOptions = [
   "UTC",
   "America/New_York",
+  "America/Los_Angeles",
+  "America/Chicago",
+  "America/Denver",
   "Europe/London",
   "Europe/Paris",
+  "Europe/Berlin",
+  "Europe/Moscow",
   "Asia/Singapore",
   "Asia/Tokyo",
+  "Asia/Shanghai",
+  "Asia/Dubai",
   "Australia/Sydney",
+  "Australia/Melbourne",
+  "Pacific/Auckland",
+  "America/Toronto",
+  "America/Vancouver",
+  "America/Mexico_City",
+  "America/Sao_Paulo",
+  "Africa/Johannesburg",
 ];
 
 export default function SettingsPage() {
-  const { theme: activeTheme, setTheme } = useTheme();
+  const { theme: activeTheme, setTheme } = useThemePersistent();
   const supabase = useMemo(() => getSupabaseClient(), []);
   const { toast } = useToast();
 
@@ -150,7 +172,9 @@ export default function SettingsPage() {
   const isAuthenticated = Boolean(userId);
 
   const languageItems = useMemo(() => {
-    const entries = new Map(languageOptions.map((option) => [option.value, option.label]));
+    const entries = new Map(
+      languageOptions.map((option) => [option.value, option.label])
+    );
 
     if (preferences.language && !entries.has(preferences.language)) {
       entries.set(preferences.language, preferences.language);
@@ -175,16 +199,15 @@ export default function SettingsPage() {
       nextNotifications: NotificationState,
       successMessage?: string
     ) => {
-      if (!supabase || !userId) {
+      if (!userId) {
         return false;
       }
 
       setIsSavingSettings(true);
 
       try {
-        const { error } = await supabase.from("user_settings").upsert({
-          user_id: userId,
-          theme_preference: nextPreferences.theme,
+        // Update preferences using the API (excluding theme as it's now stored locally)
+        const updatedPreferences = await settingsAPI.updatePreferences({
           language: nextPreferences.language,
           timezone: nextPreferences.timezone,
           notification_email: nextNotifications.email,
@@ -192,20 +215,6 @@ export default function SettingsPage() {
           notification_collaboration: nextNotifications.collaboration,
           notification_product: nextNotifications.product,
         });
-
-        if (error) {
-          throw error;
-        }
-
-        await supabase.auth
-          .updateUser({
-            data: {
-              theme_preference: nextPreferences.theme,
-            },
-          })
-          .catch((updateError) => {
-            console.warn("Failed to mirror theme to auth metadata", updateError);
-          });
 
         if (successMessage) {
           toast({
@@ -226,13 +235,15 @@ export default function SettingsPage() {
               ? error.message
               : "Something went wrong while saving your settings.",
         });
-        setSettingsError("Some preferences could not be saved. Try again later.");
+        setSettingsError(
+          "Some preferences could not be saved. Try again later."
+        );
         return false;
       } finally {
         setIsSavingSettings(false);
       }
     },
-    [supabase, toast, userId]
+    [userId, supabase, toast]
   );
 
   const fetchSettings = useCallback(async (): Promise<boolean> => {
@@ -270,62 +281,63 @@ export default function SettingsPage() {
       setEmailConfirmedAt(user.email_confirmed_at ?? null);
       setLastSignInAt(user.last_sign_in_at ?? null);
 
-      const metadataTheme = typeof user.user_metadata?.theme_preference === "string"
-        ? (user.user_metadata.theme_preference as ThemeOption)
-        : null;
+      // Get theme from cookie (local storage)
+      const localTheme = getClientTheme();
 
-      const { data: settingsRow, error: settingsErrorResponse } = await supabase
-        .from("user_settings")
-        .select(
-          "theme_preference, language, timezone, notification_email, notification_push, notification_collaboration, notification_product"
-        )
-        .eq("user_id", user.id)
-        .maybeSingle();
+      // Get preferences using the new API (excluding theme)
+      try {
+        const userPreferences = await settingsAPI.getPreferences();
 
-      if (settingsErrorResponse && settingsErrorResponse.code !== "PGRST116") {
-        console.error("Failed to load user settings", settingsErrorResponse);
-        toast({
-          variant: "destructive",
-          title: "Could not load preferences",
-          description: "We ran into an issue fetching your saved preferences.",
-        });
-        setSettingsError("We couldn't load all of your preferences.");
-      } else {
+        const nextPreferences: PreferencesState = {
+          theme: localTheme ?? "system",
+          language: userPreferences.language ?? "en",
+          timezone: userPreferences.timezone ?? resolveLocalTimezone(),
+        };
+
+        setPreferences(nextPreferences);
+        // Ensure the active theme matches local preference
+        if (activeTheme !== localTheme) {
+          setTheme(localTheme);
+        }
+
+        const nextNotifications: NotificationState = {
+          email: userPreferences.notification_email,
+          push: userPreferences.notification_push,
+          collaboration: userPreferences.notification_collaboration,
+          product: userPreferences.notification_product,
+        };
+
+        setNotifications(nextNotifications);
         setSettingsError(null);
+      } catch (apiError) {
+        console.error(
+          "Failed to load preferences from API, using defaults",
+          apiError
+        );
+
+        // Use defaults if API fails
+        const nextPreferences: PreferencesState = {
+          theme: localTheme ?? "system",
+          language: "en",
+          timezone: resolveLocalTimezone(),
+        };
+
+        setPreferences(nextPreferences);
+        // Ensure the active theme matches local preference
+        if (activeTheme !== localTheme) {
+          setTheme(localTheme);
+        }
+
+        setNotifications({
+          email: true,
+          push: false,
+          collaboration: true,
+          product: true,
+        });
+
+        setSettingsError("Could not load saved preferences, using defaults.");
       }
 
-      const nextPreferences: PreferencesState = {
-        theme:
-          (settingsRow?.theme_preference as ThemeOption | null) ??
-          metadataTheme ??
-          ((activeTheme as ThemeOption) ?? "system"),
-        language: settingsRow?.language ?? "en",
-        timezone: settingsRow?.timezone ?? resolveLocalTimezone(),
-      };
-
-      setPreferences(nextPreferences);
-      setTheme(nextPreferences.theme);
-
-      const nextNotifications: NotificationState = {
-        email:
-          typeof settingsRow?.notification_email === "boolean"
-            ? settingsRow.notification_email
-            : true,
-        push:
-          typeof settingsRow?.notification_push === "boolean"
-            ? settingsRow.notification_push
-            : false,
-        collaboration:
-          typeof settingsRow?.notification_collaboration === "boolean"
-            ? settingsRow.notification_collaboration
-            : true,
-        product:
-          typeof settingsRow?.notification_product === "boolean"
-            ? settingsRow.notification_product
-            : true,
-      };
-
-      setNotifications(nextNotifications);
       return true;
     } catch (error) {
       console.error("Unexpected error loading settings", error);
@@ -333,7 +345,9 @@ export default function SettingsPage() {
       setAccountEmail("");
       setEmailConfirmedAt(null);
       setLastSignInAt(null);
-      setSettingsError("We couldn't load your account settings. Try again later.");
+      setSettingsError(
+        "We couldn't load your account settings. Try again later."
+      );
       toast({
         variant: "destructive",
         title: "Failed to load settings",
@@ -355,29 +369,33 @@ export default function SettingsPage() {
       return;
     }
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        fetchSettings();
-      } else {
-        setUserId(null);
-        setAccountEmail("");
-        setEmailConfirmedAt(null);
-        setLastSignInAt(null);
-        setPreferences((previous) => ({
-          ...previous,
-          theme: "system",
-          language: "en",
-          timezone: resolveLocalTimezone(),
-        }));
-        setNotifications({
-          email: true,
-          push: false,
-          collaboration: true,
-          product: true,
-        });
-        setSettingsError("You need to sign in to manage your settings.");
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (session?.user) {
+          fetchSettings();
+        } else {
+          setUserId(null);
+          setAccountEmail("");
+          setEmailConfirmedAt(null);
+          setLastSignInAt(null);
+          // Keep the local theme setting when signing out
+          const localTheme = getClientTheme();
+          setPreferences((previous) => ({
+            ...previous,
+            theme: localTheme,
+            language: "en",
+            timezone: resolveLocalTimezone(),
+          }));
+          setNotifications({
+            email: true,
+            push: false,
+            collaboration: true,
+            product: true,
+          });
+          setSettingsError("You need to sign in to manage your settings.");
+        }
       }
-    });
+    );
 
     return () => {
       listener?.subscription?.unsubscribe();
@@ -385,29 +403,25 @@ export default function SettingsPage() {
   }, [fetchSettings, supabase]);
 
   const handleThemeSelect = useCallback(
-    async (nextTheme: ThemeOption) => {
+    (nextTheme: ThemeOption) => {
       const previous = preferences;
       const nextPreferences = { ...preferences, theme: nextTheme };
 
       setPreferences(nextPreferences);
       setTheme(nextTheme);
 
-      if (!supabase || !userId) {
-        return;
-      }
+      // Save theme to local cookie
+      setClientThemeCookie(nextTheme);
 
-      const success = await persistSettings(
-        nextPreferences,
-        notifications,
-        `Theme updated to ${nextTheme === "system" ? "match your system" : nextTheme}.`
-      );
-
-      if (!success) {
-        setPreferences(previous);
-        setTheme(previous.theme);
-      }
+      // Show success toast
+      toast({
+        title: "Theme updated",
+        description: `Theme changed to ${
+          nextTheme === "system" ? "match your system" : nextTheme
+        }. Saved locally.`,
+      });
     },
-    [notifications, persistSettings, preferences, setTheme, supabase, userId]
+    [preferences, setTheme, toast]
   );
 
   const handleNotificationToggle = useCallback(
@@ -498,7 +512,8 @@ export default function SettingsPage() {
         toast({
           variant: "destructive",
           title: "Email required",
-          description: "We couldn't determine your account email to verify the password.",
+          description:
+            "We couldn't determine your account email to verify the password.",
         });
         return;
       }
@@ -592,7 +607,8 @@ export default function SettingsPage() {
 
       toast({
         title: "Signed out other devices",
-        description: "We've disconnected other sessions linked to your account.",
+        description:
+          "We've disconnected other sessions linked to your account.",
       });
     } catch (error) {
       console.error("Failed to revoke sessions", error);
@@ -678,213 +694,160 @@ export default function SettingsPage() {
                 {settingsError}
               </div>
             )}
-            <Card>
-              <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <CardTitle>Theme</CardTitle>
-                  <CardDescription>
-                    Choose how CodeJoin should look across every device you sign into.
-                  </CardDescription>
-                </div>
-                <Badge variant="secondary" className="flex items-center gap-1 text-xs">
-                  {isSavingSettings ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Zap className="h-3 w-3" />
-                  )}
-                  Synced with Supabase
-                </Badge>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-3">
-                  {["light", "dark", "system"].map((option) => {
-                    const label =
-                      option === "light"
-                        ? "Light"
-                        : option === "dark"
-                        ? "Dark"
-                        : "System";
-                    const Icon =
-                      option === "light" ? Sun : option === "dark" ? Moon : Monitor;
-                    const isActive = preferences.theme === option;
+            {isLoadingSettings ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                Loading preferences...
+              </div>
+            ) : (
+              <>
+                <Card>
+                  <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <CardTitle>Theme</CardTitle>
+                      <CardDescription>
+                        Choose how CodeJoin should look. Theme is saved locally in your browser.
+                      </CardDescription>
+                    </div>
+                    <Badge
+                      variant="secondary"
+                      className="flex items-center gap-1 text-xs"
+                    >
+                      <Zap className="h-3 w-3" />
+                      Saved locally
+                    </Badge>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-4 md:grid-cols-3">
+                      {["light", "dark", "system"].map((option) => {
+                        const label =
+                          option === "light"
+                            ? "Light"
+                            : option === "dark"
+                            ? "Dark"
+                            : "System";
+                        const Icon =
+                          option === "light"
+                            ? Sun
+                            : option === "dark"
+                            ? Moon
+                            : Monitor;
+                        const isActive = preferences.theme === option;
 
-                    return (
-                      <button
-                        key={option}
-                        type="button"
-                        onClick={() => handleThemeSelect(option as ThemeOption)}
-                        className={`rounded-lg border bg-card p-4 text-left transition hover:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 ${
-                          isActive ? "border-primary ring-1 ring-primary/40" : "border-border"
-                        }`}
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={() =>
+                              handleThemeSelect(option as ThemeOption)
+                            }
+                            className={`rounded-lg border bg-card p-4 text-left transition hover:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 ${
+                              isActive
+                                ? "border-primary ring-1 ring-primary/40"
+                                : "border-border"
+                            }`}
+                          >
+                            <div className="mb-2 flex items-center gap-2">
+                              <Icon className="h-4 w-4" />
+                              <span className="font-medium">{label}</span>
+                            </div>
+                            <div
+                              className={`h-20 w-full rounded border ${
+                                option === "dark"
+                                  ? "bg-zinc-900"
+                                  : option === "light"
+                                  ? "bg-white"
+                                  : "bg-gradient-to-r from-white to-zinc-900"
+                              }`}
+                            />
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {option === "system"
+                                ? "Automatically adapts between light and dark based on your OS."
+                                : `Always use the ${label.toLowerCase()} theme.`}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Your theme preference is saved locally in this browser and will persist across sessions.
+                      Theme changes apply immediately without requiring an account.
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Regional preferences</CardTitle>
+                    <CardDescription>
+                      Choose how CodeJoin should localize content such as
+                      timestamps and UI copy.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="language">Language</Label>
+                      <Select
+                        value={preferences.language}
+                        onValueChange={handleLanguageChange}
+                        disabled={
+                          isLoadingSettings ||
+                          isSavingSettings ||
+                          !supabase ||
+                          !userId
+                        }
                       >
-                        <div className="mb-2 flex items-center gap-2">
-                          <Icon className="h-4 w-4" />
-                          <span className="font-medium">{label}</span>
-                        </div>
-                        <div
-                          className={`h-20 w-full rounded border ${
-                            option === "dark"
-                              ? "bg-zinc-900"
-                              : option === "light"
-                              ? "bg-white"
-                              : "bg-gradient-to-r from-white to-zinc-900"
-                          }`}
-                        />
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {option === "system"
-                            ? "Automatically adapts between light and dark based on your OS."
-                            : `Always use the ${label.toLowerCase()} theme.`}
-                        </p>
-                      </button>
-                    );
-                  })}
-                </div>
-                {!isAuthenticated && (
-                  <p className="text-xs text-muted-foreground">
-                    Sign in to keep your theme in sync across browsers. We'll remember your last selection locally for this session.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Notification preferences</CardTitle>
-                <CardDescription>
-                  Decide how we should keep you in the loop about activity and updates.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-5">
-                  <div className="flex flex-col gap-4 rounded-lg border p-4 md:flex-row md:items-center md:justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4 text-muted-foreground" />
-                        <p className="font-medium">Email updates</p>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Receive product news, project invites, and billing receipts at {accountEmail || "your email"}.
+                        <SelectTrigger id="language">
+                          <SelectValue placeholder="Select language" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {languageItems.map((language) => (
+                            <SelectItem
+                              key={language.value}
+                              value={language.value}
+                            >
+                              {language.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Interface copy and date formats will adjust based on the
+                        language you select.
                       </p>
                     </div>
-                    <Switch
-                      id="notification-email"
-                      checked={notifications.email}
-                      disabled={isLoadingSettings || isSavingSettings || !supabase || !userId}
-                      onCheckedChange={handleNotificationToggle("email", "Email notifications")}
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-4 rounded-lg border p-4 md:flex-row md:items-center md:justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Bell className="h-4 w-4 text-muted-foreground" />
-                        <p className="font-medium">Product updates</p>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Tips about new features, changelog entries, and roadmap milestones.
+                    <div className="space-y-2">
+                      <Label htmlFor="timezone">Timezone</Label>
+                      <Select
+                        value={preferences.timezone}
+                        onValueChange={handleTimezoneChange}
+                        disabled={
+                          isLoadingSettings ||
+                          isSavingSettings ||
+                          !supabase ||
+                          !userId
+                        }
+                      >
+                        <SelectTrigger id="timezone">
+                          <SelectValue placeholder="Select timezone" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {timezoneItems.map((timezone) => (
+                            <SelectItem key={timezone} value={timezone}>
+                              {timezone}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        We'll use this timezone when sending reminders and
+                        scheduling automation.
                       </p>
                     </div>
-                    <Switch
-                      id="notification-product"
-                      checked={notifications.product}
-                      disabled={isLoadingSettings || isSavingSettings || !supabase || !userId}
-                      onCheckedChange={handleNotificationToggle("product", "Product notifications")}
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-4 rounded-lg border p-4 md:flex-row md:items-center md:justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                        <p className="font-medium">Collaboration alerts</p>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Be notified when teammates mention you, join your workspace, or request reviews.
-                      </p>
-                    </div>
-                    <Switch
-                      id="notification-collaboration"
-                      checked={notifications.collaboration}
-                      disabled={isLoadingSettings || isSavingSettings || !supabase || !userId}
-                      onCheckedChange={handleNotificationToggle("collaboration", "Collaboration alerts")}
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-4 rounded-lg border p-4 md:flex-row md:items-center md:justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Monitor className="h-4 w-4 text-muted-foreground" />
-                        <p className="font-medium">Push notifications</p>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Enable real-time alerts on supported devices. We'll only ping you for important activity.
-                      </p>
-                    </div>
-                    <Switch
-                      id="notification-push"
-                      checked={notifications.push}
-                      disabled={isLoadingSettings || isSavingSettings || !supabase || !userId}
-                      onCheckedChange={handleNotificationToggle("push", "Push notifications")}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Regional preferences</CardTitle>
-                <CardDescription>
-                  Choose how CodeJoin should localize content such as timestamps and UI copy.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="language">Language</Label>
-                  <Select
-                    value={preferences.language}
-                    onValueChange={handleLanguageChange}
-                    disabled={isLoadingSettings || isSavingSettings || !supabase || !userId}
-                  >
-                    <SelectTrigger id="language">
-                      <SelectValue placeholder="Select language" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {languageItems.map((language) => (
-                        <SelectItem key={language.value} value={language.value}>
-                          {language.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Interface copy and date formats will adjust based on the language you select.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="timezone">Timezone</Label>
-                  <Select
-                    value={preferences.timezone}
-                    onValueChange={handleTimezoneChange}
-                    disabled={isLoadingSettings || isSavingSettings || !supabase || !userId}
-                  >
-                    <SelectTrigger id="timezone">
-                      <SelectValue placeholder="Select timezone" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {timezoneItems.map((timezone) => (
-                        <SelectItem key={timezone} value={timezone}>
-                          {timezone}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    We'll use this timezone when sending reminders and scheduling automation.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </TabsContent>
 
           {/* Security Settings */}
@@ -893,7 +856,8 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle>Password & Authentication</CardTitle>
                 <CardDescription>
-                  Update your password and make sure your account stays protected.
+                  Update your password and make sure your account stays
+                  protected.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -913,7 +877,12 @@ export default function SettingsPage() {
                             current: event.target.value,
                           }))
                         }
-                        disabled={isUpdatingPassword || isLoadingSettings || !supabase || !userId}
+                        disabled={
+                          isUpdatingPassword ||
+                          isLoadingSettings ||
+                          !supabase ||
+                          !userId
+                        }
                       />
                     </div>
                     <div className="space-y-2">
@@ -930,11 +899,18 @@ export default function SettingsPage() {
                             next: event.target.value,
                           }))
                         }
-                        disabled={isUpdatingPassword || isLoadingSettings || !supabase || !userId}
+                        disabled={
+                          isUpdatingPassword ||
+                          isLoadingSettings ||
+                          !supabase ||
+                          !userId
+                        }
                       />
                     </div>
                     <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="confirm-password">Confirm new password</Label>
+                      <Label htmlFor="confirm-password">
+                        Confirm new password
+                      </Label>
                       <Input
                         id="confirm-password"
                         type="password"
@@ -947,10 +923,16 @@ export default function SettingsPage() {
                             confirm: event.target.value,
                           }))
                         }
-                        disabled={isUpdatingPassword || isLoadingSettings || !supabase || !userId}
+                        disabled={
+                          isUpdatingPassword ||
+                          isLoadingSettings ||
+                          !supabase ||
+                          !userId
+                        }
                       />
                       <p className="text-xs text-muted-foreground">
-                        Use at least 8 characters with a mix of letters, numbers, and symbols.
+                        Use at least 8 characters with a mix of letters,
+                        numbers, and symbols.
                       </p>
                     </div>
                   </div>
@@ -958,7 +940,9 @@ export default function SettingsPage() {
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <ShieldCheck className="h-4 w-4 text-emerald-500" />
                       {emailConfirmedAt
-                        ? `Email verified on ${formatDateTime(emailConfirmedAt)}`
+                        ? `Email verified on ${formatDateTime(
+                            emailConfirmedAt
+                          )}`
                         : "Verify your email address to enable password resets."}
                     </div>
                     <Button
@@ -988,7 +972,8 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle>Active sessions</CardTitle>
                 <CardDescription>
-                  Sign out other devices and keep an eye on where you are logged in.
+                  Sign out other devices and keep an eye on where you are logged
+                  in.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -999,12 +984,16 @@ export default function SettingsPage() {
                       Last signed in {formatDateTime(lastSignInAt)}
                     </p>
                   </div>
-                  <Badge variant="outline" className="border-emerald-400/50 bg-emerald-500/10 text-emerald-500">
+                  <Badge
+                    variant="outline"
+                    className="border-emerald-400/50 bg-emerald-500/10 text-emerald-500"
+                  >
                     Active
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  If you notice unfamiliar activity, revoke other sessions and change your password immediately.
+                  If you notice unfamiliar activity, revoke other sessions and
+                  change your password immediately.
                 </p>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
                   <Button

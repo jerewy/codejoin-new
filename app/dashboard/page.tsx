@@ -50,6 +50,7 @@ import { Project, Activity, RawActivity } from "@/lib/types";
 import { toast } from "@/hooks/use-toast";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { PageHeader } from "@/components/PageHeader";
+import DashboardSharingModal from "@/components/dashboard-sharing-modal";
 
 const STATUS_OPTIONS = ["active", "planning", "completed", "archived"] as const;
 
@@ -226,6 +227,8 @@ export default function DashboardPage() {
   const [pendingProjects, setPendingProjects] = useState<Set<string>>(
     new Set()
   );
+  const [sharingModalOpen, setSharingModalOpen] = useState(false);
+  const [projectToShare, setProjectToShare] = useState<Project | null>(null);
   const supabaseClient = getSupabaseClient();
 
   if (!supabaseClient) {
@@ -555,6 +558,11 @@ export default function DashboardPage() {
     }
   };
 
+  const handleShare = (project: Project) => {
+    setProjectToShare(project);
+    setSharingModalOpen(true);
+  };
+
   if (loading) {
     return <DashboardSkeleton />;
   }
@@ -712,6 +720,7 @@ export default function DashboardPage() {
                       onStatusChange={(nextStatus) =>
                         handleStatusChange(project, nextStatus)
                       }
+                      onShare={handleShare}
                       isUpdating={pendingProjects.has(project.id)}
                       statusOptions={STATUS_OPTIONS}
                     />
@@ -908,18 +917,6 @@ export default function DashboardPage() {
                     Create New Project
                   </Button>
                 </Link>
-                <Link href="/teams">
-                  <Button className="w-full justify-start" variant="outline">
-                    <Users className="h-4 w-4 mr-2" />
-                    Invite Team Member
-                  </Button>
-                </Link>
-                <Link href="/templates-section">
-                  <Button className="w-full justify-start" variant="outline">
-                    <Folder className="h-4 w-4 mr-2" />
-                    Browse Templates
-                  </Button>
-                </Link>
               </CardContent>
             </Card>
 
@@ -984,6 +981,19 @@ export default function DashboardPage() {
         onConfirm={handleDeleteProject}
         projectName={projectToDelete?.name || ""}
         isDeleting={isDeleting}
+      />
+
+      {/* Dashboard Sharing Modal */}
+      <DashboardSharingModal
+        projectId={projectToShare?.id || ""}
+        projectName={projectToShare?.name || ""}
+        isOpen={sharingModalOpen}
+        onOpenChange={(open) => {
+          setSharingModalOpen(open);
+          if (!open) {
+            setProjectToShare(null);
+          }
+        }}
       />
     </div>
   );

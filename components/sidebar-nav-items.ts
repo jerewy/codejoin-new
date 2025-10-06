@@ -1,12 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import {
-  LayoutDashboard,
-  Bot,
-  FolderPlus,
-  Layers,
-  Users,
-  Settings,
-} from "lucide-react";
+import { LayoutDashboard, Bot, FolderPlus, Settings } from "lucide-react";
 
 export type SidebarNavItem = {
   title: string;
@@ -30,35 +23,9 @@ export const sidebarNavSections: SidebarNavSection[] = [
         icon: LayoutDashboard,
       },
       {
-        title: "AI Assistant",
-        href: "/ai-assistant",
-        icon: Bot,
-        badge: "Beta",
-      },
-    ],
-  },
-  {
-    title: "Creation",
-    items: [
-      {
         title: "New Project",
         href: "/new-project",
         icon: FolderPlus,
-      },
-      {
-        title: "Templates",
-        href: "/templates-section",
-        icon: Layers,
-      },
-    ],
-  },
-  {
-    title: "Collaboration",
-    items: [
-      {
-        title: "Teams",
-        href: "/teams",
-        icon: Users,
       },
       {
         title: "Settings",
@@ -67,6 +34,19 @@ export const sidebarNavSections: SidebarNavSection[] = [
       },
     ],
   },
+  {
+    title: "AI Tools",
+    items: [
+      {
+        title: "AI Assistant",
+        href: "/ai-assistant",
+        icon: Bot,
+        badge: "Beta",
+      },
+    ],
+  },
 ];
 
-export const sidebarNavItems = sidebarNavSections.flatMap((section) => section.items);
+export const sidebarNavItems = sidebarNavSections.flatMap(
+  (section) => section.items
+);

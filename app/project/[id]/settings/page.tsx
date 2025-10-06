@@ -115,6 +115,7 @@ export default function ProjectSettingsPage({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
   const [newTag, setNewTag] = useState("");
 
   const thumbnailObjectUrlRef = useRef<string | null>(null);
@@ -235,8 +236,18 @@ export default function ProjectSettingsPage({
 
     return () => {
       revokeThumbnailObjectUrl();
+      // Clean up any pending file operations
+      setThumbnailFile(null);
     };
   }, [fetchProject, revokeThumbnailObjectUrl]);
+
+  // Add cleanup for component unmount
+  useEffect(() => {
+    return () => {
+      // Ensure object URL is cleaned up when component unmounts
+      revokeThumbnailObjectUrl();
+    };
+  }, [revokeThumbnailObjectUrl]);
 
   const handleNameChange = useCallback((value: string) => {
     setProjectForm((prev) => ({
@@ -329,25 +340,49 @@ export default function ProjectSettingsPage({
         return;
       }
 
+      // Validate file type
       if (!file.type.startsWith("image/")) {
         toast({
           variant: "destructive",
           title: "Unsupported file",
           description: "Please choose an image file for the thumbnail.",
         });
+        // Reset the file input
+        event.target.value = "";
         return;
       }
 
+      // Validate file size
       if (file.size > MAX_THUMBNAIL_SIZE) {
         toast({
           variant: "destructive",
           title: "Image too large",
           description: "Please choose an image smaller than 5MB.",
         });
+        // Reset the file input
+        event.target.value = "";
         return;
       }
 
+      // Validate file extension
+      const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+      const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
+      if (!allowedExtensions.includes(extension)) {
+        toast({
+          variant: "destructive",
+          title: "Unsupported file format",
+          description: "Please use JPG, PNG, GIF, or WebP images.",
+        });
+        // Reset the file input
+        event.target.value = "";
+        return;
+      }
+
+      // Clean up previous object URL
       revokeThumbnailObjectUrl();
+
+      // Create new object URL for preview
       const objectUrl = URL.createObjectURL(file);
       thumbnailObjectUrlRef.current = objectUrl;
       setThumbnailFile(file);
@@ -360,6 +395,12 @@ export default function ProjectSettingsPage({
     revokeThumbnailObjectUrl();
     setThumbnailFile(null);
     setThumbnailPreview(initialProject?.thumbnail ?? null);
+
+    // Also reset the file input value to allow selecting the same file again
+    const fileInput = document.getElementById('project-thumbnail') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = '';
+    }
   }, [initialProject?.thumbnail, revokeThumbnailObjectUrl]);
 
   const isDirty = useMemo(() => {
@@ -386,6 +427,7 @@ export default function ProjectSettingsPage({
 
   const fieldsDisabled =
     isSaving ||
+    isUploadingThumbnail ||
     isLoadingProject ||
     authUnavailable ||
     !hasLoadedProject;
@@ -423,16 +465,39 @@ export default function ProjectSettingsPage({
       return;
     }
 
+    // Validate thumbnail file if present
+    if (thumbnailFile) {
+      if (!thumbnailFile.type.startsWith("image/")) {
+        toast({
+          variant: "destructive",
+          title: "Invalid file type",
+          description: "Please select a valid image file.",
+        });
+        return;
+      }
+
+      if (thumbnailFile.size > MAX_THUMBNAIL_SIZE) {
+        toast({
+          variant: "destructive",
+          title: "File too large",
+          description: "Please select an image smaller than 5MB.",
+        });
+        return;
+      }
+    }
+
     setIsSaving(true);
 
     try {
+      // Check authentication first
       const {
         data: { user },
         error: userError,
       } = await supabase.auth.getUser();
 
       if (userError) {
-        throw userError;
+        console.error("Auth error:", userError);
+        throw new Error("Authentication failed. Please sign in again.");
       }
 
       if (!user) {
@@ -440,128 +505,178 @@ export default function ProjectSettingsPage({
       }
 
       let thumbnailUrl = projectForm.thumbnail ?? null;
+      let uploadedFilePath: string | null = null;
 
+      // Handle thumbnail upload if a new file is selected
       if (thumbnailFile) {
-        const extension = thumbnailFile.name.split(".").pop() ?? "png";
-        const filePath = `project-thumbnails/${params.id}-${Date.now()}.${extension}`;
+        setIsUploadingThumbnail(true);
+        try {
+          const extension = thumbnailFile.name.split(".").pop()?.toLowerCase() ?? "png";
+          const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
-        const { error: uploadError } = await supabase
-          .storage
-          .from("assets")
-          .upload(filePath, thumbnailFile, {
-            cacheControl: "3600",
-            upsert: true,
-          });
+          if (!allowedExtensions.includes(extension)) {
+            throw new Error(`Unsupported file format: ${extension}. Please use JPG, PNG, GIF, or WebP.`);
+          }
 
-        if (uploadError) {
+          uploadedFilePath = `project-thumbnails/${params.id}-${Date.now()}.${extension}`;
+
+          const { error: uploadError } = await supabase
+            .storage
+            .from("assets")
+            .upload(uploadedFilePath, thumbnailFile, {
+              cacheControl: "3600",
+              upsert: true,
+              contentType: thumbnailFile.type,
+            });
+
+          if (uploadError) {
+            console.error("Upload error:", uploadError);
+            throw new Error(`Failed to upload thumbnail: ${uploadError.message}`);
+          }
+
+          const { data: publicUrlData } = supabase
+            .storage
+            .from("assets")
+            .getPublicUrl(uploadedFilePath);
+
+          thumbnailUrl = publicUrlData.publicUrl;
+
+          if (!thumbnailUrl) {
+            throw new Error("Failed to get public URL for uploaded thumbnail.");
+          }
+        } catch (uploadError) {
+          console.error("Thumbnail upload failed:", uploadError);
           throw uploadError;
+        } finally {
+          setIsUploadingThumbnail(false);
         }
-
-        const { data: publicUrlData } = supabase
-          .storage
-          .from("assets")
-          .getPublicUrl(filePath);
-
-        thumbnailUrl = publicUrlData.publicUrl ?? null;
       }
 
+      // Prepare update payload
       const updatePayload = {
         name: trimmedName,
-        description: projectForm.description,
-        language: projectForm.language || null,
+        description: projectForm.description?.trim() || null,
+        language: projectForm.language?.trim() || null,
         status: projectForm.status,
         isStarred: projectForm.isStarred,
-        tags: projectForm.tags,
+        tags: projectForm.tags.filter(tag => tag.trim().length > 0),
         thumbnail: thumbnailUrl,
+        updated_at: new Date().toISOString(),
       };
 
+      // Update project in database
       const { data: updatedProject, error: updateError } = await supabase
         .from("projects")
         .update(updatePayload)
         .eq("id", params.id)
+        .eq("user_id", user.id) // Ensure user owns the project
         .select(
           "name, description, language, status, isStarred, tags, thumbnail, updated_at"
         )
         .single();
 
       if (updateError) {
-        throw updateError;
+        console.error("Database update error:", updateError);
+
+        // If upload succeeded but database update failed, clean up uploaded file
+        if (uploadedFilePath) {
+          try {
+            await supabase.storage.from("assets").remove([uploadedFilePath]);
+          } catch (cleanupError) {
+            console.error("Failed to cleanup uploaded file:", cleanupError);
+          }
+        }
+
+        throw new Error(`Failed to update project: ${updateError.message}`);
       }
 
+      // Update local state with server response
       const sanitizedTags = Array.isArray(updatedProject?.tags)
-        ? updatedProject.tags.filter((tag): tag is string => typeof tag === "string")
+        ? updatedProject.tags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
         : [];
 
       const latestState: ProjectFormState = {
         name: typeof updatedProject?.name === "string" ? updatedProject.name : trimmedName,
-        description:
-          typeof updatedProject?.description === "string"
-            ? updatedProject.description
-            : projectForm.description,
-        language:
-          typeof updatedProject?.language === "string"
-            ? updatedProject.language
-            : projectForm.language,
-        status:
-          typeof updatedProject?.status === "string"
-            ? updatedProject.status
-            : projectForm.status,
-        isStarred: Boolean(updatedProject?.isStarred ?? projectForm.isStarred),
+        description: typeof updatedProject?.description === "string" ? updatedProject.description : null,
+        language: typeof updatedProject?.language === "string" ? updatedProject.language : null,
+        status: typeof updatedProject?.status === "string" ? updatedProject.status : "active",
+        isStarred: Boolean(updatedProject?.isStarred ?? false),
         tags: sanitizedTags,
-        thumbnail:
-          typeof updatedProject?.thumbnail === "string"
-            ? updatedProject.thumbnail
-            : thumbnailUrl,
+        thumbnail: typeof updatedProject?.thumbnail === "string" ? updatedProject.thumbnail : null,
       };
 
       applyProjectState(latestState);
       setUpdatedAt(updatedProject?.updated_at ?? new Date().toISOString());
+
+      // Clear the temporary file state
+      setThumbnailFile(null);
+
       toast({
         title: "Project updated",
-        description: "Your project settings have been saved.",
+        description: "Your project settings have been saved successfully.",
       });
     } catch (error) {
-      console.error("Failed to save project", error);
+      console.error("Failed to save project:", error);
+
+      let errorMessage = "We couldn't save your changes. Please try again.";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+
       toast({
         variant: "destructive",
         title: "Failed to save changes",
-        description:
-          error instanceof Error
-            ? error.message
-            : "We couldn't save your changes. Please try again.",
+        description: errorMessage,
       });
     } finally {
       setIsSaving(false);
-      revokeThumbnailObjectUrl();
+      setIsUploadingThumbnail(false);
+      // Always revoke object URL after save attempt
+      if (thumbnailFile) {
+        revokeThumbnailObjectUrl();
+      }
     }
   }, [
     applyProjectState,
     initialProject,
     params.id,
-    projectForm.description,
-    projectForm.isStarred,
-    projectForm.language,
     projectForm.name,
+    projectForm.description,
+    projectForm.language,
     projectForm.status,
+    projectForm.isStarred,
     projectForm.tags,
     projectForm.thumbnail,
+    thumbnailFile,
     revokeThumbnailObjectUrl,
     supabase,
-    thumbnailFile,
     toast,
+    isUploadingThumbnail,
+    setIsUploadingThumbnail,
   ]);
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
 
+      // Prevent multiple submissions
       if (isSaving) {
+        event.stopPropagation();
+        return;
+      }
+
+      // Prevent submission if form is not dirty
+      if (!isDirty) {
+        toast({
+          title: "No changes to save",
+          description: "Make some changes before saving.",
+        });
         return;
       }
 
       await handleSave();
     },
-    [handleSave, isSaving]
+    [handleSave, isSaving, isDirty, toast]
   );
 
   const handleRetry = useCallback(() => {
@@ -596,16 +711,17 @@ export default function ProjectSettingsPage({
             disabled={
               authUnavailable ||
               isSaving ||
+              isUploadingThumbnail ||
               isLoadingProject ||
               !isDirty
             }
           >
-            {isSaving ? (
+            {isSaving || isUploadingThumbnail ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <Save className="mr-2 h-4 w-4" />
             )}
-            Save changes
+            {isUploadingThumbnail ? "Uploading..." : isSaving ? "Saving..." : "Save changes"}
           </Button>
         </div>
       </header>
@@ -776,6 +892,12 @@ export default function ProjectSettingsPage({
                       >
                         Reset
                       </Button>
+                      {isUploadingThumbnail && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Uploading thumbnail...
+                        </div>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       JPG, PNG, or GIF up to 5MB. New uploads are stored in the

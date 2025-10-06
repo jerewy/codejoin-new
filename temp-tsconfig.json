@@ -1,0 +1,1 @@
+{ "compilerOptions": { "target": "es5", "module": "commonjs", "lib": ["dom", "es6"], "jsx": "react-jsx", "strict": true, "esModuleInterop": true, "skipLibCheck": true, "forceConsistentCasingInFileNames": true }, "files": ["components/dashboard-sharing-modal.tsx", "components/project-card.tsx", "app/dashboard/page.tsx"] }

@@ -2,7 +2,7 @@ import type React from "react";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { ThemeProvider } from "@/components/theme-provider";
+import { ThemeProviderWrapper } from "@/components/theme-provider-wrapper";
 import { Toaster } from "@/components/ui/toaster";
 import { AppLayout } from "@/components/app-layout";
 import { RouteChangeIndicator } from "@/components/route-change-indicator";
@@ -24,7 +24,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <ThemeProvider
+        <ThemeProviderWrapper
           attribute="class"
           defaultTheme="system"
           enableSystem
@@ -34,7 +34,7 @@ export default function RootLayout({
             <AppLayout>{children}</AppLayout>
             <Toaster />
           </SocketProvider>
-        </ThemeProvider>
+        </ThemeProviderWrapper>
       </body>
     </html>
   );

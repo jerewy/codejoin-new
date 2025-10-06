@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { User } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { User, Camera, Loader2, Trash2 } from "lucide-react";
 
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +23,7 @@ type ProfileFormState = {
   bio: string;
   location: string;
   website: string;
+  user_avatar: string | null;
 };
 
 const createEmptyProfile = (): ProfileFormState => ({
@@ -31,10 +32,20 @@ const createEmptyProfile = (): ProfileFormState => ({
   bio: "",
   location: "",
   website: "",
+  user_avatar: null,
 });
 
 const ensureString = (value: unknown): string =>
   typeof value === "string" ? value : "";
+
+const isValidUrl = (url: string): boolean => {
+  try {
+    const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+    return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
 
 export default function ProfileSettingsCard() {
   const { toast } = useToast();
@@ -43,7 +54,9 @@ export default function ProfileSettingsCard() {
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = useMemo(() => getSupabaseClient(), []);
 
   const fetchProfile = useCallback(async () => {
@@ -98,11 +111,12 @@ export default function ProfileSettingsCard() {
         bio: ensureString(metadata.bio),
         location: ensureString(metadata.location),
         website: ensureString(metadata.website),
+        user_avatar: ensureString(metadata.user_avatar) || null,
       };
 
       const { data: profileRow, error: profileRowError } = await supabase
         .from("profiles")
-        .select("full_name, email")
+        .select("full_name, email, user_avatar")
         .eq("id", user.id)
         .maybeSingle();
 
@@ -118,6 +132,7 @@ export default function ProfileSettingsCard() {
       if (profileRow) {
         nextProfile.name = profileRow.full_name ?? nextProfile.name;
         nextProfile.email = profileRow.email ?? nextProfile.email;
+        nextProfile.user_avatar = profileRow.user_avatar ?? nextProfile.user_avatar;
       }
 
       setProfile(nextProfile);
@@ -250,6 +265,132 @@ export default function ProfileSettingsCard() {
     [fetchProfile, initialEmail, profile, supabase, toast, userId]
   );
 
+  const handleAvatarUpload = useCallback(
+    async (file: File) => {
+      if (!supabase || !userId) {
+        toast({
+          variant: "destructive",
+          title: "Authentication unavailable",
+          description: "Please sign in to upload an avatar.",
+        });
+        return;
+      }
+
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        toast({
+          variant: "destructive",
+          title: "Invalid file type",
+          description: "Please select an image file (JPG, PNG, GIF, or WebP).",
+        });
+        return;
+      }
+
+      // Validate file size (2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        toast({
+          variant: "destructive",
+          title: "File too large",
+          description: "Please select an image smaller than 2MB.",
+        });
+        return;
+      }
+
+      setIsUploadingAvatar(true);
+
+      try {
+        const formData = new FormData();
+        formData.append("avatar", file);
+        formData.append("userId", userId);
+
+        const response = await fetch("/api/settings/avatar", {
+          method: "POST",
+          body: formData,
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || "Upload failed");
+        }
+
+        // Update local state with new avatar URL
+        setProfile((prev) => ({
+          ...prev,
+          user_avatar: result.avatarUrl,
+        }));
+
+        toast({
+          title: "Avatar updated",
+          description: "Your profile picture has been updated successfully.",
+        });
+      } catch (error) {
+        console.error("Avatar upload error:", error);
+        toast({
+          variant: "destructive",
+          title: "Upload failed",
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+        });
+      } finally {
+        setIsUploadingAvatar(false);
+      }
+    },
+    [supabase, userId, toast]
+  );
+
+  const handleAvatarRemove = useCallback(async () => {
+    if (!supabase || !userId) {
+      toast({
+        variant: "destructive",
+        title: "Authentication unavailable",
+        description: "Please sign in to remove your avatar.",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/settings/avatar?userId=${userId}`, {
+        method: "DELETE",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Removal failed");
+      }
+
+      // Update local state
+      setProfile((prev) => ({
+        ...prev,
+        user_avatar: null,
+      }));
+
+      toast({
+        title: "Avatar removed",
+        description: "Your profile picture has been removed successfully.",
+      });
+    } catch (error) {
+      console.error("Avatar removal error:", error);
+      toast({
+        variant: "destructive",
+        title: "Removal failed",
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+      });
+    }
+  }, [supabase, userId, toast]);
+
+  const handleFileSelect = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (file) {
+        handleAvatarUpload(file);
+      }
+    },
+    [handleAvatarUpload]
+  );
+
   const isDisabled = isLoading || isSaving || !userId || !supabase;
   const actionLabel = isLoading
     ? "Loading..."
@@ -268,20 +409,70 @@ export default function ProfileSettingsCard() {
       <CardContent>
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="flex items-center gap-4">
-            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-              <User className="h-8 w-8 text-primary" />
+            <div className="relative w-20 h-20 rounded-full bg-primary/10 overflow-hidden group">
+              {profile.user_avatar ? (
+                <img
+                  src={profile.user_avatar}
+                  alt="Profile avatar"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <User className="h-8 w-8 text-primary" />
+                </div>
+              )}
+
+              {/* Upload overlay */}
+              <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                <Camera className="h-6 w-6 text-white" />
+              </div>
             </div>
-            <div>
-              <Button
-                variant="outline"
-                size="sm"
-                type="button"
-                disabled={isDisabled}
-              >
-                Change Avatar
-              </Button>
+
+            <div className="flex-1">
+              <div className="flex gap-2 flex-wrap">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  disabled={isDisabled || isUploadingAvatar}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {isUploadingAvatar ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="h-4 w-4 mr-2" />
+                      Change Avatar
+                    </>
+                  )}
+                </Button>
+
+                {profile.user_avatar && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    disabled={isDisabled || isUploadingAvatar}
+                    onClick={handleAvatarRemove}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Remove
+                  </Button>
+                )}
+              </div>
               <p className="text-sm text-muted-foreground mt-1">
-                JPG, PNG or GIF. Max size 2MB.
+                JPG, PNG, GIF, or WebP. Max size 2MB.
               </p>
             </div>
           </div>
@@ -340,20 +531,34 @@ export default function ProfileSettingsCard() {
                   setProfile({ ...profile, website: event.target.value })
                 }
               />
+              {profile.website && profile.website.trim() && !isValidUrl(profile.website) && (
+                <p className="text-xs text-destructive">
+                  Please enter a valid URL (e.g., https://your-site.dev)
+                </p>
+              )}
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="bio">Bio</Label>
+            <Label htmlFor="bio">
+              Bio
+              <span className="text-xs text-muted-foreground ml-2">
+                ({profile.bio.length}/200)
+              </span>
+            </Label>
             <Textarea
               id="bio"
               placeholder="Tell us about yourself..."
               disabled={isDisabled}
               value={profile.bio}
+              maxLength={200}
               onChange={(event) =>
                 setProfile({ ...profile, bio: event.target.value })
               }
             />
+            <p className="text-xs text-muted-foreground">
+              Brief description for your profile. Max 200 characters.
+            </p>
           </div>
 
           <div className="flex justify-end">

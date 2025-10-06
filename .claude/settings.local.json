@@ -29,7 +29,9 @@
       "Bash(npm run dev:*)",
       "Bash(echo:*)",
       "mcp__supabase__search_docs",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npx tsc:*)",
+      "Bash(taskkill:*)"
     ],
     "deny": [],
     "ask": []

@@ -41,6 +41,7 @@ interface ProjectCardProps {
   onDelete?: (project: Project) => void;
   onToggleStar?: (nextValue: boolean) => void;
   onStatusChange?: (nextStatus: string) => void;
+  onShare?: (project: Project) => void;
   isUpdating?: boolean;
   statusOptions?: readonly string[];
 }
@@ -50,6 +51,7 @@ export default function ProjectCard({
   onDelete,
   onToggleStar,
   onStatusChange,
+  onShare,
   isUpdating = false,
   statusOptions,
 }: ProjectCardProps) {
@@ -134,21 +136,7 @@ export default function ProjectCard({
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => {
-                    if (typeof navigator !== "undefined" && navigator.share) {
-                      navigator.share({
-                        title: project.name,
-                        text: project.description || "Check out this project",
-                        url: `${window.location.origin}/project/${project.id}`,
-                      });
-                    } else if (
-                      typeof navigator !== "undefined" &&
-                      navigator.clipboard
-                    ) {
-                      navigator.clipboard.writeText(
-                        `${window.location.origin}/project/${project.id}`
-                      );
-                      alert("Project link copied to clipboard!");
-                    }
+                    onShare?.(project);
                     setDropdownOpen(false);
                   }}
                 >

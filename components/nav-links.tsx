@@ -5,8 +5,6 @@ import clsx from "clsx";
 
 const links = [
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/templates", label: "Templates" },
-  { href: "/teams", label: "Teams" },
   { href: "/settings", label: "Settings" },
 ];
 
