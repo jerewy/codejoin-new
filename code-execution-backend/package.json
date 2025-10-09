@@ -1,7 +1,7 @@
 {
   "name": "code-execution-backend",
   "version": "1.0.0",
-  "description": "Secure code execution backend with Docker isolation",
+  "description": "Secure code execution backend with Docker isolation and resilient AI services",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -9,7 +9,7 @@
     "test": "jest",
     "docker:build": "node scripts/build-images.js"
   },
-  "keywords": ["code-execution", "docker", "security", "api"],
+  "keywords": ["code-execution", "docker", "security", "api", "ai", "resilience", "multi-provider"],
   "author": "",
   "license": "MIT",
   "dependencies": {

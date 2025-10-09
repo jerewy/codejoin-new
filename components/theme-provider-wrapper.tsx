@@ -1,15 +1,14 @@
-import { getThemeFromCookie } from "@/lib/theme-cookies-server"
 import { ThemeProvider } from "@/components/theme-provider"
 import type { ThemeProviderProps } from "next-themes"
+import { getThemeFromCookie } from "@/lib/theme-cookies-server"
+import type { ThemeOption } from "@/lib/theme-cookies"
 
 interface ThemeProviderWrapperProps extends ThemeProviderProps {
   children: React.ReactNode
+  cookieTheme?: ThemeOption
 }
 
-export function ThemeProviderWrapper({ children, ...props }: ThemeProviderWrapperProps) {
-  // Get theme from cookie on server side
-  const cookieTheme = getThemeFromCookie()
-
+export function ThemeProviderWrapper({ children, cookieTheme, ...props }: ThemeProviderWrapperProps) {
   return (
     <ThemeProvider
       {...props}

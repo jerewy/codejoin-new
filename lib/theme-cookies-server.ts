@@ -4,9 +4,9 @@ import { THEME_COOKIE_NAME, THEME_COOKIE_MAX_AGE, type ThemeOption } from './the
 /**
  * Server-side utility to get theme from cookies
  */
-export function getThemeFromCookie(): ThemeOption {
+export async function getThemeFromCookie(): Promise<ThemeOption> {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const themeCookie = cookieStore.get(THEME_COOKIE_NAME)
 
     if (!themeCookie) {
@@ -28,9 +28,9 @@ export function getThemeFromCookie(): ThemeOption {
 /**
  * Server-side utility to set theme cookie
  */
-export function setThemeCookie(theme: ThemeOption): void {
+export async function setThemeCookie(theme: ThemeOption): Promise<void> {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     cookieStore.set(THEME_COOKIE_NAME, theme, {
       maxAge: THEME_COOKIE_MAX_AGE,
       path: '/',

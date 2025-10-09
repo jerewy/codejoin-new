@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useSocket, useFileCollaboration } from "@/lib/socket";
+import { useDockerConnection } from "@/lib/docker-connection-manager";
 import { useAIConversations } from "@/hooks/use-ai-conversations";
 import { useUser } from "@/hooks/use-user";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import TerminalSurface, {
   type TerminalSurfaceHandle,
 } from "@/components/terminal/TerminalSurface";
+import { DockerStatusIndicator } from "@/components/docker-status-indicator";
 import {
   Video,
   VideoOff,
@@ -52,6 +54,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Square,
+  Plus,
 } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import CodeEditor from "@/components/code-editor";
@@ -274,6 +277,12 @@ function TerminalPanel({
     stopTerminalSession,
     resumeTerminalSession,
   } = useSocket();
+  const {
+    status: dockerStatus,
+    canAttemptConnection,
+    reportConnectionFailure,
+    reportConnectionSuccess
+  } = useDockerConnection();
   const { toast } = useToast();
 
   const [isTerminalReady, setIsTerminalReady] = useState(false);
@@ -677,6 +686,28 @@ function TerminalPanel({
         return;
       }
 
+      // Check Docker connection availability before attempting to start session
+      if (!canAttemptConnection()) {
+        if (dockerStatus.isRateLimited) {
+          appendStatusLine(`Docker connection rate limited. Please wait before retrying.`);
+          toast({
+            title: "Docker Connection Rate Limited",
+            description: dockerStatus.errorMessage || "Too many failed attempts. Please wait before retrying.",
+            variant: "destructive",
+          });
+        } else if (dockerStatus.consecutiveFailures >= 3) {
+          appendStatusLine(`Docker connection failed too many times. Please check Docker and try again later.`);
+          toast({
+            title: "Docker Unavailable",
+            description: "Docker connection has failed multiple times. Please ensure Docker Desktop is running and retry.",
+            variant: "destructive",
+          });
+        } else {
+          appendStatusLine(`Docker connection unavailable: ${dockerStatus.errorMessage || 'Unknown error'}`);
+        }
+        return;
+      }
+
       setIsStarting(true);
       setIsStopping(false);
       if (!hasShownConnectionMessage.current) {
@@ -695,6 +726,9 @@ function TerminalPanel({
       socket,
       startTerminalSession,
       userId,
+      canAttemptConnection,
+      dockerStatus,
+      toast,
     ]
   );
 
@@ -801,11 +835,15 @@ function TerminalPanel({
       pendingResumeRef.current = false;
       setIsStarting(false);
       setIsStopping(false);
+
+      // Report successful Docker connection
+      reportConnectionSuccess();
+
       if (hasShownConnectionMessage.current) {
         appendStatusLine("Connected to sandbox session.");
       }
     },
-    [appendStatusLine]
+    [appendStatusLine, reportConnectionSuccess]
   );
 
   const handleTerminalData = useCallback(
@@ -861,6 +899,15 @@ function TerminalPanel({
         return;
       }
 
+      // Check if this is a Docker-related error
+      const isDockerError = message.toLowerCase().includes('docker') ||
+                           message.toLowerCase().includes('container') ||
+                           message.toLowerCase().includes('unavailable');
+
+      if (isDockerError) {
+        reportConnectionFailure(message);
+      }
+
       appendStatusLine(`Error: ${message}`);
       toast({
         title: "Terminal error",
@@ -869,7 +916,7 @@ function TerminalPanel({
       });
       resetSessionState(message);
     },
-    [appendStatusLine, resetSessionState, toast]
+    [appendStatusLine, resetSessionState, toast, reportConnectionFailure]
   );
 
   const handleTerminalExit = useCallback(
@@ -1514,6 +1561,7 @@ function TerminalPanel({
           <Terminal className="h-4 w-4 text-[#cccccc]" />
           <span className="text-sm text-[#cccccc]">Terminal</span>
           <span className={`text-xs ${statusColor}`}>{terminalStatus}</span>
+          <DockerStatusIndicator compact={true} className="ml-2" />
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -1670,6 +1718,7 @@ export default function ProjectWorkspace({
   const [selectedLanguage, setSelectedLanguage] = useState("html");
   const [isAIVoiceActive, setIsAIVoiceActive] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
+  const [isAIThinking, setIsAIThinking] = useState(false);
 
   // AI Conversation hook for Supabase-backed persistence
   const {
@@ -1681,6 +1730,8 @@ export default function ProjectWorkspace({
     getOrCreateConversation,
     addMessage,
     loadConversation,
+    clearCurrentConversation,
+    createConversation,
   } = useAIConversations({
     projectId,
     userId,
@@ -2458,29 +2509,36 @@ export default function ProjectWorkspace({
 
     const userMessage = aiMessage.trim();
     setAiMessage("");
-
-    // Ensure we have a conversation
-    let conversation = currentConversation;
-    if (!conversation) {
-      conversation = await getOrCreateConversation("AI Chat");
-      if (!conversation) {
-        toast({
-          title: "Error",
-          description: "Failed to create conversation",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
-    // Add user message to database
-    await addMessage(conversation.id, {
-      role: "user",
-      content: userMessage,
-      author_id: userId || undefined,
-    });
+    setIsAIThinking(true); // Start thinking animation
 
     try {
+      // Ensure we have a conversation
+      let conversation = currentConversation;
+      if (!conversation) {
+        conversation = await getOrCreateConversation("AI Chat");
+        if (!conversation) {
+          toast({
+            title: "Error",
+            description: "Failed to create conversation",
+            variant: "destructive",
+          });
+          setIsAIThinking(false);
+          return;
+        }
+      }
+
+      // Add user message to database
+      try {
+        await addMessage(conversation.id, {
+          role: "user",
+          content: userMessage,
+          author_id: userId || undefined,
+        });
+      } catch (messageError) {
+        console.error("Failed to save user message:", messageError);
+        // Continue anyway - the user experience is more important than perfect persistence
+      }
+
       // Get code context from current file
       const context = currentFile
         ? `Current file: ${currentFile.name}\nLanguage: ${
@@ -2506,27 +2564,70 @@ export default function ProjectWorkspace({
 
       if (data.success) {
         // Add AI response to database with metadata
-        await addMessage(conversation.id, {
-          role: "assistant",
-          content: data.response,
-          ai_model: data.metadata?.model || "gemini-pro",
-          ai_response_time_ms: responseTime,
-          ai_tokens_used: data.metadata?.tokensUsed,
-        });
+        try {
+          await addMessage(conversation.id, {
+            role: "assistant",
+            content: data.response,
+            ai_model: data.metadata?.model || "gemini-pro",
+            ai_response_time_ms: responseTime,
+            ai_tokens_used: data.metadata?.tokensUsed,
+          });
+        } catch (messageError) {
+          console.error("Failed to save AI response:", messageError);
+          // Create a temporary message object to show in UI even if saving fails
+          const tempMessage = {
+            id: `temp_${Date.now()}`,
+            conversation_id: conversation.id,
+            role: "assistant" as const,
+            content: data.response,
+            created_at: new Date().toISOString(),
+            ai_model: data.metadata?.model || "gemini-pro",
+            ai_response_time_ms: responseTime,
+            ai_tokens_used: data.metadata?.tokensUsed,
+          };
+          // Add to messages state directly
+          setAiMessages(prev => [...prev, tempMessage]);
+        }
       } else {
         // Add error message to database
-        await addMessage(conversation.id, {
-          role: "assistant",
-          content: `Error: ${data.error || "Failed to get AI response"}`,
-        });
+        try {
+          await addMessage(conversation.id, {
+            role: "assistant",
+            content: `Error: ${data.error || "Failed to get AI response"}`,
+          });
+        } catch (messageError) {
+          console.error("Failed to save error message:", messageError);
+          // Show error in toast as fallback
+          toast({
+            title: "AI Error",
+            description: data.error || "Failed to get AI response",
+            variant: "destructive",
+          });
+        }
       }
     } catch (error) {
       console.error("AI chat error:", error);
-      // Add error message to database
-      await addMessage(conversation.id, {
-        role: "assistant",
-        content: "Error: Failed to connect to AI service. Please try again.",
-      });
+
+      // Try to save error message to database
+      try {
+        const conversation = currentConversation;
+        if (conversation) {
+          await addMessage(conversation.id, {
+            role: "assistant",
+            content: "Error: Failed to connect to AI service. Please try again.",
+          });
+        }
+      } catch (messageError) {
+        console.error("Failed to save error message:", messageError);
+        // Show error in toast as last resort
+        toast({
+          title: "AI Connection Error",
+          description: "Failed to connect to AI service. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsAIThinking(false); // Stop thinking animation
     }
   };
 
@@ -2747,7 +2848,7 @@ export default function ProjectWorkspace({
       isAIAssistantOpen &&
       projectId &&
       !currentConversation &&
-      !isAILoading
+      !isAIThinking
     ) {
       getOrCreateConversation("AI Chat");
     }
@@ -2755,7 +2856,7 @@ export default function ProjectWorkspace({
     isAIAssistantOpen,
     projectId,
     currentConversation,
-    isAILoading,
+    isAIThinking,
     getOrCreateConversation,
   ]);
 
@@ -3081,110 +3182,98 @@ export default function ProjectWorkspace({
                       className="flex-1 flex min-h-0 p-0 m-0 h-full"
                       style={{ contain: 'strict' }}
                     >
-                      <div className="flex-1 flex h-full bg-background">
-                        {/* Conversation History Sidebar */}
-                        <div className="w-64 border-r flex flex-col bg-muted/30" style={{ contain: 'layout' }}>
-                        <div className="p-3 border-b">
+                      <div className="flex-1 flex flex-col h-full">
+                        {/* Chat Header with New Chat Button */}
+                        <div className="flex-shrink-0 border-b p-4 bg-muted/30">
                           <div className="flex items-center justify-between">
-                            <h3 className="text-sm font-medium">
-                              Chat History
-                            </h3>
+                            <div className="flex items-center gap-2">
+                              <Brain className="h-5 w-5 text-primary" />
+                              <h3 className="text-sm font-medium">AI Assistant</h3>
+                            </div>
                             <Button
                               size="sm"
-                              variant="ghost"
-                              onClick={() =>
-                                getOrCreateConversation("New AI Chat")
-                              }
-                              className="h-6 px-2 text-xs"
+                              variant="outline"
+                              onClick={() => {
+                                clearCurrentConversation();
+                                createConversation("New AI Chat");
+                              }}
+                              className="h-8 px-3 text-xs"
                             >
+                              <Plus className="h-3 w-3 mr-1" />
                               New Chat
                             </Button>
                           </div>
                         </div>
-                        <ScrollArea className="flex-1">
-                          <div className="p-2 space-y-1">
-                            {conversations.length === 0 ? (
-                              <div className="text-center py-4 text-xs text-muted-foreground">
-                                No conversations yet
-                              </div>
-                            ) : (
-                              conversations.map((conv) => (
-                                <button
-                                  key={conv.id}
-                                  onClick={async () => {
-                                    if (conv.id !== currentConversation?.id) {
-                                      // Load the selected conversation
-                                      await loadConversation(conv.id);
-                                    }
-                                  }}
-                                  className={`w-full text-left p-2 rounded text-xs hover:bg-muted/50 transition-colors ${
-                                    currentConversation?.id === conv.id
-                                      ? "bg-muted border border-primary/20"
-                                      : ""
-                                  }`}
-                                >
-                                  <div className="font-medium truncate">
-                                    {conv.title || "Untitled Chat"}
-                                  </div>
-                                  <div className="text-muted-foreground mt-1">
-                                    {new Date(
-                                      conv.updated_at
-                                    ).toLocaleDateString()}
-                                  </div>
-                                </button>
-                              ))
-                            )}
-                          </div>
-                        </ScrollArea>
-                      </div>
-
-                      {/* Main Chat Area */}
-                      <div className="flex-1 flex flex-col h-full">
                         <div className="flex-1 overflow-auto">
-                          <ScrollArea className="h-full">
-                            <div className="p-4 space-y-4">
+                            <div className="p-6 space-y-4">
                               {aiMessages.length === 0 ? (
-                                <div className="text-center py-8">
-                                  <Brain className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                                  <p className="text-sm text-muted-foreground">
-                                    Ask me anything about your code! I can help
-                                    with:
+                                <div className="text-center py-12">
+                                  <div className="relative mb-6">
+                                    <div className="w-16 h-16 mx-auto bg-gradient-to-r from-primary/20 to-primary/10 rounded-full flex items-center justify-center border border-primary/20">
+                                      <Brain className="h-8 w-8 text-primary" />
+                                    </div>
+                                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-background"></div>
+                                  </div>
+                                  <h3 className="text-lg font-semibold mb-2">AI Assistant</h3>
+                                  <p className="text-sm text-muted-foreground mb-6">
+                                    Your intelligent coding companion is ready to help!
                                   </p>
-                                  <div className="mt-4 text-xs text-muted-foreground space-y-1">
-                                    <div>• Code explanation and analysis</div>
-                                    <div>• Debugging assistance</div>
-                                    <div>• Code optimization</div>
-                                    <div>• General programming questions</div>
+                                  <div className="max-w-md mx-auto">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                      <div className="p-3 rounded-lg bg-muted/50 border border-muted">
+                                        <div className="font-medium mb-1">💡 Code Analysis</div>
+                                        <div className="text-muted-foreground">Explain and optimize your code</div>
+                                      </div>
+                                      <div className="p-3 rounded-lg bg-muted/50 border border-muted">
+                                        <div className="font-medium mb-1">🐛 Debug Help</div>
+                                        <div className="text-muted-foreground">Find and fix bugs quickly</div>
+                                      </div>
+                                      <div className="p-3 rounded-lg bg-muted/50 border border-muted">
+                                        <div className="font-medium mb-1">⚡ Performance</div>
+                                        <div className="text-muted-foreground">Optimize for speed and efficiency</div>
+                                      </div>
+                                      <div className="p-3 rounded-lg bg-muted/50 border border-muted">
+                                        <div className="font-medium mb-1">📚 Learning</div>
+                                        <div className="text-muted-foreground">Get answers to programming questions</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="mt-8">
+                                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full text-xs text-primary">
+                                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                      Ready to assist you
+                                    </div>
                                   </div>
                                 </div>
                               ) : (
-                                aiMessages.map((message) => (
+                                aiMessages.map((message, index) => (
                                   <div
                                     key={message.id}
-                                    className={`flex gap-3 ${
+                                    className={`flex gap-3 animate-in slide-in-from-bottom-2 duration-300 ${
                                       message.role === "user"
                                         ? "justify-end"
                                         : "justify-start"
                                     }`}
+                                    style={{ animationDelay: `${index * 50}ms` }}
                                   >
                                     {message.role === "assistant" && (
-                                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                        <Brain className="h-4 w-4 text-primary" />
+                                      <div className="w-10 h-10 rounded-full bg-gradient-to-r from-primary/20 to-primary/10 flex items-center justify-center flex-shrink-0 border border-primary/20">
+                                        <Brain className="h-5 w-5 text-primary" />
                                       </div>
                                     )}
                                     <div
-                                      className={`max-w-[80%] rounded-lg px-3 py-2 ${
+                                      className={`max-w-[85%] rounded-lg px-4 py-3 shadow-sm transition-all hover:shadow-md ${
                                         message.role === "user"
-                                          ? "bg-primary text-primary-foreground"
+                                          ? "bg-primary text-primary-foreground hover:bg-primary/90"
                                           : message.content.includes("Error:")
                                           ? "bg-destructive/10 text-destructive border border-destructive/20"
-                                          : "bg-muted"
+                                          : "bg-muted hover:bg-muted/80"
                                       }`}
                                     >
-                                      <div className="text-sm whitespace-pre-wrap">
+                                      <div className="text-sm whitespace-pre-wrap leading-relaxed">
                                         {message.content}
                                       </div>
-                                      <div className="text-xs opacity-70 mt-1">
+                                      <div className="text-xs opacity-70 mt-2 font-medium">
                                         {new Date(
                                           message.created_at
                                         ).toLocaleTimeString([], {
@@ -3194,8 +3283,8 @@ export default function ProjectWorkspace({
                                       </div>
                                     </div>
                                     {message.role === "user" && (
-                                      <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-                                        <span className="text-primary-foreground text-xs font-medium">
+                                      <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center flex-shrink-0 shadow-sm">
+                                        <span className="text-primary-foreground text-sm font-medium">
                                           You
                                         </span>
                                       </div>
@@ -3204,63 +3293,83 @@ export default function ProjectWorkspace({
                                 ))
                               )}
 
-                              {/* Loading indicator */}
-                              {isAILoading && (
+                              {/* Enhanced Loading indicator */}
+                              {isAIThinking && (
                                 <div className="flex gap-3 justify-start">
-                                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                    <Brain className="h-4 w-4 text-primary animate-pulse" />
+                                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-primary/20 to-primary/10 flex items-center justify-center flex-shrink-0 border border-primary/20">
+                                    <Brain className="h-5 w-5 text-primary animate-pulse" />
                                   </div>
-                                  <div className="max-w-[80%] rounded-lg px-3 py-2 bg-muted">
-                                    <div className="flex items-center gap-2">
+                                  <div className="max-w-[85%] rounded-lg px-4 py-3 bg-gradient-to-r from-primary/5 to-muted border border-primary/10 shadow-sm">
+                                    <div className="flex items-center gap-3">
                                       <div className="flex gap-1">
-                                        <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" />
+                                        <div className="w-2.5 h-2.5 bg-primary rounded-full animate-bounce" />
                                         <div
-                                          className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"
+                                          className="w-2.5 h-2.5 bg-primary/70 rounded-full animate-bounce"
                                           style={{ animationDelay: "0.1s" }}
                                         />
                                         <div
-                                          className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"
+                                          className="w-2.5 h-2.5 bg-primary/40 rounded-full animate-bounce"
                                           style={{ animationDelay: "0.2s" }}
                                         />
                                       </div>
-                                      <span className="text-sm text-muted-foreground">
-                                        Thinking...
+                                      <span className="text-sm font-medium text-primary">
+                                        AI is thinking...
                                       </span>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                      Analyzing your request and generating response
                                     </div>
                                   </div>
                                 </div>
                               )}
                             </div>
-                          </ScrollArea>
                         </div>
-                        <div className="flex-shrink-0 border-t p-4">
+                        <div className={`flex-shrink-0 border-t p-4 transition-colors ${
+                          isAIThinking ? 'bg-primary/5 border-primary/20' : 'bg-background'
+                        }`}>
                           <div className="flex gap-2">
-                            <Input
-                              value={aiMessage}
-                              onChange={(e) => setAiMessage(e.target.value)}
-                              placeholder="Ask AI assistant..."
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                  e.preventDefault();
-                                  handleSendAIMessage();
-                                }
-                              }}
-                              disabled={isAILoading}
-                            />
+                            <div className="flex-1 relative">
+                              <Input
+                                value={aiMessage}
+                                onChange={(e) => setAiMessage(e.target.value)}
+                                placeholder={isAIThinking ? "AI is processing your request..." : "Ask AI assistant..."}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleSendAIMessage();
+                                  }
+                                }}
+                                disabled={isAIThinking}
+                                className={`pr-10 ${
+                                  isAIThinking ? 'bg-muted/50 border-primary/30' : ''
+                                }`}
+                              />
+                              {isAIThinking && (
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                  <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+                                </div>
+                              )}
+                            </div>
                             <Button
                               onClick={handleSendAIMessage}
                               size="sm"
-                              disabled={!aiMessage.trim() || isAILoading}
+                              disabled={!aiMessage.trim() || isAIThinking}
+                              className={isAIThinking ? 'bg-primary/20 border-primary/30 text-primary' : ''}
                             >
-                              {isAILoading ? (
+                              {isAIThinking ? (
                                 <RefreshCw className="h-4 w-4 animate-spin" />
                               ) : (
                                 <Send className="h-4 w-4" />
                               )}
                             </Button>
                           </div>
+                          {isAIThinking && (
+                            <div className="mt-2 text-xs text-muted-foreground flex items-center gap-2">
+                              <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+                              <span>Generating response...</span>
+                            </div>
+                          )}
                         </div>
-                      </div>
                       </div>
                     </TabsContent>
                   )}

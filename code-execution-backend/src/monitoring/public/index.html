@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Service Monitoring Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .header .status {
+            display: flex;
+            gap: 2rem;
+            font-size: 0.9rem;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #95a5a6;
+        }
+
+        .status-indicator.healthy { background: #27ae60; }
+        .status-indicator.degraded { background: #f39c12; }
+        .status-indicator.unhealthy { background: #e74c3c; }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .card h2 {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #ecf0f1;
+        }
+
+        .metric:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-weight: 500;
+            color: #7f8c8d;
+        }
+
+        .metric-value {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .provider-status {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .provider-card {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 1rem;
+            border-left: 4px solid #95a5a6;
+        }
+
+        .provider-card.healthy { border-left-color: #27ae60; }
+        .provider-card.degraded { border-left-color: #f39c12; }
+        .provider-card.unhealthy { border-left-color: #e74c3c; }
+
+        .provider-name {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .provider-metrics {
+            font-size: 0.9rem;
+            color: #7f8c8d;
+        }
+
+        .alerts-section {
+            margin-top: 2rem;
+        }
+
+        .alert {
+            background: #fff5f5;
+            border: 1px solid #fed7d7;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .alert.high { background: #fff5f5; border-color: #fed7d7; }
+        .alert.medium { background: #fffbf0; border-color: #fed7aa; }
+        .alert.low { background: #f0f9ff; border-color: #bfdbfe; }
+
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .alert-title {
+            font-weight: 600;
+        }
+
+        .alert-time {
+            font-size: 0.8rem;
+            color: #7f8c8d;
+        }
+
+        .alert-message {
+            color: #666;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 1rem;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .btn.danger {
+            background: #e74c3c;
+        }
+
+        .btn.danger:hover {
+            background: #c0392b;
+        }
+
+        .test-section {
+            background: #ecf0f1;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .test-input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #bdc3c7;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+
+        .loading {
+            text-align: center;
+            color: #7f8c8d;
+            padding: 2rem;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 AI Service Monitoring Dashboard</h1>
+        <div class="status">
+            <div class="status-item">
+                <div class="status-indicator" id="overall-status"></div>
+                <span id="overall-status-text">Loading...</span>
+            </div>
+            <div class="status-item">
+                <span>Uptime: <strong id="uptime">-</strong></span>
+            </div>
+            <div class="status-item">
+                <span>Last Update: <strong id="last-update">-</strong></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="controls">
+            <button class="btn" onclick="refreshData()">🔄 Refresh</button>
+            <button class="btn" onclick="runTest()">🧪 Run Test</button>
+            <button class="btn danger" onclick="toggleCircuitBreaker('gemini', 'open')">⚡ Force Gemini Open</button>
+            <button class="btn" onclick="toggleCircuitBreaker('gemini', 'close')">✅ Force Gemini Closed</button>
+        </div>
+
+        <div id="message-container"></div>
+
+        <div class="dashboard-grid">
+            <div class="card">
+                <h2>📊 Service Overview</h2>
+                <div class="metric">
+                    <span class="metric-label">Overall Status</span>
+                    <span class="metric-value" id="service-status">-</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Configured Providers</span>
+                    <span class="metric-value" id="provider-count">-</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Healthy Providers</span>
+                    <span class="metric-value" id="healthy-count">-</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Queued Requests</span>
+                    <span class="metric-value" id="queue-size">-</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Active Alerts</span>
+                    <span class="metric-value" id="active-alerts">-</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>⚡ Circuit Breaker Status</h2>
+                <div id="circuit-breaker-status">
+                    <div class="loading">Loading circuit breaker status...</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>📈 Performance Metrics</h2>
+                <div id="performance-metrics">
+                    <div class="loading">Loading performance metrics...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🔧 Provider Status</h2>
+            <div class="provider-status" id="provider-status">
+                <div class="loading">Loading provider status...</div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid" style="margin-top: 2rem;">
+            <div class="card">
+                <h2>📊 Response Time Trends</h2>
+                <div class="chart-container">
+                    <canvas id="responseTimeChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>📈 Error Rate Trends</h2>
+                <div class="chart-container">
+                    <canvas id="errorRateChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="card alerts-section">
+            <h2>🚨 Recent Alerts</h2>
+            <div id="alerts-list">
+                <div class="loading">Loading alerts...</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🧪 Service Test</h2>
+            <div class="test-section">
+                <input type="text" id="test-message" class="test-input" placeholder="Enter test message..." value="Hello, this is a test message from the monitoring dashboard.">
+                <button class="btn" onclick="runTest()">Send Test Request</button>
+                <div id="test-result"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let responseTimeChart;
+        let errorRateChart;
+        let eventSource;
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeCharts();
+            startEventStream();
+            refreshData();
+
+            // Auto-refresh every 30 seconds
+            setInterval(refreshData, 30000);
+        });
+
+        function initializeCharts() {
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            displayFormats: {
+                                minute: 'HH:mm'
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true
+                    }
+                }
+            };
+
+            // Response Time Chart
+            const responseTimeCtx = document.getElementById('responseTimeChart').getContext('2d');
+            responseTimeChart = new Chart(responseTimeCtx, {
+                type: 'line',
+                data: {
+                    datasets: []
+                },
+                options: {
+                    ...chartOptions,
+                    scales: {
+                        ...chartOptions.scales,
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Response Time (ms)'
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Error Rate Chart
+            const errorRateCtx = document.getElementById('errorRateChart').getContext('2d');
+            errorRateChart = new Chart(errorRateCtx, {
+                type: 'line',
+                data: {
+                    datasets: []
+                },
+                options: {
+                    ...chartOptions,
+                    scales: {
+                        ...chartOptions.scales,
+                        y: {
+                            beginAtZero: true,
+                            max: 1,
+                            title: {
+                                display: true,
+                                text: 'Error Rate'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function startEventStream() {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource('/api/events');
+
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                updateDashboard(data);
+            };
+
+            eventSource.onerror = function(error) {
+                console.error('EventStream error:', error);
+                showMessage('Connection to monitoring server lost. Reconnecting...', 'error');
+                setTimeout(startEventStream, 5000);
+            };
+        }
+
+        async function refreshData() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+
+                if (data.success) {
+                    updateDashboard(data);
+                    updateCharts();
+                } else {
+                    showMessage('Failed to load dashboard data', 'error');
+                }
+            } catch (error) {
+                showMessage('Error loading dashboard data: ' + error.message, 'error');
+            }
+        }
+
+        function updateDashboard(data) {
+            // Update overall status
+            updateOverallStatus(data.health.overall);
+
+            // Update service metrics
+            updateServiceMetrics(data);
+
+            // Update provider status
+            updateProviderStatus(data.health.providers);
+
+            // Update circuit breaker status
+            updateCircuitBreakerStatus(data.metrics.circuitBreakers);
+
+            // Update performance metrics
+            updatePerformanceMetrics(data.metrics.providers);
+
+            // Update alerts
+            updateAlerts(data.alerts);
+
+            // Update timestamps
+            document.getElementById('uptime').textContent = formatUptime(data.uptime);
+            document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+        }
+
+        function updateOverallStatus(status) {
+            const indicator = document.getElementById('overall-status');
+            const text = document.getElementById('overall-status-text');
+
+            indicator.className = 'status-indicator ' + status;
+            text.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        }
+
+        function updateServiceMetrics(data) {
+            document.getElementById('service-status').textContent = data.health.overall;
+            document.getElementById('provider-count').textContent = Object.keys(data.health.providers).length;
+            document.getElementById('healthy-count').textContent = Object.values(data.health.providers).filter(p => p.status === 'healthy').length;
+            document.getElementById('queue-size').textContent = data.health.queueSize;
+            document.getElementById('active-alerts').textContent = data.alerts.filter(a => !a.resolved).length;
+        }
+
+        function updateProviderStatus(providers) {
+            const container = document.getElementById('provider-status');
+
+            if (Object.keys(providers).length === 0) {
+                container.innerHTML = '<div class="loading">No providers configured</div>';
+                return;
+            }
+
+            container.innerHTML = Object.entries(providers).map(([name, provider]) => `
+                <div class="provider-card ${provider.status}">
+                    <div class="provider-name">${name}</div>
+                    <div class="provider-metrics">
+                        Status: ${provider.status}<br>
+                        Error Rate: ${(provider.errorRate * 100).toFixed(1)}%<br>
+                        Avg Response Time: ${provider.avgResponseTime}ms<br>
+                        Total Checks: ${provider.totalChecks}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateCircuitBreakerStatus(circuitBreakers) {
+            const container = document.getElementById('circuit-breaker-status');
+
+            if (Object.keys(circuitBreakers).length === 0) {
+                container.innerHTML = '<div class="loading">No circuit breakers configured</div>';
+                return;
+            }
+
+            container.innerHTML = Object.entries(circuitBreakers).map(([name, cb]) => `
+                <div class="metric">
+                    <span class="metric-label">${name}</span>
+                    <span class="metric-value">${cb.state}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Failure Rate</span>
+                    <span class="metric-value">${(cb.failureRate || 0).toFixed(1)}%</span>
+                </div>
+            `).join('');
+        }
+
+        function updatePerformanceMetrics(providers) {
+            const container = document.getElementById('performance-metrics');
+
+            if (Object.keys(providers).length === 0) {
+                container.innerHTML = '<div class="loading">No performance data available</div>';
+                return;
+            }
+
+            container.innerHTML = Object.entries(providers).map(([name, metrics]) => `
+                <div class="metric">
+                    <span class="metric-label">${name} Response Time</span>
+                    <span class="metric-value">${metrics.response_time?.average?.toFixed(0) || 0}ms</span>
+                </div>
+            `).join('');
+        }
+
+        function updateAlerts(alerts) {
+            const container = document.getElementById('alerts-list');
+            const activeAlerts = alerts.filter(a => !a.resolved);
+
+            if (activeAlerts.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #27ae60;">✅ No active alerts</div>';
+                return;
+            }
+
+            container.innerHTML = activeAlerts.slice(0, 10).map(alert => `
+                <div class="alert ${alert.severity}">
+                    <div class="alert-header">
+                        <div class="alert-title">${alert.type.replace('_', ' ').toUpperCase()}</div>
+                        <div class="alert-time">${new Date(alert.timestamp).toLocaleString()}</div>
+                    </div>
+                    <div class="alert-message">${alert.message}</div>
+                </div>
+            `).join('');
+        }
+
+        async function updateCharts() {
+            try {
+                const response = await fetch('/api/performance');
+                const data = await response.json();
+
+                if (data.success) {
+                    updateResponseTimeChart(data.performance.responseTimes);
+                    updateErrorRateChart(data.performance.errorRates);
+                }
+            } catch (error) {
+                console.error('Error updating charts:', error);
+            }
+        }
+
+        function updateResponseTimeChart(data) {
+            if (!data || data.length === 0) return;
+
+            const datasets = [];
+            const providers = Object.keys(data[0]).filter(key => key !== 'timestamp');
+
+            providers.forEach((provider, index) => {
+                const colors = ['#3498db', '#e74c3c', '#f39c12', '#27ae60', '#9b59b6'];
+
+                datasets.push({
+                    label: provider,
+                    data: data.map(d => ({
+                        x: new Date(d.timestamp),
+                        y: d[provider]?.avgResponseTime || 0
+                    })),
+                    borderColor: colors[index % colors.length],
+                    backgroundColor: colors[index % colors.length] + '20',
+                    fill: false,
+                    tension: 0.1
+                });
+            });
+
+            responseTimeChart.data.datasets = datasets;
+            responseTimeChart.update();
+        }
+
+        function updateErrorRateChart(data) {
+            if (!data || data.length === 0) return;
+
+            const datasets = [];
+            const providers = Object.keys(data[0].errorRates || {});
+
+            providers.forEach((provider, index) => {
+                const colors = ['#3498db', '#e74c3c', '#f39c12', '#27ae60', '#9b59b6'];
+
+                datasets.push({
+                    label: provider,
+                    data: data.map(d => ({
+                        x: new Date(d.timestamp),
+                        y: d.errorRates?.[provider] || 0
+                    })),
+                    borderColor: colors[index % colors.length],
+                    backgroundColor: colors[index % colors.length] + '20',
+                    fill: false,
+                    tension: 0.1
+                });
+            });
+
+            errorRateChart.data.datasets = datasets;
+            errorRateChart.update();
+        }
+
+        async function runTest() {
+            const message = document.getElementById('test-message').value;
+            const resultContainer = document.getElementById('test-result');
+
+            resultContainer.innerHTML = '<div class="loading">Sending test request...</div>';
+
+            try {
+                const response = await fetch('/api/test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    resultContainer.innerHTML = `
+                        <div class="success">
+                            ✅ Test successful<br>
+                            Provider: ${result.result.metadata?.provider || 'Unknown'}<br>
+                            Response Time: ${result.result.metadata?.responseTime || 0}ms<br>
+                            Response: ${result.result.response?.substring(0, 100)}...
+                        </div>
+                    `;
+                } else {
+                    resultContainer.innerHTML = `
+                        <div class="error">
+                            ❌ Test failed: ${result.error}<br>
+                            Fallback: ${result.fallback ? 'Yes' : 'No'}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultContainer.innerHTML = `<div class="error">❌ Test error: ${error.message}</div>`;
+            }
+        }
+
+        async function toggleCircuitBreaker(provider, action) {
+            try {
+                const response = await fetch(`/api/circuit-breaker/${provider}/${action}`, {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showMessage(`Circuit breaker for ${provider} ${action}ed successfully`, 'success');
+                    refreshData();
+                } else {
+                    showMessage(`Failed to ${action} circuit breaker: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        function showMessage(message, type) {
+            const container = document.getElementById('message-container');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = type;
+            messageDiv.textContent = message;
+
+            container.appendChild(messageDiv);
+
+            setTimeout(() => {
+                messageDiv.remove();
+            }, 5000);
+        }
+
+        function formatUptime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+
+            return `${hours}h ${minutes}m ${secs}s`;
+        }
+    </script>
+</body>
+</html>

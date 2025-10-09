@@ -137,6 +137,7 @@ export function useAIConversations(options: UseAIConversationsOptions = {}) {
     setError(null);
 
     try {
+      console.log('Adding message to conversation:', { conversationId, role: message.role });
       const newMessage = await aiConversationService.addMessage(conversationId, message);
       if (newMessage) {
         setMessages(prev => [...prev, newMessage]);
@@ -148,15 +149,25 @@ export function useAIConversations(options: UseAIConversationsOptions = {}) {
             : conv
         ));
 
+        console.log('Message added successfully:', { messageId: newMessage.id, role: newMessage.role });
         return newMessage;
+      } else {
+        throw new Error('Failed to add message: No message returned from service');
       }
     } catch (err) {
       let errorMessage = 'Failed to add message';
       let isUsingFallback = false;
 
       if (err instanceof Error) {
+        console.error('Message add error details:', {
+          message: err.message,
+          stack: err.stack,
+          conversationId,
+          messageRole: message.role
+        });
+
         // Check if it's a database connection error
-        if (err.message.includes('fetch') || err.message.includes('network') || err.message.includes('connection')) {
+        if (err.message.includes('fetch') || err.message.includes('network') || err.message.includes('connection') || err.message.includes('Database error')) {
           errorMessage = 'Message saved offline - will sync when online';
           isUsingFallback = true;
         } else if (err.message.includes('permission') || err.message.includes('unauthorized')) {
@@ -166,19 +177,29 @@ export function useAIConversations(options: UseAIConversationsOptions = {}) {
         } else {
           errorMessage = err.message;
         }
+      } else {
+        console.error('Non-Error object thrown:', err);
       }
 
       setError(errorMessage);
-      toast({
-        title: isUsingFallback ? 'Offline Mode' : 'Error',
-        description: errorMessage,
-        variant: isUsingFallback ? 'default' : 'destructive',
-      });
+
+      // Only show toast for non-fallback errors to avoid spamming users
+      if (!isUsingFallback) {
+        toast({
+          title: 'Error',
+          description: errorMessage,
+          variant: 'destructive',
+        });
+      }
+
+      // Re-throw the error so the calling function can handle it
+      // But only if it's not a database error (which should be handled silently)
+      if (!isUsingFallback) {
+        throw err;
+      }
     } finally {
       setLoading(false);
     }
-
-    return null;
   }, [toast]);
 
   // Delete conversation

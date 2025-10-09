@@ -615,7 +615,18 @@ export default function ChatPanel({
     const { data: insertedMessage, error } = await supabase
       .from("messages")
       .insert(payload)
-      .select("*")
+      .select(`
+        id,
+        conversation_id,
+        author_id,
+        role,
+        content,
+        metadata,
+        created_at,
+        ai_model,
+        ai_response_time_ms,
+        ai_tokens_used
+      `)
       .single();
 
     if (error) {

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Send, Copy, ThumbsUp, ThumbsDown, Code, Lightbulb } from "lucide-react"
+import AIMessageParser from "@/components/ai-message-parser"
 
 export default function AIChat() {
   const [message, setMessage] = useState("")
@@ -125,7 +126,18 @@ Would you like me to add any specific features or modify the styling?`,
                   )}
                 </div>
               )}
-              <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
+              {msg.type === "ai" ? (
+                <AIMessageParser
+                  content={msg.content}
+                  codeSnippetProps={{
+                    showLineNumbers: true,
+                    copyable: true,
+                    collapsible: true
+                  }}
+                />
+              ) : (
+                <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
+              )}
               <div className="flex items-center justify-between mt-2">
                 <span className="text-xs opacity-70">{msg.timestamp}</span>
                 {msg.type === "ai" && (

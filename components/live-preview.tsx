@@ -148,13 +148,19 @@ export default function LivePreview({ nodes }: LivePreviewProps) {
   }, [nodes]);
 
   const getViewportDimensions = () => {
-    switch (viewportSize) {
-      case "mobile":
-        return { width: "375px", height: "667px" };
-      case "tablet":
-        return { width: "768px", height: "1024px" };
-      default:
-        return { width: "100%", height: "100%" };
+    try {
+      switch (viewportSize) {
+        case "mobile":
+          return { width: "375px", height: "667px" };
+        case "tablet":
+          return { width: "768px", height: "1024px" };
+        default:
+          return { width: "100%", height: "100%" };
+      }
+    } catch (error) {
+      console.error("Error getting viewport dimensions:", error);
+      // Fallback dimensions
+      return { width: "100%", height: "100%" };
     }
   };
 
@@ -215,8 +221,8 @@ export default function LivePreview({ nodes }: LivePreviewProps) {
         <div
           className="mx-auto bg-white rounded-lg shadow-lg overflow-hidden"
           style={{
-            width: dimensions.width,
-            height: viewportSize === "desktop" ? "100%" : dimensions.height,
+            width: dimensions?.width || "100%",
+            height: viewportSize === "desktop" ? "100%" : (dimensions?.height || "100%"),
             minHeight: viewportSize === "desktop" ? "500px" : "auto",
             maxWidth: "100%",
           }}
@@ -229,7 +235,7 @@ export default function LivePreview({ nodes }: LivePreviewProps) {
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             key={isLoading ? Date.now() : 'stable'}
             style={{
-              minHeight: viewportSize === "desktop" ? "500px" : dimensions.height,
+              minHeight: viewportSize === "desktop" ? "500px" : (dimensions?.height || "500px"),
             }}
           />
         </div>

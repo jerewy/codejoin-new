@@ -4,32 +4,61 @@ import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export function useAuthStatus() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    const client = getSupabaseClient();
-
-    if (!client) {
-      setIsLoggedIn(false);
-      return;
-    }
-
     let isSubscribed = true;
 
-    client.auth.getSession().then(({ data }) => {
-      if (isSubscribed) {
-        setIsLoggedIn(!!data.session);
-      }
-    });
+    const initializeAuth = async () => {
+      try {
+        const client = getSupabaseClient();
 
-    const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
-      setIsLoggedIn(!!session);
-    });
+        if (!client) {
+          if (isSubscribed) {
+            setIsLoggedIn(false);
+            setIsInitialized(true);
+          }
+          return;
+        }
+
+        // Get initial session
+        const { data, error } = await client.auth.getSession();
+
+        if (isSubscribed) {
+          if (error) {
+            console.error("Error getting auth session:", error);
+            setIsLoggedIn(false);
+          } else {
+            setIsLoggedIn(!!data.session);
+          }
+          setIsInitialized(true);
+        }
+
+        // Set up auth state listener
+        const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
+          if (isSubscribed) {
+            setIsLoggedIn(!!session);
+          }
+        });
+
+        return () => {
+          listener?.subscription.unsubscribe();
+        };
+      } catch (error) {
+        console.error("Error initializing auth status:", error);
+        if (isSubscribed) {
+          setIsLoggedIn(false);
+          setIsInitialized(true);
+        }
+      }
+    };
+
+    initializeAuth();
 
     return () => {
       isSubscribed = false;
-      listener?.subscription.unsubscribe();
     };
   }, []);
 
-  return isLoggedIn;
+  return { isLoggedIn, isInitialized };
 }

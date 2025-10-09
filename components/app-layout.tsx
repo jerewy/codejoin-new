@@ -15,10 +15,20 @@ import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const segment = useSelectedLayoutSegment();
-  const isLoggedIn = useAuthStatus();
+  const { isLoggedIn, isInitialized: isAuthStatusInitialized } = useAuthStatus();
   const supabaseClient = useMemo(() => getSupabaseClient(), []);
-  const isAuthConfigured = !!supabaseClient;
+  const [isAuthConfigured, setIsAuthConfigured] = useState(false);
+  const [isAuthInitialized, setIsAuthInitialized] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Initialize isAuthConfigured after mount to prevent hydration mismatch
+  useEffect(() => {
+    setIsAuthConfigured(!!supabaseClient);
+    setIsAuthInitialized(true);
+  }, [supabaseClient]);
+
+  // Combined initialization state
+  const isFullyInitialized = isAuthInitialized && isAuthStatusInitialized;
 
   // Define which routes should have the sidebar
   const sidebarRoutes = [
@@ -94,6 +104,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       window.localStorage.setItem("sidebarOpen", JSON.stringify(isSidebarOpen));
     }
   }, [isSidebarOpen, isSidebarClosed]);
+
+  // Show loading state during auth initialization to prevent hydration mismatch
+  if (!isFullyInitialized) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-muted">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (isProtectedRoute && (!isAuthConfigured || !isLoggedIn)) {
     return (

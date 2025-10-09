@@ -91,7 +91,8 @@ app.post('/api/ai/chat', aiRateLimit, (req, res) => {
   if (!aiChatController) {
     return res.status(503).json({
       success: false,
-      error: 'AI service is currently unavailable'
+      error: 'AI service is currently unavailable',
+      fallback: true
     });
   }
   aiChatController.chat(req, res);
@@ -107,6 +108,28 @@ app.get('/api/ai/health', (req, res) => {
     });
   }
   aiChatController.healthCheck(req, res);
+});
+
+// AI metrics endpoint for monitoring
+app.get('/api/ai/metrics', (req, res) => {
+  if (!aiChatController) {
+    return res.status(503).json({
+      success: false,
+      error: 'AI service is not initialized'
+    });
+  }
+  aiChatController.getMetrics(req, res);
+});
+
+// AI status endpoint for service information
+app.get('/api/ai/status', (req, res) => {
+  if (!aiChatController) {
+    return res.status(503).json({
+      success: false,
+      error: 'AI service is not initialized'
+    });
+  }
+  aiChatController.getStatus(req, res);
 });
 
 // 404 handler
@@ -135,22 +158,71 @@ io.on('connection', (socket) => {
 
   // Handle terminal session lifecycle
   socket.on('terminal:start', async (data) => {
+    // Initialize rate limiting data for this socket if not present
+    if (!socket.data.dockerFailureCount) {
+      socket.data.dockerFailureCount = 0;
+      socket.data.lastDockerFailureTime = null;
+      socket.data.dockerBackoffUntil = null;
+    }
+
+    // Check if we're in a backoff period
+    if (socket.data.dockerBackoffUntil && new Date() < socket.data.dockerBackoffUntil) {
+      const remainingTime = Math.ceil((socket.data.dockerBackoffUntil - new Date()) / 1000);
+      socket.emit('terminal:error', {
+        message: `Docker connection temporarily unavailable. Please wait ${remainingTime} seconds before retrying.`,
+        code: 'DOCKER_RATE_LIMITED'
+      });
+      return;
+    }
+
     try {
       const { projectId, userId, language } = data;
       await terminalService.startSession(socket, { projectId, userId, language });
+
+      // Reset failure count on successful connection
+      socket.data.dockerFailureCount = 0;
+      socket.data.lastDockerFailureTime = null;
+      socket.data.dockerBackoffUntil = null;
       socket.data.dockerUnavailableNotified = false;
     } catch (error) {
       const shouldLog = error && error.shouldLog !== false;
 
       if (error instanceof DockerUnavailableError) {
+        // Increment failure count and implement exponential backoff
+        socket.data.dockerFailureCount = (socket.data.dockerFailureCount || 0) + 1;
+        socket.data.lastDockerFailureTime = new Date();
+
+        // Calculate backoff time (exponential: 5s, 10s, 20s, max 5min)
+        const backoffSeconds = Math.min(5 * Math.pow(2, socket.data.dockerFailureCount - 1), 300);
+        socket.data.dockerBackoffUntil = new Date(Date.now() + backoffSeconds * 1000);
+
         if (shouldLog) {
-          logger.error('Failed to start terminal session', { error: error.message });
+          logger.error('Failed to start terminal session', {
+            error: error.message,
+            failureCount: socket.data.dockerFailureCount,
+            backoffSeconds,
+            socketId: socket.id
+          });
         } else {
-          logger.debug('Docker unavailable while starting terminal session', { message: error.message });
+          logger.debug('Docker unavailable while starting terminal session', {
+            message: error.message,
+            failureCount: socket.data.dockerFailureCount
+          });
         }
 
-        if (!socket.data.dockerUnavailableNotified) {
-          socket.emit('terminal:error', { message: error.message, code: error.code });
+        // Only emit error if we haven't notified this socket yet or if this is a new failure
+        if (!socket.data.dockerUnavailableNotified || socket.data.dockerFailureCount === 1) {
+          let errorMessage = error.message;
+          if (socket.data.dockerFailureCount > 1) {
+            errorMessage += ` (Attempt ${socket.data.dockerFailureCount} of 3. Please wait ${backoffSeconds}s before retrying.)`;
+          }
+
+          socket.emit('terminal:error', {
+            message: errorMessage,
+            code: error.code,
+            failureCount: socket.data.dockerFailureCount,
+            backoffSeconds
+          });
           socket.data.dockerUnavailableNotified = true;
         }
 
@@ -199,6 +271,15 @@ io.on('connection', (socket) => {
   
   socket.on('disconnect', () => {
     logger.info('Client disconnected from terminal service', { socketId: socket.id });
+
+    // Clean up rate limiting data for this socket
+    if (socket.data) {
+      delete socket.data.dockerFailureCount;
+      delete socket.data.lastDockerFailureTime;
+      delete socket.data.dockerBackoffUntil;
+      delete socket.data.dockerUnavailableNotified;
+    }
+
     terminalService.handleDisconnect(socket.id);
   });
 });

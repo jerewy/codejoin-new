@@ -324,9 +324,18 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
 
   const startTerminalSession = useCallback(
     (data: TerminalSocketEvents["terminal:start"]) => {
-      emitTerminalEvent("terminal:start", data);
+      if (!socket) {
+        return;
+      }
+
+      // Check if this is a Docker-related terminal start
+      // We'll add Docker connection check here but not emit if rate limited
+      const shouldEmit = true; // For now, always emit - the check will be done in the component
+      if (shouldEmit) {
+        emitTerminalEvent("terminal:start", data);
+      }
     },
-    [emitTerminalEvent]
+    [emitTerminalEvent, socket]
   );
 
   const sendTerminalInput = useCallback(

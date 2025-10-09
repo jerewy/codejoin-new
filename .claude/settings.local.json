@@ -33,7 +33,8 @@
       "Bash(npx tsc:*)",
       "Bash(taskkill:*)",
       "Bash(netstat:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(tskill:*)"
     ],
     "deny": [],
     "ask": []

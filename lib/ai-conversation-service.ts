@@ -42,6 +42,34 @@ export class AIConversationService {
     this.supabase = getSupabaseClient();
   }
 
+  // Validate database connection before operations
+  async validateDatabaseConnection(): Promise<boolean> {
+    try {
+      if (!this.supabase) {
+        console.log('DEBUG: Cannot validate connection - no Supabase client');
+        return false;
+      }
+
+      console.log('DEBUG: Validating database connection...');
+      const { data, error } = await this.supabase
+        .from('messages')
+        .select('id')
+        .limit(1);
+
+      console.log('DEBUG: Database connection validation result:', {
+        hasData: !!data,
+        hasError: !!error,
+        error: error,
+        dataLength: data?.length || 0
+      });
+
+      return !error;
+    } catch (error) {
+      console.error('DEBUG: Database connection validation failed:', error);
+      return false;
+    }
+  }
+
   async createConversation(
     projectId: string,
     userId: string,
@@ -59,7 +87,17 @@ export class AIConversationService {
           type,
           metadata: { type }
         })
-        .select()
+        .select(`
+          id,
+          project_id,
+          node_id,
+          title,
+          created_by,
+          created_at,
+          updated_at,
+          type,
+          metadata
+        `)
         .single();
 
       if (error) {
@@ -107,7 +145,15 @@ export class AIConversationService {
       let query = this.supabase
         .from('conversations')
         .select(`
-          *,
+          id,
+          project_id,
+          node_id,
+          title,
+          created_by,
+          created_at,
+          updated_at,
+          type,
+          metadata,
           project:projects(id, name)
         `)
         .eq('id', conversationId)
@@ -123,7 +169,18 @@ export class AIConversationService {
       if (includeMessages) {
         const { data: messages, error: messagesError } = await this.supabase
           .from('messages')
-          .select('*')
+          .select(`
+            id,
+            conversation_id,
+            author_id,
+            role,
+            content,
+            metadata,
+            created_at,
+            ai_model,
+            ai_response_time_ms,
+            ai_tokens_used
+          `)
           .eq('conversation_id', conversationId)
           .order('created_at', { ascending: true });
 
@@ -204,12 +261,41 @@ export class AIConversationService {
   ): Promise<AIMessage | null> {
     // Try database first
     try {
+      // Debug: Check Supabase client availability
+      console.log('DEBUG: Supabase client check:', {
+        hasClient: !!this.supabase,
+        clientType: typeof this.supabase,
+        isWindowDefined: typeof window !== 'undefined',
+        envVars: {
+          url: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+          anonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        }
+      });
+
+      if (!this.supabase) {
+        throw new Error('Supabase client is not available - missing environment variables or server-side execution');
+      }
+
+      // Validate database connection before proceeding
+      const isConnectionValid = await this.validateDatabaseConnection();
+      if (!isConnectionValid) {
+        console.warn('Database connection validation failed, proceeding with local storage fallback');
+        throw new Error('Database connection failed - using local storage fallback');
+      }
+
       const messageData: any = {
         conversation_id: conversationId,
         role: message.role,
         content: message.content,
         metadata: message.metadata || {}
       };
+
+      // Debug: Log message data being sent
+      console.log('DEBUG: Message data being inserted:', {
+        conversationId,
+        messageData,
+        originalMessage: message
+      });
 
       // Add AI-specific fields if they exist
       if (message.ai_model) {
@@ -225,20 +311,101 @@ export class AIConversationService {
         messageData.author_id = message.author_id;
       }
 
+      console.log('DEBUG: Executing Supabase insert operation...');
       const { data, error } = await this.supabase
         .from('messages')
         .insert(messageData)
         .select()
         .single();
 
+      console.log('DEBUG: Supabase operation result:', {
+        data: !!data,
+        error: !!error,
+        errorDetails: error,
+        dataDetails: data
+      });
+
       if (error) {
         console.error('Error adding message:', error);
-        throw error;
+        throw new Error(`Database error: ${error.message || 'Unknown database error'}`);
+      }
+
+      if (!data) {
+        throw new Error('No data returned from database insert operation');
       }
 
       return data;
     } catch (error) {
-      console.error('Error in addMessage, falling back to local storage:', error);
+      // Enhanced error logging with proper error object handling
+      console.log('DEBUG: Caught error in addMessage:', {
+        errorType: typeof error,
+        errorIsError: error instanceof Error,
+        errorIsNull: error === null,
+        errorIsUndefined: error === undefined,
+        errorString: String(error),
+        errorJson: JSON.stringify(error, null, 2),
+        errorKeys: error && typeof error === 'object' ? Object.keys(error) : [],
+        errorDetails: error
+      });
+
+      let enhancedError: Error;
+
+      if (error instanceof Error) {
+        enhancedError = error;
+      } else if (error === null || error === undefined) {
+        enhancedError = new Error('Null or undefined error occurred');
+      } else if (typeof error === 'string') {
+        enhancedError = new Error(error);
+      } else if (typeof error === 'object') {
+        // Handle Supabase error objects specifically
+        const errorObj = error as any;
+
+        let message = 'Unknown object error';
+
+        // Try different Supabase error message fields
+        if (errorObj.message) {
+          message = errorObj.message;
+        } else if (errorObj.error_description) {
+          message = errorObj.error_description;
+        } else if (errorObj.details) {
+          message = errorObj.details;
+        } else if (errorObj.error) {
+          message = errorObj.error;
+        } else if (JSON.stringify(errorObj) !== '{}') {
+          message = JSON.stringify(errorObj);
+        }
+
+        enhancedError = new Error(message);
+
+        // Copy Supabase-specific properties for debugging
+        if (errorObj.code) {
+          enhancedError.name = `SupabaseError(${errorObj.code})`;
+          (enhancedError as any).supabaseCode = errorObj.code;
+        }
+        if (errorObj.hint) (enhancedError as any).hint = errorObj.hint;
+        if (errorObj.details) (enhancedError as any).details = errorObj.details;
+        if (errorObj.error_description) (enhancedError as any).errorDescription = errorObj.error_description;
+
+        // Copy any other properties
+        Object.keys(errorObj).forEach(key => {
+          if (!['message', 'code', 'hint', 'details', 'error_description', 'error'].includes(key)) {
+            (enhancedError as any)[key] = errorObj[key];
+          }
+        });
+      } else {
+        enhancedError = new Error(String(error) || 'Unknown error occurred');
+      }
+
+      console.error('Error in addMessage, falling back to local storage:', {
+        message: enhancedError.message,
+        stack: enhancedError.stack,
+        originalError: error,
+        enhancedErrorType: typeof enhancedError,
+        enhancedErrorKeys: Object.keys(enhancedError),
+        conversationId,
+        messageRole: message.role,
+        timestamp: new Date().toISOString()
+      });
 
       // Fallback to local storage
       try {
@@ -257,11 +424,17 @@ export class AIConversationService {
 
         // Save to local storage
         LocalStorageFallback.addMessage(conversationId, fallbackMessage);
-        console.log('Message saved to local storage fallback');
+        console.log('Message saved to local storage fallback successfully');
         return fallbackMessage;
       } catch (fallbackError) {
-        console.error('Failed to save message to local storage:', fallbackError);
-        return null;
+        const enhancedFallbackError = fallbackError instanceof Error ? fallbackError : new Error(JSON.stringify(fallbackError) || 'Unknown fallback error');
+        console.error('Failed to save message to local storage:', {
+          message: enhancedFallbackError.message,
+          stack: enhancedFallbackError.stack,
+          conversationId,
+          timestamp: new Date().toISOString()
+        });
+        throw enhancedFallbackError;
       }
     }
   }
@@ -325,7 +498,20 @@ export class AIConversationService {
     try {
       let query = this.supabase
         .from('ai_conversation_analytics')
-        .select('*');
+        .select(`
+          id,
+          project_id,
+          title,
+          created_at,
+          updated_at,
+          ai_messages_count,
+          user_messages_count,
+          total_tokens_used,
+          avg_response_time_ms,
+          first_ai_model,
+          latest_ai_model,
+          metadata
+        `);
 
       if (projectId) {
         query = query.eq('project_id', projectId);
