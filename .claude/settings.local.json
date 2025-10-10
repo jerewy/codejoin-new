@@ -34,7 +34,9 @@
       "Bash(taskkill:*)",
       "Bash(netstat:*)",
       "Bash(findstr:*)",
-      "Bash(tskill:*)"
+      "Bash(tskill:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(dir \"C:\\dev\\codejoin-new\\code-execution-backend\\src\\ai\")"
     ],
     "deny": [],
     "ask": []

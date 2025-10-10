@@ -22,9 +22,14 @@ const {
   errorHandler
 } = require('./middleware/security');
 
+const { enhancedErrorHandler } = require('./middleware/enhanced-error-handler');
+
 const app = express();
 const server = createServer(app);
 const DEFAULT_PORT = process.env.PORT || 3001;
+
+// Initialize health monitoring
+const { initializeHealthChecks } = require('./monitoring/health-checks');
 
 // Initialize AI Chat Controller
 let aiChatController;
@@ -79,6 +84,93 @@ app.use('/api', generalRateLimit);
 app.get('/health', executeController.healthCheck);
 app.get('/api/languages', executeController.getLanguages);
 app.get('/api/system', executeController.getSystemInfo);
+
+// Enhanced health monitoring endpoints
+const { healthMonitorFactory } = require('./monitoring/health-monitor');
+const { circuitBreakerFactory } = require('./ai/circuit-breaker');
+const { retryManagerFactory } = require('./ai/retry-manager');
+
+app.get('/api/health/detailed', (req, res) => {
+  try {
+    const overallHealth = healthMonitorFactory.getOverallHealth();
+    const circuitBreakerStatus = circuitBreakerFactory.getHealthStatus();
+    const retryManagerStats = {};
+
+    retryManagerFactory.getAll().forEach((manager, name) => {
+      retryManagerStats[name] = manager.getStats();
+    });
+
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      health: overallHealth,
+      circuitBreakers: circuitBreakerStatus,
+      retryManagers: retryManagerStats
+    });
+  } catch (error) {
+    logger.error('Failed to get detailed health status', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get health status',
+      message: error.message
+    });
+  }
+});
+
+// Service-specific health endpoints
+app.get('/api/health/docker', (req, res) => {
+  try {
+    const dockerMonitor = healthMonitorFactory.get('docker-service');
+    const healthStatus = dockerMonitor.getHealthStatus();
+    res.json({
+      success: true,
+      service: 'docker',
+      ...healthStatus
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      service: 'docker',
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/health/ai', (req, res) => {
+  try {
+    const aiMonitor = healthMonitorFactory.get('ai-service');
+    const healthStatus = aiMonitor.getHealthStatus();
+    res.json({
+      success: true,
+      service: 'ai',
+      ...healthStatus
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      service: 'ai',
+      error: error.message
+    });
+  }
+});
+
+// Error metrics endpoint
+app.get('/api/metrics/errors', (req, res) => {
+  try {
+    const errorMetrics = enhancedErrorHandler.getErrorMetrics();
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      metrics: errorMetrics
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get error metrics',
+      message: error.message
+    });
+  }
+});
 
 // Protected routes
 app.use('/api', authenticateApiKey);
@@ -140,7 +232,10 @@ app.use('*', (req, res) => {
   });
 });
 
-// Error handling
+// Enhanced error handling
+app.use(enhancedErrorHandler.handle());
+
+// Fallback to basic error handler
 app.use(errorHandler);
 
 // Initialize Terminal Service for Socket.IO
@@ -313,10 +408,22 @@ function registerShutdownHandlers(server) {
 }
 
 function startServer(port = DEFAULT_PORT) {
+  // Initialize health checks before starting server
+  try {
+    initializeHealthChecks();
+    logger.info('Health monitoring system initialized');
+  } catch (error) {
+    logger.error('Failed to initialize health monitoring:', error.message);
+  }
+
   const server_instance = server.listen(port, () => {
     logger.info(`Code execution backend started on port ${port}`);
     logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     logger.info(`Health check: http://localhost:${port}/health`);
+    logger.info(`Detailed health: http://localhost:${port}/api/health/detailed`);
+    logger.info(`Docker health: http://localhost:${port}/api/health/docker`);
+    logger.info(`AI health: http://localhost:${port}/api/health/ai`);
+    logger.info(`Error metrics: http://localhost:${port}/api/metrics/errors`);
     logger.info(`Socket.IO enabled for interactive terminals`);
   });
 

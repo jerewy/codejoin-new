@@ -13,25 +13,117 @@ class GeminiProvider extends AIProvider {
   constructor(config = {}) {
     super('gemini', config);
 
+    // Add debug logging
+    logger.info('Gemini provider constructor called', {
+      configModel: config.model,
+      envModel: process.env.GEMINI_MODEL,
+      apiKey: config.apiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY ? 'present' : 'missing'
+    });
+
     this.config = new ProviderConfig({
       apiKey: config.apiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY,
-      model: config.model || 'gemini-pro',
+      model: config.model || process.env.GEMINI_MODEL || 'gemini-1.5-flash', // Updated to newer model
       baseURL: config.baseURL,
       timeout: config.timeout || 30000,
       maxRetries: config.maxRetries || 3,
       ...config
     });
 
-    this.config.validate();
+    // Validate configuration more gracefully
+    try {
+      this.config.validate();
+    } catch (error) {
+      logger.error('Gemini provider configuration validation failed:', error.message);
+      throw new Error(`Gemini provider configuration error: ${error.message}`);
+    }
 
-    // Initialize Gemini client
-    this.genAI = new GoogleGenerativeAI(this.config.apiKey);
-    this.model = this.genAI.getGenerativeModel({ model: this.config.model });
-
-    logger.info('Gemini provider initialized', {
-      model: this.config.model,
-      timeout: this.config.timeout
+    // Add debug logging
+    logger.info('Gemini provider config created', {
+      finalModel: this.config.model,
+      apiKeyValid: !!this.config.apiKey,
+      apiKeyPrefix: this.config.apiKey ? this.config.apiKey.substring(0, 8) + '...' : 'none'
     });
+
+    try {
+      // Initialize Gemini client
+      this.genAI = new GoogleGenerativeAI(this.config.apiKey);
+
+      // Add debug logging before model creation
+      logger.info('About to create Gemini model', {
+        modelToUse: this.config.model
+      });
+
+      this.model = this.genAI.getGenerativeModel({
+        model: this.config.model,
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 2048,
+        }
+      });
+
+      // Note: Model availability testing moved to async initialization
+      logger.info('Gemini provider initialization completed', {
+        model: this.config.model,
+        timeout: this.config.timeout
+      });
+
+    } catch (error) {
+      logger.error('Failed to initialize Gemini provider:', {
+        error: error.message,
+        model: this.config.model,
+        apiKeyPresent: !!this.config.apiKey
+      });
+
+      // Check for specific model not found error
+      if (error.message.includes('404') || error.message.includes('not found')) {
+        logger.error(`Gemini model ${this.config.model} is not available. Please update to a valid model name.`);
+        throw new Error(`Gemini model ${this.config.model} not found. Update GEMINI_MODEL environment variable to a valid model like 'gemini-1.5-flash' or 'gemini-1.5-pro'.`);
+      }
+
+      throw new Error(`Gemini provider initialization failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Async initialization to test model availability
+   * @returns {Promise<void>}
+   */
+  async initialize() {
+    try {
+      if (!this.model) {
+        logger.warn('Gemini model not initialized, skipping availability test');
+        return;
+      }
+
+      // Test model availability with a simple request
+      logger.info('Testing Gemini model availability', {
+        model: this.config.model
+      });
+
+      const testResult = await this.model.generateContent('Hello');
+      const testResponse = testResult.response;
+      const testText = testResponse.text();
+
+      if (!testText || testText.length === 0) {
+        throw new Error(`Gemini model ${this.config.model} returned empty response`);
+      }
+
+      logger.info('Gemini provider async initialization completed successfully', {
+        model: this.config.model,
+        timeout: this.config.timeout
+      });
+
+    } catch (error) {
+      logger.error('Gemini async initialization failed', {
+        error: error.message,
+        model: this.config.model
+      });
+
+      // Don't throw here - let the health check handle it
+      // This allows the provider to be registered but marked as unhealthy
+    }
   }
 
   /**

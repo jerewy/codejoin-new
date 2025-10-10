@@ -33,14 +33,14 @@ class AIServiceManager {
     this.enableCaching = options.enableCaching !== false;
     this.enableFallbacks = options.enableFallbacks !== false;
 
-    // Circuit breaker and retry manager
+    // Circuit breaker and retry manager (less aggressive configuration)
     this.circuitBreaker = circuitBreakerFactory.get('ai-service-manager', {
-      failureThreshold: 3,
-      resetTimeout: 60000
+      failureThreshold: 8, // Increased from 3 to 8
+      resetTimeout: 30000  // Reduced from 60s to 30s
     });
 
     this.retryManager = retryManagerFactory.get('ai-service-manager', {
-      maxRetries: 3,
+      maxRetries: 5, // Increased from 3 to 5
       strategy: 'exp_jitter'
     });
 

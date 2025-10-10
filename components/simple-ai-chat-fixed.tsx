@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Send, Brain, Loader2, AlertCircle, ArrowDown } from "lucide-react";
+import { Send, Brain, Loader2, AlertCircle, Wifi, WifiOff, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAIConversations } from "@/hooks/use-ai-conversations";
-import { AIMessage } from "@/lib/ai-conversation-service";
+import { useImprovedAIConversations } from "@/hooks/use-ai-conversations-improved";
+import { AIMessage } from "@/lib/ai-conversation-service-improved";
 import { aiChatService } from "@/lib/ai-chat-service";
 import EnhancedAIMessage from "./enhanced-ai-message";
 import FABPromptHelper from "./fab-prompt-helper";
@@ -22,20 +22,28 @@ interface SimpleAIChatProps {
     showProjectWarning: boolean;
     isUsingFallback: boolean;
     error: any;
+    hasActiveConversation: boolean;
+    messageCount: number;
   }) => void;
+  enableRetry?: boolean;
+  showConnectionStatus?: boolean;
 }
 
-export default function SimpleAIChat({ projectId: initialProjectId, userId, onStatusChange }: SimpleAIChatProps) {
+export default function SimpleAIChatFixed({
+  projectId: initialProjectId,
+  userId,
+  onStatusChange,
+  enableRetry = true,
+  showConnectionStatus = true
+}: SimpleAIChatProps) {
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [isUsingFallback, setIsUsingFallback] = useState(false);
   const [showThinkingIndicator, setShowThinkingIndicator] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(initialProjectId || null);
   const [showProjectWarning, setShowProjectWarning] = useState(false);
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Initialize chat shortcuts
   const { shortcuts, handleShortcut } = useChatShortcuts([
@@ -44,8 +52,71 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
       description: 'Clear input',
       action: () => setMessage(""),
       category: 'Navigation',
+    },
+    {
+      keys: ['Ctrl+Enter', 'Cmd+Enter'],
+      description: 'Send message',
+      action: () => handleSendMessage(),
+      category: 'Actions',
     }
   ]);
+
+  // Initialize conversation hook with improved error handling
+  const {
+    conversations,
+    currentConversation,
+    messages,
+    loading,
+    error,
+    isUsingFallback,
+    isInitialized,
+    hasActiveConversation,
+    hasMessages,
+    isOffline,
+    getOrCreateConversation,
+    addMessage,
+    retryLastOperation
+  } = useImprovedAIConversations({
+    projectId,
+    userId,
+    autoLoad: true,
+    onConversationCreated: (conversation) => {
+      console.log('Conversation created:', conversation.id);
+      if (onStatusChange) {
+        onStatusChange({
+          showProjectWarning,
+          isUsingFallback: conversation.id.startsWith('local_'),
+          error: null,
+          hasActiveConversation: true,
+          messageCount: 0
+        });
+      }
+    },
+    onMessageAdded: (message) => {
+      console.log('Message added:', message.id);
+      if (onStatusChange) {
+        onStatusChange({
+          showProjectWarning,
+          isUsingFallback,
+          error: null,
+          hasActiveConversation: true,
+          messageCount: messages.length + 1
+        });
+      }
+    },
+    onError: (error) => {
+      console.error('Conversation error:', error);
+      if (onStatusChange) {
+        onStatusChange({
+          showProjectWarning,
+          isUsingFallback,
+          error,
+          hasActiveConversation,
+          messageCount: messages.length
+        });
+      }
+    }
+  });
 
   // Initialize projectId from props
   useEffect(() => {
@@ -75,104 +146,25 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
     }
   }, [projectId, userId]);
 
-  // Use existing AI conversations hook
-  const {
-    messages,
-    loading,
-    error,
-    getOrCreateConversation,
-    addMessage,
-    reloadCurrentConversationMessages,
-  } = useAIConversations({
-    projectId,
-    userId,
-    autoLoad: true,
-  });
-
-  // Initialize conversation
+  // Initialize conversation when ready
   useEffect(() => {
-    if (projectId && userId) {
-      getOrCreateConversation("AI Assistant Chat");
-    }
-  }, [projectId, userId, getOrCreateConversation]);
-
-  // Debug: Log message changes to help with debugging
-  useEffect(() => {
-    console.log('DEBUG: Messages updated in chat component:', {
-      messageCount: messages.length,
-      messageIds: messages.map(m => m.id),
-      projectId,
-      userId
-    });
-  }, [messages, projectId, userId]);
-
-  // Enhanced scroll to bottom functionality
-  const scrollToBottom = useCallback((force = false) => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    } else if (messagesContainerRef.current) {
-      // Fallback: scroll container to bottom
-      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-    }
-
-    // Hide scroll to bottom button when scrolling to bottom
-    if (force) {
-      setShowScrollToBottom(false);
-    }
-  }, []);
-
-  // Handle scroll detection to show/hide scroll-to-bottom button
-  const handleScroll = useCallback(() => {
-    if (messagesContainerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
-      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 100; // 100px threshold
-      setShowScrollToBottom(!isAtBottom && messages.length > 0);
-    }
-  }, [messages.length]);
-
-  // Auto scroll to bottom when messages change
-  useEffect(() => {
-    // Add a small delay to ensure content has rendered
-    const timeoutId = setTimeout(() => {
-      scrollToBottom(true); // Force scroll and hide button
-    }, 100);
-
-    return () => clearTimeout(timeoutId);
-  }, [messages, scrollToBottom]);
-
-  // Scroll when thinking indicator appears/disappears
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      scrollToBottom(true);
-    }, 100);
-
-    return () => clearTimeout(timeoutId);
-  }, [showThinkingIndicator, scrollToBottom]);
-
-  // Scroll to bottom when chat loads (for existing conversations)
-  useEffect(() => {
-    if (!loading && messages.length > 0) {
-      const timeoutId = setTimeout(() => {
-        scrollToBottom(true);
-      }, 300); // Longer delay for initial load
-
-      return () => clearTimeout(timeoutId);
-    }
-  }, [loading, messages.length, scrollToBottom]);
-
-  // Add scroll event listener for scroll detection
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (container) {
-      container.addEventListener('scroll', handleScroll);
-      // Initial scroll check
-      handleScroll();
-
-      return () => {
-        container.removeEventListener('scroll', handleScroll);
+    if (isInitialized && projectId && userId && !hasActiveConversation && !loading) {
+      // Only create conversation if we don't have one
+      const initializeConversation = async () => {
+        try {
+          await getOrCreateConversation("AI Assistant Chat");
+        } catch (error) {
+          console.error('Failed to initialize conversation:', error);
+        }
       };
+      initializeConversation();
     }
-  }, [handleScroll]);
+  }, [isInitialized, projectId, userId, hasActiveConversation, loading, getOrCreateConversation]);
+
+  // Auto scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   // Notify parent component of status changes
   useEffect(() => {
@@ -181,11 +173,13 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
         showProjectWarning,
         isUsingFallback,
         error,
+        hasActiveConversation,
+        messageCount: messages.length
       });
     }
-  }, [showProjectWarning, isUsingFallback, error, onStatusChange]);
+  }, [showProjectWarning, isUsingFallback, error, hasActiveConversation, messages.length, onStatusChange]);
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = useCallback(async () => {
     const trimmed = message.trim();
 
     if (!trimmed) {
@@ -201,7 +195,6 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
     const actualProjectId = projectId || "default-project";
 
     if (!projectId) {
-      console.log('DEBUG: No projectId provided, using default');
       setProjectId(actualProjectId);
       toast({
         title: "Using Default Project",
@@ -211,7 +204,6 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
     }
 
     if (!userId) {
-      console.error('DEBUG: No userId provided for message sending');
       toast({
         title: "Not Authenticated",
         description: "Please sign in to use the AI Assistant.",
@@ -220,43 +212,33 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
       return;
     }
 
-    console.log('DEBUG: Starting message send:', {
-      actualProjectId,
-      userId,
-      messageLength: trimmed.length
-    });
+    if (!currentConversation) {
+      toast({
+        title: "No Active Conversation",
+        description: "Creating a new conversation...",
+        variant: "default",
+      });
+      return;
+    }
 
     setIsSending(true);
     setShowThinkingIndicator(true);
     setMessage("");
+    setRetryCount(0);
 
-    let conversation;
     try {
-      // Get current conversation or create new one
-      console.log('DEBUG: Attempting to get/create conversation...');
-      conversation = await getOrCreateConversation("AI Assistant Chat");
-
-      if (!conversation) {
-        console.error('DEBUG: Failed to get/create conversation');
-        throw new Error("Failed to create conversation");
-      }
-
-      console.log('DEBUG: Conversation ready:', {
-        conversationId: conversation.id,
-        isLocal: conversation.id.startsWith('local_')
-      });
-
-      // Add user message to database
-      await addMessage(conversation.id, {
+      // Add user message to conversation
+      await addMessage(currentConversation.id, {
         role: "user",
         content: trimmed,
         author_id: userId,
         metadata: {
           ai_request: true,
+          timestamp: new Date().toISOString()
         },
       });
 
-      // Call the AI backend API directly (same approach as project workspace)
+      // Call the AI backend API
       const startTime = Date.now();
       const response = await fetch("/api/ai/chat", {
         method: "POST",
@@ -267,7 +249,7 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
           message: trimmed,
           context: "AI Assistant Chat",
           projectId: actualProjectId,
-          conversationId: conversation.id
+          conversationId: currentConversation.id
         }),
       });
 
@@ -276,35 +258,41 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
 
       if (data.success) {
         setShowThinkingIndicator(false);
-        // Add AI response to database with metadata
-        await addMessage(conversation.id, {
+        // Add AI response to conversation with metadata
+        await addMessage(currentConversation.id, {
           role: "assistant",
           content: data.response,
           author_id: null,
           metadata: {
-            ai_model: data.metadata?.model || "gemini-1.5-flash",
+            ai_model: data.metadata?.model || "phi-3-mini-4k-instruct",
             ai_response_time_ms: responseTime,
             ai_tokens_used: data.metadata?.tokensUsed,
+            provider: data.metadata?.provider || "Hugging Face"
           },
         });
+
+        // Clear any existing errors on successful message
+        if (error) {
+          retryLastOperation?.();
+        }
       } else {
         setShowThinkingIndicator(false);
         // Use fallback response if backend is unavailable
         const fallbackResponse = aiChatService.generateFallbackResponse(trimmed);
-        await addMessage(conversation.id, {
+        await addMessage(currentConversation.id, {
           role: "assistant",
           content: fallbackResponse,
           author_id: null,
           metadata: {
             ai_model: "fallback",
             ai_response_time_ms: 0,
-            fallback: true
+            fallback: true,
+            error: data.error
           },
         });
 
-        // Show toast about fallback mode
+        // Show appropriate toast message
         if (data.fallback) {
-          setIsUsingFallback(true);
           toast({
             title: "Using Offline Mode",
             description: "AI service is temporarily unavailable. Using basic responses.",
@@ -322,27 +310,24 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
       console.error("Failed to send message:", error);
       setShowThinkingIndicator(false);
 
-      // Try to get or create conversation if not available
-      if (!conversation) {
-        conversation = await getOrCreateConversation("AI Assistant Chat");
-      }
-
       // Use fallback response as last resort
       const fallbackResponse = aiChatService.generateFallbackResponse(message.trim());
-      if (conversation) {
-        await addMessage(conversation.id, {
+      try {
+        await addMessage(currentConversation.id, {
           role: "assistant",
           content: fallbackResponse,
           author_id: null,
           metadata: {
             ai_model: "fallback",
             ai_response_time_ms: 0,
-            fallback: true
+            fallback: true,
+            error: error instanceof Error ? error.message : 'Unknown error'
           },
         });
+      } catch (fallbackError) {
+        console.error('Failed to add fallback message:', fallbackError);
       }
 
-      setIsUsingFallback(true);
       toast({
         title: "Connection Issue",
         description: "Using offline mode. Some features may be limited.",
@@ -352,31 +337,99 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
       setIsSending(false);
       setShowThinkingIndicator(false);
     }
-  };
+  }, [
+    message,
+    projectId,
+    userId,
+    currentConversation,
+    addMessage,
+    toast,
+    error,
+    retryLastOperation
+  ]);
 
-  const handlePromptSelect = (prompt: string) => {
+  const handlePromptSelect = useCallback((prompt: string) => {
     setMessage(prompt);
-  };
+  }, []);
 
-  
+  const handleRetry = useCallback(async () => {
+    if (!currentConversation || messages.length === 0) return;
+
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage.role === 'user') {
+      setRetryCount(prev => prev + 1);
+
+      // Remove the last failed assistant message if it exists
+      const filteredMessages = messages.filter((msg, index) =>
+        !(index === messages.length - 1 && msg.role === 'assistant')
+      );
+
+      // Resend the last user message
+      setMessage(lastMessage.content);
+      setTimeout(() => handleSendMessage(), 100);
+    }
+  }, [currentConversation, messages, handleSendMessage]);
+
+  const handleRetryConnection = useCallback(() => {
+    retryLastOperation?.();
+    setRetryCount(0);
+  }, [retryLastOperation]);
+
   // Enhanced send message handler with shortcuts
-  const handleEnhancedSendMessage = () => {
-    handleSendMessage();
-  };
+  const handleEnhancedSendMessage = useCallback(() => {
+    if (!isSending) {
+      handleSendMessage();
+    }
+  }, [isSending, handleSendMessage]);
+
+  const canRetry = enableRetry && hasMessages && retryCount < 3 && !isSending;
+  const showConnectionIndicator = showConnectionStatus && (isOffline || error);
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Messages Area - More compact */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-auto">
+      {/* Connection Status Indicator */}
+      {showConnectionIndicator && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 border-b">
+          {isOffline ? (
+            <>
+              <WifiOff className="h-4 w-4 text-orange-500" />
+              <span className="text-sm text-orange-600 dark:text-orange-400">
+                Offline Mode - Changes saved locally
+              </span>
+            </>
+          ) : error ? (
+            <>
+              <AlertCircle className="h-4 w-4 text-red-500" />
+              <span className="text-sm text-red-600 dark:text-red-400">
+                Connection Error
+              </span>
+              {enableRetry && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRetryConnection}
+                  className="ml-auto h-6 text-xs"
+                >
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                  Retry
+                </Button>
+              )}
+            </>
+          ) : null}
+        </div>
+      )}
+
+      {/* Messages Area */}
+      <div className="flex-1 overflow-auto">
         <div className="max-w-4xl mx-auto px-4 py-3">
-          {loading && messages.length === 0 ? (
+          {loading && !hasMessages ? (
             <div className="flex items-center justify-center h-64">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span>Loading conversation...</span>
               </div>
             </div>
-          ) : messages.length === 0 ? (
+          ) : !hasMessages ? (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
               <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
                 <Brain className="h-6 w-6 text-primary" />
@@ -385,6 +438,13 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
               <p className="text-muted-foreground text-sm mb-6 max-w-lg">
                 Ask me anything about coding, debugging, or learning.
               </p>
+              {showProjectWarning && (
+                <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                  <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                    No project selected. Using default project for this conversation.
+                  </p>
+                </div>
+              )}
               <p className="text-muted-foreground text-xs mb-4">
                 Click the sparkles button in the bottom-right to access prompt templates.
               </p>
@@ -401,12 +461,25 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
                     role: 'assistant',
                     content: '',
                     created_at: new Date().toISOString(),
-                    conversation_id: '',
+                    conversation_id: currentConversation?.id || '',
                     author_id: null,
                     metadata: {}
                   }}
                   isTyping={true}
                 />
+              )}
+              {canRetry && (
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRetry}
+                    className="text-xs"
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Retry Last Message
+                  </Button>
+                </div>
               )}
               <div ref={messagesEndRef} />
             </div>
@@ -430,7 +503,7 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
           />
 
           {/* Show prompt helper when message is empty */}
-          {!message && messages.length > 0 && (
+          {!message && hasMessages && (
             <div className="mt-3 flex justify-center">
               <p className="text-muted-foreground text-xs">
                 Click the sparkles button in the bottom-right to access prompt templates.
@@ -439,7 +512,7 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
           )}
 
           {/* Keyboard shortcuts hint */}
-          {message.length === 0 && messages.length === 0 && (
+          {message.length === 0 && !hasMessages && (
             <div className="mt-3 flex justify-center">
               <div className="flex items-center gap-4 text-xs text-muted-foreground/60">
                 <span className="flex items-center gap-1">
@@ -459,20 +532,6 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
           )}
         </div>
       </div>
-
-      {/* Scroll to Bottom Button */}
-      {showScrollToBottom && (
-        <div className="fixed bottom-24 right-8 z-40">
-          <Button
-            onClick={() => scrollToBottom(true)}
-            size="sm"
-            className="rounded-full w-10 h-10 p-0 shadow-lg bg-primary hover:bg-primary/90 transition-all duration-200 hover:scale-105"
-            title="Scroll to latest message"
-          >
-            <ArrowDown className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
 
       {/* FAB Prompt Helper */}
       <FABPromptHelper onPromptSelect={handlePromptSelect} />

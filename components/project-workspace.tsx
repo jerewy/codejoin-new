@@ -2532,7 +2532,8 @@ export default function ProjectWorkspace({
         await addMessage(conversation.id, {
           role: "user",
           content: userMessage,
-          author_id: userId || undefined,
+          metadata: {},
+          author_id: userId || null,
         });
       } catch (messageError) {
         console.error("Failed to save user message:", messageError);
@@ -2568,25 +2569,20 @@ export default function ProjectWorkspace({
           await addMessage(conversation.id, {
             role: "assistant",
             content: data.response,
+            metadata: data.metadata || {},
+            author_id: null,
             ai_model: data.metadata?.model || "gemini-pro",
             ai_response_time_ms: responseTime,
             ai_tokens_used: data.metadata?.tokensUsed,
           });
         } catch (messageError) {
           console.error("Failed to save AI response:", messageError);
-          // Create a temporary message object to show in UI even if saving fails
-          const tempMessage = {
-            id: `temp_${Date.now()}`,
-            conversation_id: conversation.id,
-            role: "assistant" as const,
-            content: data.response,
-            created_at: new Date().toISOString(),
-            ai_model: data.metadata?.model || "gemini-pro",
-            ai_response_time_ms: responseTime,
-            ai_tokens_used: data.metadata?.tokensUsed,
-          };
-          // Add to messages state directly
-          setAiMessages(prev => [...prev, tempMessage]);
+          // Show error in toast if saving fails - the UI will rely on the response already shown
+          toast({
+            title: "Warning",
+            description: "AI response was received but couldn't be saved to conversation history.",
+            variant: "default",
+          });
         }
       } else {
         // Add error message to database
@@ -2594,6 +2590,8 @@ export default function ProjectWorkspace({
           await addMessage(conversation.id, {
             role: "assistant",
             content: `Error: ${data.error || "Failed to get AI response"}`,
+            metadata: { type: 'error' },
+            author_id: null,
           });
         } catch (messageError) {
           console.error("Failed to save error message:", messageError);
@@ -2615,6 +2613,8 @@ export default function ProjectWorkspace({
           await addMessage(conversation.id, {
             role: "assistant",
             content: "Error: Failed to connect to AI service. Please try again.",
+            metadata: { type: 'error' },
+            author_id: null,
           });
         }
       } catch (messageError) {

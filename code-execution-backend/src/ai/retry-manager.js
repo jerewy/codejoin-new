@@ -23,12 +23,12 @@ const BackoffStrategy = {
  */
 class RetryManager {
   constructor(options = {}) {
-    this.maxRetries = options.maxRetries || 3;
-    this.baseDelay = options.baseDelay || 1000; // 1 second
-    this.maxDelay = options.maxDelay || 30000;  // 30 seconds
+    this.maxRetries = options.maxRetries || 5; // Increased from 3 to 5
+    this.baseDelay = options.baseDelay || 500; // Reduced from 1s to 500ms
+    this.maxDelay = options.maxDelay || 15000;  // Reduced from 30s to 15s
     this.strategy = options.strategy || BackoffStrategy.EXPONENTIAL_WITH_JITTER;
-    this.multiplier = options.multiplier || 2;
-    this.jitterFactor = options.jitterFactor || 0.1;
+    this.multiplier = options.multiplier || 1.5; // Reduced from 2 to 1.5 (less aggressive)
+    this.jitterFactor = options.jitterFactor || 0.2; // Increased from 0.1 to 0.2
     this.retryableErrors = options.retryableErrors || this.getDefaultRetryableErrors();
     this.onRetry = options.onRetry || (() => {});
     this.onFailed = options.onFailed || (() => {});

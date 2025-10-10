@@ -11,6 +11,7 @@ const { ResponseCache } = require('../ai/response-cache');
 const GeminiProvider = require('../ai/providers/gemini-provider');
 const OpenAIProvider = require('../ai/providers/openai-provider');
 const AnthropicProvider = require('../ai/providers/anthropic-provider');
+const GLMProvider = require('../ai/providers/glm-provider');
 const FallbackProvider = require('../ai/providers/fallback-provider');
 const logger = require('../utils/logger');
 
@@ -139,6 +140,29 @@ class ComprehensiveAIServiceManager {
 
         this.providers.set('anthropic', anthropicProvider);
         logger.info('Anthropic provider initialized');
+      }
+
+      // Initialize GLM provider
+      if (process.env.GLM_API_KEY) {
+        const glmProvider = new GLMProvider({
+          model: process.env.GLM_MODEL || 'glm-4.6',
+          timeout: 30000
+        });
+
+        this.aiServiceManager.registerProvider(glmProvider, {
+          priority: 1.5, // High priority for GLM 4.6
+          weight: 2.5,
+          costPerToken: 0.00002,
+          quality: 0.92
+        });
+
+        this.healthMonitor.registerProvider('glm', glmProvider, {
+          expectedLatency: 1800,
+          maxErrorRate: 0.08
+        });
+
+        this.providers.set('glm', glmProvider);
+        logger.info('GLM provider initialized');
       }
 
       // Initialize fallback provider

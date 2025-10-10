@@ -235,21 +235,57 @@ export function useAIConversations(options: UseAIConversationsOptions = {}) {
 
   // Get or create conversation for current project
   const getOrCreateConversation = useCallback(async (title?: string) => {
-    if (!projectId) return null;
+    if (!projectId) {
+      console.error('DEBUG: getOrCreateConversation called without projectId');
+      return null;
+    }
+
+    if (!userId) {
+      console.error('DEBUG: getOrCreateConversation called without userId');
+      toast({
+        title: 'Authentication Required',
+        description: 'Please sign in to use the AI Assistant.',
+        variant: 'destructive',
+      });
+      return null;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
-      const conversation = await aiConversationService.getOrCreateConversation(projectId, userId || '', title);
+      console.log('DEBUG: Hook getOrCreateConversation called:', { projectId, userId, title });
+      const conversation = await aiConversationService.getOrCreateConversation(projectId, userId, title);
+
       if (conversation) {
+        console.log('DEBUG: Conversation created/retrieved successfully:', conversation.id);
         setCurrentConversation(conversation);
 
         // Load messages if conversation has them
         if (conversation.messages) {
           setMessages(conversation.messages);
+          console.log('DEBUG: Set messages from conversation:', {
+            conversationId: conversation.id,
+            messageCount: conversation.messages.length
+          });
         } else {
-          setMessages([]);
+          // For local conversations, try to load messages explicitly
+          if (conversation.id.startsWith('local_')) {
+            console.log('DEBUG: Local conversation has no messages, attempting to load from storage');
+            const loadedConversation = await aiConversationService.getConversation(conversation.id, true);
+            if (loadedConversation && loadedConversation.messages) {
+              setMessages(loadedConversation.messages);
+              console.log('DEBUG: Loaded messages for local conversation:', {
+                conversationId: conversation.id,
+                messageCount: loadedConversation.messages.length
+              });
+            } else {
+              setMessages([]);
+              console.log('DEBUG: No messages found for local conversation');
+            }
+          } else {
+            setMessages([]);
+          }
         }
 
         // Update conversations list if this is a new conversation
@@ -261,22 +297,81 @@ export function useAIConversations(options: UseAIConversationsOptions = {}) {
           return prev;
         });
 
+        // Show success message for new conversations
+        if (conversation.id.startsWith('local_')) {
+          toast({
+            title: 'Offline Mode',
+            description: 'Working offline. Your conversation will sync when you reconnect.',
+            variant: 'default',
+          });
+        }
+
         return conversation;
+      } else {
+        console.error('DEBUG: getOrCreateConversation returned null');
+        throw new Error('Failed to create or retrieve conversation');
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to get conversation';
+      console.error('DEBUG: Hook getOrCreateConversation error:', err);
+
+      let errorMessage = 'Failed to get conversation';
+      let isUsingFallback = false;
+
+      if (err instanceof Error) {
+        errorMessage = err.message;
+
+        // Check if it's a database connection error
+        if (err.message.includes('connection') || err.message.includes('network') || err.message.includes('fetch')) {
+          errorMessage = 'Working offline - your conversations will sync when you reconnect';
+          isUsingFallback = true;
+        } else if (err.message.includes('permission') || err.message.includes('unauthorized') || err.message.includes('authentication')) {
+          errorMessage = 'Please sign in again to continue';
+        } else if (err.message.includes('access') || err.message.includes('project')) {
+          errorMessage = 'You do not have access to this project';
+        }
+      }
+
       setError(errorMessage);
-      toast({
-        title: 'Error',
-        description: errorMessage,
-        variant: 'destructive',
-      });
+
+      if (!isUsingFallback) {
+        toast({
+          title: 'Conversation Error',
+          description: errorMessage,
+          variant: 'destructive',
+        });
+      }
     } finally {
       setLoading(false);
     }
 
     return null;
-  }, [projectId, toast]);
+  }, [projectId, userId, toast]);
+
+  // Reload messages for current conversation
+  const reloadCurrentConversationMessages = useCallback(async () => {
+    if (!currentConversation) {
+      console.log('DEBUG: No current conversation to reload messages for');
+      return;
+    }
+
+    console.log('DEBUG: Reloading messages for current conversation:', currentConversation.id);
+
+    try {
+      const updatedConversation = await aiConversationService.getConversation(currentConversation.id, true);
+      if (updatedConversation && updatedConversation.messages) {
+        setMessages(updatedConversation.messages);
+        console.log('DEBUG: Reloaded messages for current conversation:', {
+          conversationId: currentConversation.id,
+          messageCount: updatedConversation.messages.length
+        });
+      } else {
+        setMessages([]);
+        console.log('DEBUG: No messages found when reloading current conversation');
+      }
+    } catch (error) {
+      console.error('DEBUG: Error reloading current conversation messages:', error);
+    }
+  }, [currentConversation]);
 
   // Clear current conversation
   const clearCurrentConversation = useCallback(() => {
@@ -308,5 +403,6 @@ export function useAIConversations(options: UseAIConversationsOptions = {}) {
     deleteConversation,
     getOrCreateConversation,
     clearCurrentConversation,
+    reloadCurrentConversationMessages,
   };
 }

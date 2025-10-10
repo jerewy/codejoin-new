@@ -5,45 +5,99 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Send, Brain, Loader2, AlertCircle, ArrowDown } from "lucide-react";
+import { Send, Brain, Loader2, ArrowDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAIConversations } from "@/hooks/use-ai-conversations";
+import { useUnifiedAIConversations } from "@/hooks/use-unified-ai-conversations";
+import { useChatKeyboardShortcuts, defaultChatShortcuts } from "@/hooks/use-chat-keyboard-shortcuts";
 import { AIMessage } from "@/lib/ai-conversation-service";
-import { aiChatService } from "@/lib/ai-chat-service";
 import EnhancedAIMessage from "./enhanced-ai-message";
 import FABPromptHelper from "./fab-prompt-helper";
 import ResponsiveChatInput from "./chat-input-responsive";
-import { defaultChatShortcuts, useChatShortcuts } from "./chat-input-shortcuts";
+import ChatControls from "./chat-controls";
+import ConnectionStatusIndicator from "./connection-status";
 
-interface SimpleAIChatProps {
+interface SimpleAIChatUnifiedProps {
   projectId?: string;
   userId?: string;
   onStatusChange?: (status: {
-    showProjectWarning: boolean;
-    isUsingFallback: boolean;
+    connectionStatus: any;
     error: any;
   }) => void;
 }
 
-export default function SimpleAIChat({ projectId: initialProjectId, userId, onStatusChange }: SimpleAIChatProps) {
+export default function SimpleAIChatUnified({
+  projectId: initialProjectId,
+  userId,
+  onStatusChange
+}: SimpleAIChatUnifiedProps) {
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [message, setMessage] = useState("");
-  const [isSending, setIsSending] = useState(false);
-  const [isUsingFallback, setIsUsingFallback] = useState(false);
   const [showThinkingIndicator, setShowThinkingIndicator] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(initialProjectId || null);
-  const [showProjectWarning, setShowProjectWarning] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
-  // Initialize chat shortcuts
-  const { shortcuts, handleShortcut } = useChatShortcuts([
+  // Use the unified conversations hook
+  const {
+    conversations,
+    currentConversation,
+    messages,
+    loading,
+    error,
+    connectionStatus,
+    loadConversations,
+    loadConversation,
+    createConversation,
+    sendMessage,
+    clearConversation,
+    archiveConversation,
+    clearAllConversations,
+    archiveAllConversations,
+    hasConversations,
+    currentMessageCount,
+    isOnline,
+    isLimited,
+    isOffline,
+  } = useUnifiedAIConversations({
+    projectId,
+    userId,
+    autoLoad: true,
+  });
+
+  // Initialize keyboard shortcuts
+  const { shortcuts } = useChatKeyboardShortcuts([
     {
       keys: ['Esc'],
       description: 'Clear input',
       action: () => setMessage(""),
-      category: 'Navigation',
+      category: 'editing'
+    },
+    {
+      keys: ['Ctrl', 'l'],
+      description: 'Clear current conversation',
+      action: () => {
+        if (currentMessageCount > 0) {
+          clearConversation();
+        }
+      },
+      category: 'conversation'
+    },
+    {
+      keys: ['Ctrl', 'n'],
+      description: 'New conversation',
+      action: () => createConversation("AI Assistant Chat"),
+      category: 'navigation'
+    },
+    {
+      keys: ['Ctrl', 'Enter'],
+      description: 'Send message',
+      action: () => {
+        if (message.trim()) {
+          handleSendMessage();
+        }
+      },
+      category: 'editing'
     }
   ]);
 
@@ -66,45 +120,22 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
     }
   }, [projectId]);
 
-  // Check for missing projectId
+  // Auto-create conversation when we have projectId and userId
   useEffect(() => {
-    if (!projectId && userId) {
-      setShowProjectWarning(true);
-    } else {
-      setShowProjectWarning(false);
+    if (projectId && userId && !currentConversation && !loading) {
+      createConversation("AI Assistant Chat");
     }
-  }, [projectId, userId]);
+  }, [projectId, userId, currentConversation, loading, createConversation]);
 
-  // Use existing AI conversations hook
-  const {
-    messages,
-    loading,
-    error,
-    getOrCreateConversation,
-    addMessage,
-    reloadCurrentConversationMessages,
-  } = useAIConversations({
-    projectId,
-    userId,
-    autoLoad: true,
-  });
-
-  // Initialize conversation
+  // Notify parent component of status changes
   useEffect(() => {
-    if (projectId && userId) {
-      getOrCreateConversation("AI Assistant Chat");
+    if (onStatusChange) {
+      onStatusChange({
+        connectionStatus,
+        error,
+      });
     }
-  }, [projectId, userId, getOrCreateConversation]);
-
-  // Debug: Log message changes to help with debugging
-  useEffect(() => {
-    console.log('DEBUG: Messages updated in chat component:', {
-      messageCount: messages.length,
-      messageIds: messages.map(m => m.id),
-      projectId,
-      userId
-    });
-  }, [messages, projectId, userId]);
+  }, [connectionStatus, error, onStatusChange]);
 
   // Enhanced scroll to bottom functionality
   const scrollToBottom = useCallback((force = false) => {
@@ -174,17 +205,6 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
     }
   }, [handleScroll]);
 
-  // Notify parent component of status changes
-  useEffect(() => {
-    if (onStatusChange) {
-      onStatusChange({
-        showProjectWarning,
-        isUsingFallback,
-        error,
-      });
-    }
-  }, [showProjectWarning, isUsingFallback, error, onStatusChange]);
-
   const handleSendMessage = async () => {
     const trimmed = message.trim();
 
@@ -197,21 +217,7 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
       return;
     }
 
-    // Use fallback projectId if needed
-    const actualProjectId = projectId || "default-project";
-
-    if (!projectId) {
-      console.log('DEBUG: No projectId provided, using default');
-      setProjectId(actualProjectId);
-      toast({
-        title: "Using Default Project",
-        description: "No project selected. Using default project for AI Assistant.",
-        variant: "default",
-      });
-    }
-
     if (!userId) {
-      console.error('DEBUG: No userId provided for message sending');
       toast({
         title: "Not Authenticated",
         description: "Please sign in to use the AI Assistant.",
@@ -220,136 +226,26 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
       return;
     }
 
-    console.log('DEBUG: Starting message send:', {
-      actualProjectId,
-      userId,
-      messageLength: trimmed.length
-    });
-
-    setIsSending(true);
     setShowThinkingIndicator(true);
     setMessage("");
 
-    let conversation;
     try {
-      // Get current conversation or create new one
-      console.log('DEBUG: Attempting to get/create conversation...');
-      conversation = await getOrCreateConversation("AI Assistant Chat");
-
-      if (!conversation) {
-        console.error('DEBUG: Failed to get/create conversation');
-        throw new Error("Failed to create conversation");
-      }
-
-      console.log('DEBUG: Conversation ready:', {
-        conversationId: conversation.id,
-        isLocal: conversation.id.startsWith('local_')
-      });
-
-      // Add user message to database
-      await addMessage(conversation.id, {
-        role: "user",
-        content: trimmed,
-        author_id: userId,
-        metadata: {
-          ai_request: true,
-        },
-      });
-
-      // Call the AI backend API directly (same approach as project workspace)
-      const startTime = Date.now();
-      const response = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: trimmed,
-          context: "AI Assistant Chat",
-          projectId: actualProjectId,
-          conversationId: conversation.id
-        }),
-      });
-
-      const data = await response.json();
-      const responseTime = Date.now() - startTime;
-
-      if (data.success) {
-        setShowThinkingIndicator(false);
-        // Add AI response to database with metadata
-        await addMessage(conversation.id, {
-          role: "assistant",
-          content: data.response,
-          author_id: null,
-          metadata: {
-            ai_model: data.metadata?.model || "gemini-1.5-flash",
-            ai_response_time_ms: responseTime,
-            ai_tokens_used: data.metadata?.tokensUsed,
-          },
+      const result = await sendMessage(trimmed);
+      if (!result) {
+        toast({
+          title: "Send Failed",
+          description: "Failed to send message. Please try again.",
+          variant: "destructive",
         });
-      } else {
-        setShowThinkingIndicator(false);
-        // Use fallback response if backend is unavailable
-        const fallbackResponse = aiChatService.generateFallbackResponse(trimmed);
-        await addMessage(conversation.id, {
-          role: "assistant",
-          content: fallbackResponse,
-          author_id: null,
-          metadata: {
-            ai_model: "fallback",
-            ai_response_time_ms: 0,
-            fallback: true
-          },
-        });
-
-        // Show toast about fallback mode
-        if (data.fallback) {
-          setIsUsingFallback(true);
-          toast({
-            title: "Using Offline Mode",
-            description: "AI service is temporarily unavailable. Using basic responses.",
-            variant: "default",
-          });
-        } else {
-          toast({
-            title: "AI Response Error",
-            description: data.error || "Failed to get AI response. Please try again.",
-            variant: "destructive",
-          });
-        }
       }
     } catch (error) {
       console.error("Failed to send message:", error);
-      setShowThinkingIndicator(false);
-
-      // Try to get or create conversation if not available
-      if (!conversation) {
-        conversation = await getOrCreateConversation("AI Assistant Chat");
-      }
-
-      // Use fallback response as last resort
-      const fallbackResponse = aiChatService.generateFallbackResponse(message.trim());
-      if (conversation) {
-        await addMessage(conversation.id, {
-          role: "assistant",
-          content: fallbackResponse,
-          author_id: null,
-          metadata: {
-            ai_model: "fallback",
-            ai_response_time_ms: 0,
-            fallback: true
-          },
-        });
-      }
-
-      setIsUsingFallback(true);
       toast({
-        title: "Connection Issue",
-        description: "Using offline mode. Some features may be limited.",
-        variant: "default",
+        title: "Send Error",
+        description: "An error occurred while sending your message.",
+        variant: "destructive",
       });
     } finally {
-      setIsSending(false);
       setShowThinkingIndicator(false);
     }
   };
@@ -358,7 +254,44 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
     setMessage(prompt);
   };
 
-  
+  const handleNewChat = async () => {
+    await createConversation("AI Assistant Chat");
+  };
+
+  const handleExportChat = () => {
+    const chatData = {
+      exportDate: new Date().toISOString(),
+      conversationId: currentConversation?.id,
+      messageCount: messages.length,
+      isOnline,
+      connectionStatus: connectionStatus.status,
+      messages: messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.created_at,
+        aiModel: msg.ai_model,
+        responseTime: msg.ai_response_time_ms
+      }))
+    };
+
+    const blob = new Blob([JSON.stringify(chatData, null, 2)], {
+      type: "application/json"
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `chat-export-${currentConversation?.id || 'unknown'}-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Chat exported",
+      description: "Chat data has been exported successfully.",
+    });
+  };
+
   // Enhanced send message handler with shortcuts
   const handleEnhancedSendMessage = () => {
     handleSendMessage();
@@ -366,7 +299,54 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Messages Area - More compact */}
+      {/* Header with connection status and controls */}
+      <div className="border-b bg-background/95 backdrop-blur-sm">
+        <div className="max-w-4xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Brain className="h-5 w-5 text-primary" />
+                <h1 className="text-lg font-semibold">AI Assistant</h1>
+              </div>
+
+              {/* Connection Status */}
+              <ConnectionStatusIndicator
+                status={connectionStatus}
+                showLabel={true}
+                size="sm"
+              />
+
+              {/* Message count badge */}
+              {currentMessageCount > 0 && (
+                <Badge variant="secondary" className="text-xs">
+                  {currentMessageCount} messages
+                </Badge>
+              )}
+            </div>
+
+            {/* Chat Controls */}
+            <ChatControls
+              onClearCurrent={clearConversation}
+              onArchiveCurrent={archiveConversation}
+              onClearAll={clearAllConversations}
+              onArchiveAll={archiveAllConversations}
+              onNewChat={handleNewChat}
+              messageCount={currentMessageCount}
+              isOnline={isOnline}
+              disabled={loading}
+            />
+          </div>
+
+          {/* Status message */}
+          {isLimited && (
+            <div className="mt-2 text-xs text-muted-foreground">
+              💡 Limited mode - messages will sync when connection is restored
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Messages Area */}
       <div ref={messagesContainerRef} className="flex-1 overflow-auto">
         <div className="max-w-4xl mx-auto px-4 py-3">
           {loading && messages.length === 0 ? (
@@ -385,9 +365,13 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
               <p className="text-muted-foreground text-sm mb-6 max-w-lg">
                 Ask me anything about coding, debugging, or learning.
               </p>
-              <p className="text-muted-foreground text-xs mb-4">
-                Click the sparkles button in the bottom-right to access prompt templates.
-              </p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <ConnectionStatusIndicator status={connectionStatus} size="sm" />
+                <span>•</span>
+                <span>Press Ctrl+L to clear chat</span>
+                <span>•</span>
+                <span>Press Ctrl+N for new chat</span>
+              </div>
             </div>
           ) : (
             <div className="space-y-6">
@@ -421,38 +405,37 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
             value={message}
             onChange={setMessage}
             onSend={handleEnhancedSendMessage}
-            disabled={isSending || loading}
-            isLoading={isSending}
-            placeholder="Ask me anything about coding... Press Shift+Enter for new lines"
+            disabled={loading || !connectionStatus.capabilities.canSendMessage}
+            isLoading={loading || showThinkingIndicator}
+            placeholder={
+              connectionStatus.capabilities.canUseFullAI
+                ? "Ask me anything about coding... Press Ctrl+Enter to send"
+                : "Type your message (offline mode)... Press Ctrl+Enter to send"
+            }
             showAttachmentButton={false}
             showVoiceButton={false}
             className="transition-all duration-200"
           />
-
-          {/* Show prompt helper when message is empty */}
-          {!message && messages.length > 0 && (
-            <div className="mt-3 flex justify-center">
-              <p className="text-muted-foreground text-xs">
-                Click the sparkles button in the bottom-right to access prompt templates.
-              </p>
-            </div>
-          )}
 
           {/* Keyboard shortcuts hint */}
           {message.length === 0 && messages.length === 0 && (
             <div className="mt-3 flex justify-center">
               <div className="flex items-center gap-4 text-xs text-muted-foreground/60">
                 <span className="flex items-center gap-1">
-                  <kbd className="px-1 py-0.5 bg-muted/50 rounded text-[10px]">Enter</kbd>
+                  <kbd className="px-1 py-0.5 bg-muted/50 rounded text-[10px]">Ctrl+Enter</kbd>
                   Send
-                </span>
-                <span className="flex items-center gap-1">
-                  <kbd className="px-1 py-0.5 bg-muted/50 rounded text-[10px]">Shift+Enter</kbd>
-                  New line
                 </span>
                 <span className="flex items-center gap-1">
                   <kbd className="px-1 py-0.5 bg-muted/50 rounded text-[10px]">Esc</kbd>
                   Clear
+                </span>
+                <span className="flex items-center gap-1">
+                  <kbd className="px-1 py-0.5 bg-muted/50 rounded text-[10px]">Ctrl+L</kbd>
+                  Clear Chat
+                </span>
+                <span className="flex items-center gap-1">
+                  <kbd className="px-1 py-0.5 bg-muted/50 rounded text-[10px]">Ctrl+N</kbd>
+                  New Chat
                 </span>
               </div>
             </div>

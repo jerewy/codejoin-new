@@ -152,6 +152,7 @@ class AIResponse {
 class ProviderConfig {
   constructor(config = {}) {
     this.apiKey = config.apiKey;
+    this.model = config.model;
     this.baseURL = config.baseURL;
     this.timeout = config.timeout || 30000;
     this.maxRetries = config.maxRetries || 3;

@@ -15,10 +15,10 @@ class DockerService {
       isAvailable: null, // null = unknown, true = available, false = unavailable
       lastChecked: null,
       consecutiveFailures: 0,
-      backoffMs: 1000, // Start with 1 second backoff
-      maxBackoffMs: 60000, // Max 1 minute backoff
+      backoffMs: 500, // Start with 500ms backoff (reduced from 1s)
+      maxBackoffMs: 10000, // Max 10 seconds backoff (reduced from 60s)
       lastErrorLogged: 0,
-      errorLogCooldownMs: 30000 // Only log errors once every 30 seconds
+      errorLogCooldownMs: 15000 // Log errors every 15 seconds (reduced from 30s)
     };
 
     this.docker = new Docker(this.dockerOptions);
@@ -26,7 +26,8 @@ class DockerService {
 
     logger.info('Docker service initialized', {
       platform: process.platform,
-      options: JSON.stringify(this.dockerOptions, null, 2)
+      options: JSON.stringify(this.dockerOptions, null, 2),
+      socketPath: this.dockerOptions.socketPath
     });
   }
 
@@ -37,6 +38,17 @@ class DockerService {
       ? process.env.DOCKER_SOCKET || '//./pipe/docker_engine'
       : '/var/run/docker.sock';
     const defaultOptions = { socketPath: defaultSocketPath };
+
+    // Enhanced Windows Docker configuration
+    if (isWindows) {
+      logger.info('Windows Docker configuration detected', {
+        dockerHost,
+        socketPath: defaultSocketPath,
+        platform: process.platform,
+        isWindows,
+        dockerSocketEnv: process.env.DOCKER_SOCKET
+      });
+    }
 
     if (!dockerHost) {
       return {
@@ -110,7 +122,7 @@ class DockerService {
     // Also skip if we recently confirmed Docker is available (short-circuit happy path)
     if (state.isAvailable === true && state.lastChecked) {
       const timeSinceLastCheck = now - state.lastChecked;
-      if (timeSinceLastCheck < 5000) { // 5 second cache for successful connections
+      if (timeSinceLastCheck < 2000) { // 2 second cache for successful connections (reduced from 5s)
         return false; // Don't skip, we want to verify quickly
       }
     }
@@ -134,9 +146,9 @@ class DockerService {
       state.isAvailable = false;
       state.consecutiveFailures++;
 
-      // Exponential backoff with jitter
-      const baseBackoff = Math.min(state.backoffMs * 2, state.maxBackoffMs);
-      const jitter = Math.random() * 0.1 * baseBackoff; // 10% jitter
+      // Exponential backoff with jitter (less aggressive)
+      const baseBackoff = Math.min(state.backoffMs * 1.5, state.maxBackoffMs); // Reduced multiplier from 2 to 1.5
+      const jitter = Math.random() * 0.2 * baseBackoff; // Increased jitter to 20%
       state.backoffMs = Math.floor(baseBackoff + jitter);
     }
 

@@ -22,8 +22,8 @@ const CircuitState = {
 class CircuitBreaker {
   constructor(options = {}) {
     this.name = options.name || 'default';
-    this.failureThreshold = options.failureThreshold || 5; // Failures before opening
-    this.resetTimeout = options.resetTimeout || 60000;     // 60 seconds
+    this.failureThreshold = options.failureThreshold || 8; // Failures before opening (increased from 5)
+    this.resetTimeout = options.resetTimeout || 30000;     // 30 seconds (reduced from 60s)
     this.monitoringPeriod = options.monitoringPeriod || 10000; // 10 seconds
 
     this.state = CircuitState.CLOSED;
