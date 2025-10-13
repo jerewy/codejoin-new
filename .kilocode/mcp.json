@@ -8,6 +8,43 @@
         "--access-token",
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6bmd5dWhhd3dseG9wY2RtZnJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDYwMzI1NTgsImV4cCI6MjA2MTYwODU1OH0.xBBKqMxuyT9EpgvpDk3kz3caPsQTFrUN4cp16KSGJzg"
       ]
+    },
+    "github": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "-e",
+        "GITHUB_TOOLSETS",
+        "-e",
+        "GITHUB_READ_ONLY",
+        "ghcr.io/github/github-mcp-server"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "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",
+        "GITHUB_TOOLSETS": "",
+        "GITHUB_READ_ONLY": ""
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "C:/dev/codejoin-new/"
+      ]
+    },
+    "render": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@betterhunt/render-mcp-server",
+        "--access-token",
+        "rnd_UhCqLIWdaefvwa4BnL43WmjKShZ7"
+      ]
     }
   }
 }

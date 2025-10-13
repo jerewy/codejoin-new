@@ -1,5 +1,5 @@
 # Socket.IO Server Dockerfile
-FROM node:18-alpine
+FROM node:20.12.0-alpine
 
 # Install dependencies
 WORKDIR /app

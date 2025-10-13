@@ -362,7 +362,9 @@ export function measurePageLoad(
         pageLoad: navigation.loadEventEnd - navigation.fetchStart,
         apiResponse: 0, // Will be updated as API calls are made
         socketLatency: 0, // Will be updated as socket events occur
-        memoryUsage: performance.memory ? performance.memory.usedJSHeapSize : 0,
+        memoryUsage: (performance as any).memory
+          ? (performance as any).memory.usedJSHeapSize
+          : 0,
         errorRate: 0, // Will be calculated based on errors
       },
     };

@@ -13,10 +13,15 @@
     "migrate-ai-service:dry": "tsx scripts/migrate-ai-conversation-service.ts --dry-run",
     "migrate-ai-service:force": "tsx scripts/migrate-ai-conversation-service.ts --force",
     "fix-db-permissions": "supabase db push --file fix-ai-conversation-permissions.sql",
-    "deploy": "chmod +x scripts/deploy.sh && ./scripts/deploy.sh",
+    "deploy": "C:\\Windows\\System32\\bash.exe scripts/deploy.sh",
     "deploy:frontend": "vercel --prod",
     "deploy:backend": "cd code-execution-backend && npm run deploy",
-    "deploy:socket": "cd socket-server && npm run deploy"
+    "deploy:socket": "cd socket-server && npm run deploy",
+    "separate": "scripts\\separate-repositories.bat",
+    "separate:auto": "scripts\\separate-repositories-auto.bat",
+    "push:github": "scripts\\push-to-github.bat",
+    "push:github:fixed": "scripts\\push-to-github-fixed.bat",
+    "push:github:force": "scripts\\push-to-github-force.bat"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
