@@ -1,0 +1,74 @@
+services:
+  - type: web
+    name: codejoin-backend
+    env: docker
+    dockerfilePath: ./Dockerfile.render
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Basic configuration
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: API_KEY
+        value: codejoin-backend-2024-secure-key
+      - key: DOCKER_SOCKET
+        value: /var/run/docker.sock
+
+      # CORS configuration
+      - key: CORS_ORIGIN
+        value: https://codejoin-backend.onrender.com,https://your-frontend-domain.com
+
+      # Logging
+      - key: LOG_LEVEL
+        value: info
+      - key: LOG_FILE
+        value: logs/app.log
+
+      # Execution limits
+      - key: MAX_CODE_SIZE_BYTES
+        value: "1048576"
+      - key: MAX_OUTPUT_SIZE_BYTES
+        value: "10485760"
+      - key: MAX_EXECUTION_TIME_MS
+        value: "10000"
+      - key: CONTAINER_CPU_LIMIT
+        value: "0.5"
+      - key: CONTAINER_MEMORY_LIMIT
+        value: "128m"
+      - key: CONTAINER_TIMEOUT_MS
+        value: "30000"
+
+      # Rate limiting
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: "100"
+
+      # Supabase configuration (these should be set in Render dashboard)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+      # AI Provider Keys (these should be set in Render dashboard)
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: qwen/qwen-2.5-coder-32b-instruct:free
+      - key: GLM_API_KEY
+        sync: false
+      - key: GLM_MODEL
+        value: glm-4.6
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-flash-latest
+      - key: HUGGINGFACE_API_KEY
+        sync: false
