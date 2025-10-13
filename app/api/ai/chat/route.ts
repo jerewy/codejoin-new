@@ -67,22 +67,42 @@ export async function POST(request: NextRequest) {
     } catch (backendError) {
       console.error('Backend API error:', backendError);
 
-      // Fallback to local response
-      const fallbackResponse = generateLocalResponse(message);
+      // Parse the backend error to get specific details
+      let errorMessage = 'Unknown backend error';
+      let statusCode = 500;
+      let errorType = 'unknown';
 
-      return NextResponse.json({
-        success: true,
-        response: fallbackResponse,
-        metadata: {
-          model: 'local-fallback',
-          provider: 'Local AI',
-          tokensUsed: 0,
-          responseTime: Date.now() - startTime,
-          requestId,
-          fallback: true,
-          backend: false
+      if (backendError instanceof Error) {
+        errorMessage = backendError.message;
+
+        // Detect specific error types from backend response
+        if (errorMessage.includes('rate limit exceeded') || errorMessage.includes('429')) {
+          statusCode = 429;
+          errorType = 'rate_limit';
+        } else if (errorMessage.includes('quota exceeded') || errorMessage.includes('403')) {
+          statusCode = 403;
+          errorType = 'quota_exceeded';
+        } else if (errorMessage.includes('401')) {
+          statusCode = 401;
+          errorType = 'authentication';
+        } else if (errorMessage.includes('402')) {
+          statusCode = 402;
+          errorType = 'credits_insufficient';
+        } else if (errorMessage.includes('503') || errorMessage.includes('temporarily unavailable')) {
+          statusCode = 503;
+          errorType = 'service_unavailable';
         }
-      });
+      }
+
+      // Return the actual error instead of masking with fallback
+      return NextResponse.json({
+        success: false,
+        error: errorMessage,
+        errorType,
+        requestId,
+        processingTime: Date.now() - startTime,
+        backend: true
+      }, { status: statusCode });
     }
 
   } catch (error) {

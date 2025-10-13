@@ -14,24 +14,19 @@ interface CleanAIMessageProps {
 export default function CleanAIMessage({ message }: CleanAIMessageProps) {
   const [copied, setCopied] = useState(false);
 
-  const isAI = message.role === "assistant";
-  const isUser = message.role === "user";
+  // Ensure message has valid timestamp
+  const validatedMessage = validateMessageTimestamp(message);
+  const isAI = validatedMessage.role === "assistant";
+  const isUser = validatedMessage.role === "user";
 
   const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(message.content);
+      await navigator.clipboard.writeText(validatedMessage.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error("Failed to copy text:", err);
     }
-  };
-
-  const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
   };
 
   const formatContent = (content: string) => {
@@ -79,7 +74,7 @@ export default function CleanAIMessage({ message }: CleanAIMessageProps) {
     return parts;
   };
 
-  const contentParts = formatContent(message.content);
+  const contentParts = formatContent(validatedMessage.content);
 
   return (
     <div className={`flex gap-4 ${isAI ? "flex-row" : "flex-row-reverse"}`}>
@@ -111,10 +106,7 @@ export default function CleanAIMessage({ message }: CleanAIMessageProps) {
               {message.metadata.ai_model}
             </Badge>
           )}
-          <span className="text-xs text-muted-foreground">
-            {formatTime(message.created_at)}
-          </span>
-          {message.metadata?.ai_response_time_ms && (
+            {message.metadata?.ai_response_time_ms && (
             <Badge variant="secondary" className="text-xs">
               {Math.round(message.metadata.ai_response_time_ms / 1000)}s
             </Badge>

@@ -45,10 +45,10 @@ export default function AIAssistantPage() {
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-md px-4">
             <h2 className="text-xl font-semibold mb-2">
-              Authentication Required
+              Please Sign In
             </h2>
             <p className="text-muted-foreground mb-4">
-              Please sign in to use the AI Assistant.
+              You need to be signed in to use the AI Assistant.
             </p>
           </div>
         </div>

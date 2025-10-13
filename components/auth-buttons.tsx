@@ -7,7 +7,7 @@ import UserDropdown from "@/components/user-dropdown";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export default function AuthButtons() {
-  const isLoggedIn = useAuthStatus();
+  const { isLoggedIn } = useAuthStatus();
   const supabaseClient = useMemo(() => getSupabaseClient(), []);
 
   return (

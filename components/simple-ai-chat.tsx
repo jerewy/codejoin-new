@@ -213,7 +213,7 @@ export default function SimpleAIChat({ projectId: initialProjectId, userId, onSt
     if (!userId) {
       console.error('DEBUG: No userId provided for message sending');
       toast({
-        title: "Not Authenticated",
+        title: "Sign In Required",
         description: "Please sign in to use the AI Assistant.",
         variant: "destructive",
       });

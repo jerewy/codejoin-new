@@ -43,7 +43,7 @@ export const sidebarNavSections: SidebarNavSection[] = [
         icon: Bot,
         badge: "Beta",
       },
-    ],
+      ],
   },
 ];
 

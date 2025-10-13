@@ -10,8 +10,6 @@ import { useToast } from "@/hooks/use-toast"
 interface AIMessageProps {
   /** The message content */
   content: string
-  /** The message timestamp */
-  timestamp: string
   /** Whether the message is pending (sending) */
   isPending?: boolean
   /** Whether the message is from an AI assistant */
@@ -35,7 +33,6 @@ interface AIMessageProps {
  */
 export function AIMessage({
   content,
-  timestamp,
   isPending = false,
   isAI = false,
   authorName = "AI Assistant",
@@ -105,10 +102,11 @@ export function AIMessage({
           <span className="text-sm font-medium text-primary">
             {authorName}
           </span>
-          <span className="text-xs text-muted-foreground">
-            {timestamp}
-            {isPending && " • Sending…"}
-          </span>
+          {isPending && (
+            <span className="text-xs text-muted-foreground">
+              Sending…
+            </span>
+          )}
           {isAI && codeBlockCount > 0 && (
             <Badge variant="secondary" className="text-xs">
               {codeBlockCount} code block{codeBlockCount > 1 ? "s" : ""}

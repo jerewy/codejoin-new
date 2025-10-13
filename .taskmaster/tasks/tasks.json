@@ -1,0 +1,85 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Set up API keys for MCP Taskmaster",
+        "description": "Configure API keys in MCP settings to enable AI-powered task management",
+        "details": "The MCP taskmaster requires API keys for AI services to function properly. Update the MCP settings file with valid API keys from providers like Anthropic, OpenAI, or others.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 2,
+        "title": "Fix AI Assistant Chat connection with OpenRouter Qwen Free API",
+        "description": "Debug and resolve connection issues between the AI Assistant Chat in project-workspace.tsx and OpenRouter Qwen Free API",
+        "details": "The AI Assistant Chat component cannot connect to the OpenRouter Qwen Free API key that has been created. Need to investigate the OpenRouter integration, check API key configuration, verify API endpoints, and ensure proper error handling.",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 3,
+        "title": "Investigate current OpenRouter integration implementation",
+        "description": "Analyze existing OpenRouter API integration code to understand how it's currently configured",
+        "details": "Examine the project-workspace.tsx component, OpenRouter hooks, API routes, and any existing OpenRouter configuration to identify potential issues with the API connection.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          2
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 4,
+        "title": "Check OpenRouter API key configuration",
+        "description": "Verify that the OpenRouter Qwen Free API key is properly configured in environment variables",
+        "details": "Check if the OPENROUTER_API_KEY is set in the correct environment files (.env.local, .env, etc.) and ensure it's accessible to the application. Verify the key format and permissions.",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [
+          3
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 5,
+        "title": "Test OpenRouter API endpoint connectivity",
+        "description": "Create a test script to verify direct connection to OpenRouter API with the Qwen model",
+        "details": "Write a simple test script that makes a direct API call to OpenRouter using the Qwen Free model to verify the API key works and the endpoint is accessible. Check for any authentication or network issues.",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          4
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 6,
+        "title": "Fix OpenRouter integration in project-workspace.tsx",
+        "description": "Implement fixes for the OpenRouter API connection issues in the AI Assistant Chat",
+        "details": "Based on the investigation findings, update the OpenRouter integration code in project-workspace.tsx and related files to properly connect with the Qwen Free API. Fix any authentication, endpoint, or parameter issues.",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          5
+        ],
+        "priority": "high",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2025-10-13T11:43:34.088Z",
+      "description": "Default tasks context",
+      "updated": "2025-10-13T12:41:30.510Z"
+    }
+  }
+}

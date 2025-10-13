@@ -132,13 +132,13 @@ export function GlobalErrorHandler() {
 
       // Handle specific error types
       if (isModuleCallError) {
-        handleModuleCallError();
+        handleModuleCallError(isDuplicateError);
       } else if (isChunkLoadError) {
         handleChunkLoadError();
       } else if (isDimensionsError) {
         handleDimensionsError();
       } else {
-        handleGenericError(errorMessage);
+        handleGenericError(errorMessage, isDuplicateError);
       }
     };
 
@@ -223,15 +223,15 @@ export function GlobalErrorHandler() {
       });
 
       if (isModuleCallError) {
-        handleModuleCallError();
+        handleModuleCallError(isDuplicateError);
       } else if (isDimensionsError) {
         handleDimensionsError();
       } else {
-        handleGenericError(reasonMessage);
+        handleGenericError(reasonMessage, isDuplicateError);
       }
     };
 
-    const handleModuleCallError = () => {
+    const handleModuleCallError = (isDuplicateError: boolean = false) => {
       // DISABLED - All toast notifications removed to eliminate popup nuisance
       // Console logging preserved for debugging purposes
       const currentTime = Date.now();
@@ -292,7 +292,7 @@ export function GlobalErrorHandler() {
       });
     };
 
-    const handleGenericError = (message: string) => {
+    const handleGenericError = (message: string, isDuplicateError: boolean = false) => {
       // DISABLED - All toast notifications removed to eliminate popup nuisance
       // Console logging preserved for debugging purposes
       const currentTime = Date.now();

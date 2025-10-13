@@ -40,22 +40,24 @@ class EnhancedErrorHandler {
       recentErrors: []
     };
 
-    // Initialize health monitors for critical services
+    // Initialize health monitors for critical services - DISABLED to prevent quota consumption
+    // Only monitor Docker service, not AI providers to avoid consuming API quota
     this.dockerHealthMonitor = healthMonitorFactory.get('docker-service', {
-      checkInterval: 30000,
+      checkInterval: 60000, // 1 minute instead of 30 seconds
       maxConsecutiveFailures: 3,
       recoveryStrategies: [
         this.dockerRecoveryStrategy.bind(this)
       ]
     });
 
-    this.aiServiceHealthMonitor = healthMonitorFactory.get('ai-service', {
-      checkInterval: 30000,
-      maxConsecutiveFailures: 5,
-      recoveryStrategies: [
-        this.aiServiceRecoveryStrategy.bind(this)
-      ]
-    });
+    // AI service health monitoring disabled to prevent API quota consumption
+    // this.aiServiceHealthMonitor = healthMonitorFactory.get('ai-service', {
+    //   checkInterval: 300000, // 5 minutes
+    //   maxConsecutiveFailures: 5,
+    //   recoveryStrategies: [
+    //     this.aiServiceRecoveryStrategy.bind(this)
+    //   ]
+    // });
 
     logger.info('Enhanced error handler initialized');
   }

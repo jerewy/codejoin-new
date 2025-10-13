@@ -1,0 +1,113 @@
+# CodeJoin - Collaborative Development Platform
+
+## Project Overview
+CodeJoin is a collaborative development platform that enables teams to work together on coding projects in real-time. The platform provides a comprehensive workspace for project management, code collaboration, and AI-assisted development.
+
+## Key Features
+
+### Core Functionality
+1. **Project Management**
+   - Create and manage multiple projects
+   - Project templates and starter projects
+   - Project settings and configuration
+   - Project sharing and collaboration
+
+2. **Real-time Collaboration**
+   - Multi-user code editing
+   - Live chat and communication
+   - Collaborator management
+   - Permission system
+
+3. **AI Integration**
+   - AI-powered code assistance
+   - Multiple AI provider support (OpenAI, Anthropic, Local models)
+   - AI conversation management
+   - Code generation and debugging
+
+4. **Code Execution**
+   - In-browser code execution
+   - Multiple language support
+   - Docker container integration
+   - Terminal access
+
+5. **User Management**
+   - User authentication
+   - Profile management
+   - Team creation and management
+   - User settings and preferences
+
+## Technical Requirements
+
+### Frontend
+- Next.js 15 with TypeScript
+- React 19
+- Tailwind CSS for styling
+- Radix UI components
+- Real-time updates with Socket.io
+
+### Backend
+- Node.js server
+- Supabase for database
+- Authentication with Supabase Auth
+- API routes for AI services
+- Docker integration for code execution
+
+### AI Services
+- OpenAI API integration
+- Anthropic Claude integration
+- Local AI model support (Ollama)
+- OpenRouter for multiple AI providers
+- AI conversation persistence
+
+### Database
+- Supabase PostgreSQL
+- Real-time subscriptions
+- Row Level Security (RLS)
+- Database migrations
+
+## User Stories
+
+### Project Management
+- As a user, I want to create new projects with templates
+- As a user, I want to organize projects in a dashboard
+- As a user, I want to share projects with collaborators
+- As a user, I want to manage project settings
+
+### Collaboration
+- As a user, I want to invite team members to projects
+- As a user, I want to edit code with others in real-time
+- As a user, I want to communicate with team members
+- As a user, I want to manage permissions
+
+### AI Assistance
+- As a developer, I want AI help with coding problems
+- As a developer, I want to generate code snippets
+- As a developer, I want to debug code with AI assistance
+- As a developer, I want to have persistent AI conversations
+
+### Code Execution
+- As a developer, I want to run code in the browser
+- As a developer, I want to test different programming languages
+- As a developer, I want to access a terminal
+- As a developer, I want to use Docker containers
+
+## Success Criteria
+- Users can create and manage projects
+- Real-time collaboration works smoothly
+- AI integration provides helpful assistance
+- Code execution is reliable and secure
+- Platform is responsive and user-friendly
+
+## Technical Constraints
+- Must work on modern browsers
+- Must support real-time collaboration
+- Must be secure and protect user data
+- Must be scalable for multiple users
+- Must integrate with external AI services
+
+## Future Enhancements
+- Mobile app support
+- Advanced project analytics
+- More AI integrations
+- Advanced code review features
+- Integration with popular development tools

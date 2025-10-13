@@ -411,16 +411,18 @@ function initializeHealthChecks() {
     timeout: 10000
   });
 
-  // Initialize AI service health monitor
+  // Initialize AI service health monitor - DISABLED to prevent quota consumption
+  // AI provider health checks were consuming API quota even when not using the AI assistant
   const aiMonitor = healthMonitorFactory.get('ai-service', {
-    checkInterval: 30000,
+    checkInterval: 300000, // 5 minutes instead of 30 seconds
     maxConsecutiveFailures: 5
   });
 
-  aiMonitor.addHealthCheck('gemini-provider', aiServiceHealthChecks.checkGeminiProvider.bind(aiServiceHealthChecks), {
-    critical: true,
-    timeout: 10000
-  });
+  // Disable Gemini provider health check to prevent API quota consumption
+  // aiMonitor.addHealthCheck('gemini-provider', aiServiceHealthChecks.checkGeminiProvider.bind(aiServiceHealthChecks), {
+  //   critical: true,
+  //   timeout: 10000
+  // });
 
   aiMonitor.addHealthCheck('ai-service-manager', aiServiceHealthChecks.checkAIServiceManager.bind(aiServiceHealthChecks), {
     critical: false,

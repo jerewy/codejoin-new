@@ -80,27 +80,44 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       const terminal = terminalRef.current;
 
       if (!container || !fitAddon || !terminal) {
+        console.debug("Cannot fit terminal: missing container, fitAddon, or terminal");
         return;
       }
 
-      const width = container.clientWidth;
-      const height = container.clientHeight;
+      // Check if container has dimensions
+      const width = container.clientWidth || 0;
+      const height = container.clientHeight || 0;
 
       if (width === 0 || height === 0) {
+        console.debug("Cannot fit terminal: container has no dimensions", { width, height });
+        return;
+      }
+
+      // Additional safety check for terminal element
+      if (!terminal.element) {
+        console.debug("Cannot fit terminal: terminal.element is not available");
         return;
       }
 
       try {
         fitAddon.fit();
+        console.debug("Terminal fitted successfully", { cols: terminal.cols, rows: terminal.rows });
       } catch (error) {
         console.warn("Failed to fit terminal dimensions", error);
+        // Try to set fallback dimensions
+        try {
+          terminal.resize(80, 24);
+          console.debug("Applied fallback terminal dimensions (80x24)");
+        } catch (fallbackError) {
+          console.error("Failed to apply fallback terminal dimensions", fallbackError);
+        }
         return;
       }
 
       lastMeasuredDimensionsRef.current = { width, height };
 
-      const cols = terminal.cols;
-      const rows = terminal.rows;
+      const cols = terminal.cols || 80;
+      const rows = terminal.rows || 24;
 
       const lastGeometry = lastKnownGeometryRef.current;
       if (
@@ -327,21 +344,30 @@ const TerminalSurface = forwardRef<TerminalSurfaceHandle, TerminalSurfaceProps>(
       };
 
       if (containerRef.current) {
-        terminal.open(containerRef.current);
-        dataDisposable = terminal.onData(handleInput);
-        binaryDisposable = terminal.onBinary?.(handleInput);
-        terminal.focus();
-        queueMicrotask(() => {
-          try {
-            scheduleFitAndEmit();
-          } catch (error) {
-            console.warn("Failed to fit terminal on mount", error);
+        try {
+          terminal.open(containerRef.current);
+          dataDisposable = terminal.onData(handleInput);
+          binaryDisposable = terminal.onBinary?.(handleInput);
+          terminal.focus();
+
+          // Add delay to ensure container is properly mounted and has dimensions
+          setTimeout(() => {
+            queueMicrotask(() => {
+              try {
+                scheduleFitAndEmit();
+              } catch (error) {
+                console.warn("Failed to fit terminal on mount", error);
+              }
+            });
+          }, 100);
+
+          resizeObserver.observe(containerRef.current);
+          const parentElement = containerRef.current.parentElement;
+          if (parentElement) {
+            resizeObserver.observe(parentElement);
           }
-        });
-        resizeObserver.observe(containerRef.current);
-        const parentElement = containerRef.current.parentElement;
-        if (parentElement) {
-          resizeObserver.observe(parentElement);
+        } catch (error) {
+          console.error("Failed to initialize terminal", error);
         }
       }
 

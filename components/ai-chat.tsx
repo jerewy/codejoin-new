@@ -138,22 +138,19 @@ Would you like me to add any specific features or modify the styling?`,
               ) : (
                 <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
               )}
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-xs opacity-70">{msg.timestamp}</span>
-                {msg.type === "ai" && (
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                      <ThumbsUp className="h-3 w-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                      <ThumbsDown className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
-              </div>
+              {msg.type === "ai" && (
+                <div className="flex gap-1 mt-2 justify-end">
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                    <ThumbsUp className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                    <ThumbsDown className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         ))}

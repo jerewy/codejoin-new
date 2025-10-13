@@ -22,7 +22,7 @@ class GeminiProvider extends AIProvider {
 
     this.config = new ProviderConfig({
       apiKey: config.apiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY,
-      model: config.model || process.env.GEMINI_MODEL || 'gemini-1.5-flash', // Updated to newer model
+      model: config.model || process.env.GEMINI_MODEL || 'gemini-flash-latest', // Updated to working model name
       baseURL: config.baseURL,
       timeout: config.timeout || 30000,
       maxRetries: config.maxRetries || 3,

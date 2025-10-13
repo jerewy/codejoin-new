@@ -94,7 +94,10 @@ export default function ProjectSharingModal({
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const [isSupabaseUnavailable, setIsSupabaseUnavailable] = useState(false);
-  const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{
+    id: string;
+    email: string;
+  } | null>(null);
   const [userRole, setUserRole] = useState<SharedUserRole | null>(null);
   const [canAddCollaborators, setCanAddCollaborators] = useState(false);
 
@@ -121,7 +124,10 @@ export default function ProjectSharingModal({
       let currentUserData = null;
       if (supabase && supabase.auth) {
         try {
-          const { data: { user }, error: authError } = await supabase.auth.getUser();
+          const {
+            data: { user },
+            error: authError,
+          } = await supabase.auth.getUser();
           if (!authError && user) {
             currentUserData = { id: user.id, email: user.email || "" };
             setCurrentUser(currentUserData);
@@ -131,12 +137,15 @@ export default function ProjectSharingModal({
         }
       }
 
-      const response = await fetch(`/api/collaborators?projectId=${projectId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await fetch(
+        `/api/collaborators?projectId=${projectId}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -149,16 +158,40 @@ export default function ProjectSharingModal({
           setUserRole(null);
           setCanAddCollaborators(false);
         } else if (response.status === 403) {
-          toast.error("You don't have permission to view collaborators for this project");
+          toast.error(
+            "You don't have permission to view collaborators for this project"
+          );
         } else {
-          toast.error(`Failed to load collaborators: ${errorData.error || 'Unknown error'}`);
+          toast.error(
+            `Failed to load collaborators: ${
+              errorData.error || "Unknown error"
+            }`
+          );
         }
 
         setSharedUsers([]);
         return;
       }
 
-      const result = await response.json();
+      // Type definition for the API response
+      interface CollaboratorsApiResponse {
+        collaborators: Array<{
+          user_id: string;
+          role: string | null;
+          created_at: string | null;
+          profile: {
+            id: string;
+            email: string | null;
+            full_name: string | null;
+            user_avatar: string | null;
+          } | null;
+        }>;
+        userRole: SharedUserRole | null;
+        canAddCollaborators: boolean;
+        message?: string;
+      }
+
+      const result = (await response.json()) as CollaboratorsApiResponse;
       console.log("API response for loadUsers:", result);
 
       const collaboratorsData = result.collaborators || [];
@@ -218,7 +251,8 @@ export default function ProjectSharingModal({
       setSharedUsers(mappedUsers);
     } catch (error) {
       console.error("Failed to load collaborators:", error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       toast.error(`Failed to load collaborators: ${errorMessage}`);
       setSharedUsers([]);
       setCurrentUser(null);
@@ -234,12 +268,17 @@ export default function ProjectSharingModal({
       return;
     }
 
-    console.log("ProjectSharingModal opened, checking Supabase client:", !!supabase);
+    console.log(
+      "ProjectSharingModal opened, checking Supabase client:",
+      !!supabase
+    );
 
     if (!supabase) {
       console.error("Supabase client is not available");
       setIsSupabaseUnavailable(true);
-      toast.error("Database connection not available. Please refresh the page.");
+      toast.error(
+        "Database connection not available. Please refresh the page."
+      );
       return;
     }
 
@@ -257,12 +296,16 @@ export default function ProjectSharingModal({
     }
 
     if (!supabase) {
-      toast.error("Database connection not available. Please refresh the page.");
+      toast.error(
+        "Database connection not available. Please refresh the page."
+      );
       return;
     }
 
     if (!canAddCollaborators) {
-      toast.error("You don't have permission to add collaborators to this project");
+      toast.error(
+        "You don't have permission to add collaborators to this project"
+      );
       return;
     }
 
@@ -283,24 +326,27 @@ export default function ProjectSharingModal({
       }
 
       // Step 2: Use the API to add the collaborator
-      toast.loading(`Adding ${normalizedEmail} as ${getRoleLabel(roleToAdd)}...`, { id: "add-collaborator" });
+      toast.loading(
+        `Adding ${normalizedEmail} as ${getRoleLabel(roleToAdd)}...`,
+        { id: "add-collaborator" }
+      );
 
       console.log("Adding collaborator via API:", {
         projectId,
         userEmail: normalizedEmail,
-        role: roleToAdd
+        role: roleToAdd,
       });
 
-      const response = await fetch('/api/collaborators', {
-        method: 'POST',
+      const response = await fetch("/api/collaborators", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           projectId,
           userEmail: normalizedEmail,
-          role: roleToAdd
-        })
+          role: roleToAdd,
+        }),
       });
 
       toast.dismiss("add-collaborator");
@@ -313,9 +359,13 @@ export default function ProjectSharingModal({
         if (response.status === 401) {
           toast.error("Please sign in to add collaborators");
         } else if (response.status === 403) {
-          toast.error("Permission denied. Only project owners and admins can add collaborators.");
+          toast.error(
+            "Permission denied. Only project owners and admins can add collaborators."
+          );
         } else if (response.status === 404) {
-          toast.error(`No user found with email "${normalizedEmail}". Ask them to sign up first.`);
+          toast.error(
+            `No user found with email "${normalizedEmail}". Ask them to sign up first.`
+          );
         } else if (response.status === 409) {
           toast.error(`That user is already a collaborator on this project.`);
         } else {
@@ -335,23 +385,38 @@ export default function ProjectSharingModal({
       setRoleToAdd("viewer");
 
       // Success message
-      toast.success(`${normalizedEmail} has been added as a ${getRoleLabel(roleToAdd)}!`, {
-        description: `They now have access to "${projectName}"`,
-        duration: 4000,
-      });
-
+      toast.success(
+        `${normalizedEmail} has been added as a ${getRoleLabel(roleToAdd)}!`,
+        {
+          description: `They now have access to "${projectName}"`,
+          duration: 4000,
+        }
+      );
     } catch (error) {
       console.error("Unexpected error adding collaborator:", error);
-      toast.error("An unexpected error occurred while adding the collaborator. Please try again.");
+      toast.error(
+        "An unexpected error occurred while adding the collaborator. Please try again."
+      );
     } finally {
       setIsAddingUser(false);
     }
-  }, [emailToAdd, projectId, roleToAdd, supabase, currentUser, canAddCollaborators, projectName, loadUsers]);
+  }, [
+    emailToAdd,
+    projectId,
+    roleToAdd,
+    supabase,
+    currentUser,
+    canAddCollaborators,
+    projectName,
+    loadUsers,
+  ]);
 
   const removeUser = useCallback(
     async (userId: string) => {
       if (!canAddCollaborators) {
-        toast.error("You don't have permission to remove collaborators from this project");
+        toast.error(
+          "You don't have permission to remove collaborators from this project"
+        );
         return;
       }
 
@@ -364,15 +429,15 @@ export default function ProjectSharingModal({
       setRemovingUserId(userId);
 
       try {
-        const response = await fetch('/api/collaborators', {
-          method: 'DELETE',
+        const response = await fetch("/api/collaborators", {
+          method: "DELETE",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             projectId,
-            userId
-          })
+            userId,
+          }),
         });
 
         if (!response.ok) {
@@ -394,7 +459,9 @@ export default function ProjectSharingModal({
         toast.success("Collaborator removed from project");
       } catch (error) {
         console.error("Unexpected error removing collaborator:", error);
-        toast.error("An unexpected error occurred while removing the collaborator. Please try again.");
+        toast.error(
+          "An unexpected error occurred while removing the collaborator. Please try again."
+        );
       } finally {
         setRemovingUserId(null);
       }
@@ -405,23 +472,25 @@ export default function ProjectSharingModal({
   const updateUserRole = useCallback(
     async (userId: string, newRole: SharedUserRole) => {
       if (!canAddCollaborators) {
-        toast.error("You don't have permission to update roles in this project");
+        toast.error(
+          "You don't have permission to update roles in this project"
+        );
         return;
       }
 
       setUpdatingUserId(userId);
 
       try {
-        const response = await fetch('/api/collaborators', {
-          method: 'PATCH',
+        const response = await fetch("/api/collaborators", {
+          method: "PATCH",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             projectId,
             userId,
-            role: newRole
-          })
+            role: newRole,
+          }),
         });
 
         if (!response.ok) {
@@ -433,7 +502,9 @@ export default function ProjectSharingModal({
           } else if (response.status === 403) {
             toast.error("You don't have permission to update roles");
           } else {
-            toast.error(errorData.error || "Failed to update collaborator role");
+            toast.error(
+              errorData.error || "Failed to update collaborator role"
+            );
           }
           return;
         }
@@ -443,7 +514,9 @@ export default function ProjectSharingModal({
         toast.success("Collaborator role updated");
       } catch (error) {
         console.error("Unexpected error updating collaborator role:", error);
-        toast.error("An unexpected error occurred while updating the collaborator role. Please try again.");
+        toast.error(
+          "An unexpected error occurred while updating the collaborator role. Please try again."
+        );
       } finally {
         setUpdatingUserId(null);
       }
@@ -487,12 +560,7 @@ export default function ProjectSharingModal({
     [projectId]
   );
 
-  const roleOptions = useMemo(
-    () => [
-      ...ROLE_OPTIONS,
-    ],
-    []
-  );
+  const roleOptions = useMemo(() => [...ROLE_OPTIONS], []);
 
   const getRoleColor = (role: SharedUserRole) => {
     switch (role) {
@@ -550,249 +618,295 @@ export default function ProjectSharingModal({
 
         <div className="flex flex-col flex-1 min-h-0">
           <div className="flex-1 overflow-y-auto space-y-4 px-1">
-          {/* Link Sharing */}
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <Label className="text-base font-medium">Share with link</Label>
-              <Select value={linkAccess} onValueChange={updateLinkAccess}>
-                <SelectTrigger className="w-full sm:w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="private">
-                    <div className="flex items-center gap-2">
-                      <Lock className="h-4 w-4" />
-                      Private
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="view">
-                    <div className="flex items-center gap-2">
-                      <Eye className="h-4 w-4" />
-                      View only
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="edit">
-                    <div className="flex items-center gap-2">
-                      <Edit3 className="h-4 w-4" />
-                      Can edit
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex gap-2">
-              <Input value={shareLink} readOnly className="flex-1" />
-              <Button onClick={copyShareLink} variant="outline" size="sm">
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {linkAccess !== "private" && (
-              <p className="text-sm text-muted-foreground">
-                {linkAccess === "view"
-                  ? "Anyone with this link can view the project"
-                  : "Anyone with this link can view and edit the project"
-                }
-              </p>
-            )}
-          </div>
-
-          <Separator />
-
-          {/* Add People */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label className="text-base font-medium">Add people</Label>
-              {!canAddCollaborators && currentUser && (
-                <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                  {userRole === "viewer" ? "Viewers cannot add collaborators" : "Only owners and admins can add collaborators"}
-                </span>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Input
-                  placeholder="Enter email address"
-                  value={emailToAdd}
-                  onChange={(e) => setEmailToAdd(e.target.value)}
-                  className={`flex-1 ${emailToAdd && !isValidEmail(emailToAdd) ? 'border-red-300 focus:border-red-500' : ''}`}
-                  disabled={isSupabaseUnavailable || isAddingUser || !canAddCollaborators}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && emailToAdd && !isAddingUser && canAddCollaborators && isValidEmail(emailToAdd)) {
-                      addUserByEmail();
-                    }
-                  }}
-                />
-                <div className="flex gap-2">
-                <Select
-                  value={roleToAdd}
-                  onValueChange={(value: SharedUserRole) => setRoleToAdd(value)}
-                  disabled={isSupabaseUnavailable || isAddingUser || !canAddCollaborators}
-                >
-                  <SelectTrigger className="w-full sm:w-32">
+            {/* Link Sharing */}
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <Label className="text-base font-medium">Share with link</Label>
+                <Select value={linkAccess} onValueChange={updateLinkAccess}>
+                  <SelectTrigger className="w-full sm:w-40">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {roleOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="private">
+                      <div className="flex items-center gap-2">
+                        <Lock className="h-4 w-4" />
+                        Private
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="view">
+                      <div className="flex items-center gap-2">
+                        <Eye className="h-4 w-4" />
+                        View only
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="edit">
+                      <div className="flex items-center gap-2">
+                        <Edit3 className="h-4 w-4" />
+                        Can edit
+                      </div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
-                <Button
-                  onClick={addUserByEmail}
-                  disabled={!emailToAdd || isSupabaseUnavailable || isAddingUser || !canAddCollaborators}
-                  className="shrink-0"
-                >
-                  {isAddingUser ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Adding...
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Add
-                    </>
-                  )}
+              </div>
+
+              <div className="flex gap-2">
+                <Input value={shareLink} readOnly className="flex-1" />
+                <Button onClick={copyShareLink} variant="outline" size="sm">
+                  <Copy className="h-4 w-4" />
                 </Button>
               </div>
-              </div>
 
-              {/* Email validation feedback */}
-              {emailToAdd && !isValidEmail(emailToAdd) && (
-                <p className="text-sm text-red-600">
-                  {getEmailValidationMessage(emailToAdd)}
-                </p>
-              )}
-
-              {/* Email addition hint */}
-              {emailToAdd && isValidEmail(emailToAdd) && !isAddingUser && canAddCollaborators && (
-                <p className="text-sm text-green-600">
-                  Press Enter or click Add to invite {emailToAdd}
+              {linkAccess !== "private" && (
+                <p className="text-sm text-muted-foreground">
+                  {linkAccess === "view"
+                    ? "Anyone with this link can view the project"
+                    : "Anyone with this link can view and edit the project"}
                 </p>
               )}
             </div>
 
-            {isSupabaseUnavailable && (
-              <p className="text-sm text-muted-foreground">
-                Configure Supabase environment variables to invite collaborators.
-              </p>
-            )}
+            <Separator />
 
-            {!canAddCollaborators && currentUser && (
-              <p className="text-sm text-muted-foreground">
-                Only project owners and admins can add collaborators.
-              </p>
-            )}
-          </div>
+            {/* Add People */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-medium">Add people</Label>
+                {!canAddCollaborators && currentUser && (
+                  <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                    {userRole === "viewer"
+                      ? "Viewers cannot add collaborators"
+                      : "Only owners and admins can add collaborators"}
+                  </span>
+                )}
+              </div>
 
-          <Separator />
-
-          {/* Current Collaborators */}
-          <div className="space-y-4">
-            <Label className="text-base font-medium">
-              People with access ({sharedUsers.length})
-            </Label>
-
-            <div className="space-y-2 max-h-48 sm:max-h-60 overflow-y-auto">
-              {isLoadingUsers ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading collaborators...
-                </div>
-              ) : sharedUsers.length > 0 ? (
-                sharedUsers.map((user) => (
-                  <div
-                    key={user.id}
-                    className="flex items-center justify-between p-2 rounded-lg border"
-                  >
-                    <div className="flex items-center gap-3">
-                      {user.avatar && (
-                        <img
-                          src={user.avatar}
-                          alt={user.name || user.email}
-                          className="w-8 h-8 rounded-full"
-                        />
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Input
+                    placeholder="Enter email address"
+                    value={emailToAdd}
+                    onChange={(e) => setEmailToAdd(e.target.value)}
+                    className={`flex-1 ${
+                      emailToAdd && !isValidEmail(emailToAdd)
+                        ? "border-red-300 focus:border-red-500"
+                        : ""
+                    }`}
+                    disabled={
+                      isSupabaseUnavailable ||
+                      isAddingUser ||
+                      !canAddCollaborators
+                    }
+                    onKeyDown={(e) => {
+                      if (
+                        e.key === "Enter" &&
+                        emailToAdd &&
+                        !isAddingUser &&
+                        canAddCollaborators &&
+                        isValidEmail(emailToAdd)
+                      ) {
+                        addUserByEmail();
+                      }
+                    }}
+                  />
+                  <div className="flex gap-2">
+                    <Select
+                      value={roleToAdd}
+                      onValueChange={(value: SharedUserRole) =>
+                        setRoleToAdd(value)
+                      }
+                      disabled={
+                        isSupabaseUnavailable ||
+                        isAddingUser ||
+                        !canAddCollaborators
+                      }
+                    >
+                      <SelectTrigger className="w-full sm:w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {roleOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      onClick={addUserByEmail}
+                      disabled={
+                        !emailToAdd ||
+                        isSupabaseUnavailable ||
+                        isAddingUser ||
+                        !canAddCollaborators
+                      }
+                      className="shrink-0"
+                    >
+                      {isAddingUser ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Adding...
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          Add
+                        </>
                       )}
-                      <div className="flex flex-col">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">
-                            {user.name || user.email || "Unknown collaborator"}
-                          </span>
-                          {currentUser && user.id === currentUser.id && (
-                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
-                              You
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Email validation feedback */}
+                {emailToAdd && !isValidEmail(emailToAdd) && (
+                  <p className="text-sm text-red-600">
+                    {getEmailValidationMessage(emailToAdd)}
+                  </p>
+                )}
+
+                {/* Email addition hint */}
+                {emailToAdd &&
+                  isValidEmail(emailToAdd) &&
+                  !isAddingUser &&
+                  canAddCollaborators && (
+                    <p className="text-sm text-green-600">
+                      Press Enter or click Add to invite {emailToAdd}
+                    </p>
+                  )}
+              </div>
+
+              {isSupabaseUnavailable && (
+                <p className="text-sm text-muted-foreground">
+                  Configure Supabase environment variables to invite
+                  collaborators.
+                </p>
+              )}
+
+              {!canAddCollaborators && currentUser && (
+                <p className="text-sm text-muted-foreground">
+                  Only project owners and admins can add collaborators.
+                </p>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Current Collaborators */}
+            <div className="space-y-4">
+              <Label className="text-base font-medium">
+                People with access ({sharedUsers.length})
+              </Label>
+
+              <div className="space-y-2 max-h-48 sm:max-h-60 overflow-y-auto">
+                {isLoadingUsers ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading collaborators...
+                  </div>
+                ) : sharedUsers.length > 0 ? (
+                  sharedUsers.map((user) => (
+                    <div
+                      key={user.id}
+                      className="flex items-center justify-between p-2 rounded-lg border"
+                    >
+                      <div className="flex items-center gap-3">
+                        {user.avatar && (
+                          <img
+                            src={user.avatar}
+                            alt={user.name || user.email}
+                            className="w-8 h-8 rounded-full"
+                          />
+                        )}
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">
+                              {user.name ||
+                                user.email ||
+                                "Unknown collaborator"}
+                            </span>
+                            {currentUser && user.id === currentUser.id && (
+                              <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
+                                You
+                              </span>
+                            )}
+                          </div>
+                          {(user.name || user.email) && (
+                            <span className="text-xs text-muted-foreground">
+                              {user.email}
                             </span>
                           )}
                         </div>
-                        {(user.name || user.email) && (
-                          <span className="text-xs text-muted-foreground">
-                            {user.email}
-                          </span>
-                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="secondary"
+                          className={`${getRoleColor(
+                            user.role
+                          )} flex items-center gap-1`}
+                        >
+                          {getRoleIcon(user.role)}
+                          {getRoleLabel(user.role)}
+                        </Badge>
+
+                        {canAddCollaborators &&
+                          currentUser &&
+                          user.id !== currentUser.id && (
+                            <>
+                              <Select
+                                value={user.role}
+                                onValueChange={(value: SharedUserRole) =>
+                                  updateUserRole(user.id, value)
+                                }
+                                disabled={
+                                  updatingUserId === user.id ||
+                                  isSupabaseUnavailable ||
+                                  !canAddCollaborators
+                                }
+                              >
+                                <SelectTrigger className="w-20 h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {roleOptions.map((option) => (
+                                    <SelectItem
+                                      key={option.value}
+                                      value={option.value}
+                                    >
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeUser(user.id)}
+                                className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                                disabled={
+                                  removingUserId === user.id ||
+                                  isSupabaseUnavailable ||
+                                  !canAddCollaborators
+                                }
+                              >
+                                {removingUserId === user.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </>
+                          )}
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant="secondary"
-                        className={`${getRoleColor(user.role)} flex items-center gap-1`}
-                      >
-                        {getRoleIcon(user.role)}
-                        {getRoleLabel(user.role)}
-                      </Badge>
-
-                      {canAddCollaborators && currentUser && user.id !== currentUser.id && (
-                        <>
-                          <Select
-                            value={user.role}
-                            onValueChange={(value: SharedUserRole) =>
-                              updateUserRole(user.id, value)
-                            }
-                            disabled={updatingUserId === user.id || isSupabaseUnavailable || !canAddCollaborators}
-                          >
-                            <SelectTrigger className="w-20 h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {roleOptions.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeUser(user.id)}
-                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                            disabled={removingUserId === user.id || isSupabaseUnavailable || !canAddCollaborators}
-                          >
-                            {removingUserId === user.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No collaborators have been added yet.
-                </p>
-              )}
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No collaborators have been added yet.
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-
           </div>
 
           {/* Actions - Fixed at bottom */}
@@ -804,5 +918,5 @@ export default function ProjectSharingModal({
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

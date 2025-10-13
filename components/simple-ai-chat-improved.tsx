@@ -120,7 +120,7 @@ export default function SimpleAIChatImproved({
 
     if (!userId) {
       toast({
-        title: "Not Authenticated",
+        title: "Sign In Required",
         description: "Please sign in to use the AI Assistant.",
         variant: "destructive",
       });

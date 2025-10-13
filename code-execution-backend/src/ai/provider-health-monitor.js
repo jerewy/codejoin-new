@@ -23,7 +23,7 @@ const HealthStatus = {
 class ProviderHealthMonitor {
   constructor(options = {}) {
     this.providers = new Map();
-    this.checkInterval = options.checkInterval || 60000; // 1 minute
+    this.checkInterval = options.checkInterval || 600000; // 10 minutes instead of 1 minute to prevent quota consumption
     this.timeout = options.timeout || 10000;             // 10 seconds
     this.failureThreshold = options.failureThreshold || 3; // Failures before marking unhealthy
     this.recoveryThreshold = options.recoveryThreshold || 2; // Successes before marking healthy

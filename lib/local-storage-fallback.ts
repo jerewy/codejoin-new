@@ -19,7 +19,32 @@ export class LocalStorageFallback {
   static loadConversations(): AIConversation[] {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.CONVERSATIONS);
-      return stored ? JSON.parse(stored) : [];
+      if (!stored) return [];
+
+      const conversations = JSON.parse(stored);
+
+      // Ensure all conversations have valid timestamps
+      return conversations.map((conv: AIConversation) => {
+        let createdAt = conv.created_at;
+        let updatedAt = conv.updated_at;
+
+        // Validate and fix timestamps
+        if (!createdAt || isNaN(new Date(createdAt).getTime())) {
+          console.warn('Invalid created_at timestamp found for conversation, using current time:', conv.id);
+          createdAt = new Date().toISOString();
+        }
+
+        if (!updatedAt || isNaN(new Date(updatedAt).getTime())) {
+          console.warn('Invalid updated_at timestamp found for conversation, using created_at:', conv.id);
+          updatedAt = createdAt;
+        }
+
+        return {
+          ...conv,
+          created_at: createdAt,
+          updated_at: updatedAt,
+        };
+      });
     } catch (error) {
       console.warn('Failed to load conversations from localStorage:', error);
       return [];
@@ -60,7 +85,25 @@ export class LocalStorageFallback {
   static loadMessages(conversationId: string): AIMessage[] {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.MESSAGES(conversationId));
-      return stored ? JSON.parse(stored) : [];
+      if (!stored) return [];
+
+      const messages = JSON.parse(stored);
+
+      // Ensure all messages have valid timestamps
+      return messages.map((msg: AIMessage) => {
+        let createdAt = msg.created_at;
+
+        // Validate and fix invalid timestamps
+        if (!createdAt || isNaN(new Date(createdAt).getTime())) {
+          console.warn('Invalid timestamp found for message, using current time:', msg.id);
+          createdAt = new Date().toISOString();
+        }
+
+        return {
+          ...msg,
+          created_at: createdAt,
+        };
+      });
     } catch (error) {
       console.warn('Failed to load messages from localStorage:', error);
       return [];
@@ -99,6 +142,59 @@ export class LocalStorageFallback {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  // Data validation and cleanup helper
+  static validateAndCleanData(): void {
+    if (!this.isStorageAvailable()) return;
+
+    try {
+      // Clean conversations with invalid timestamps
+      const conversations = this.loadConversations();
+      const validConversations = conversations.filter(conv => {
+        const hasValidCreatedAt = conv.created_at && !isNaN(new Date(conv.created_at).getTime());
+        const hasValidUpdatedAt = conv.updated_at && !isNaN(new Date(conv.updated_at).getTime());
+
+        if (!hasValidCreatedAt || !hasValidUpdatedAt) {
+          console.warn('Removing conversation with invalid timestamps:', conv.id);
+          return false;
+        }
+        return true;
+      });
+
+      if (validConversations.length !== conversations.length) {
+        this.saveConversations(validConversations);
+      }
+
+      // Clean messages with invalid timestamps
+      Object.keys(localStorage)
+        .filter(key => key.startsWith('ai_messages_') && key.endsWith('_fallback'))
+        .forEach(key => {
+          try {
+            const messages = JSON.parse(localStorage.getItem(key) || '[]');
+            const validMessages = messages.filter((msg: AIMessage) => {
+              const hasValidCreatedAt = msg.created_at && !isNaN(new Date(msg.created_at).getTime());
+
+              if (!hasValidCreatedAt) {
+                console.warn('Removing message with invalid timestamp from conversation:', key);
+                return false;
+              }
+              return true;
+            });
+
+            if (validMessages.length !== messages.length) {
+              localStorage.setItem(key, JSON.stringify(validMessages));
+            }
+          } catch (error) {
+            console.warn('Corrupted message data in localStorage, removing key:', key);
+            localStorage.removeItem(key);
+          }
+        });
+
+      console.log('LocalStorage validation and cleanup completed');
+    } catch (error) {
+      console.warn('Error during localStorage validation:', error);
     }
   }
 

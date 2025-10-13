@@ -12,7 +12,11 @@
     "migrate-ai-service": "tsx scripts/migrate-ai-conversation-service.ts",
     "migrate-ai-service:dry": "tsx scripts/migrate-ai-conversation-service.ts --dry-run",
     "migrate-ai-service:force": "tsx scripts/migrate-ai-conversation-service.ts --force",
-    "fix-db-permissions": "supabase db push --file fix-ai-conversation-permissions.sql"
+    "fix-db-permissions": "supabase db push --file fix-ai-conversation-permissions.sql",
+    "deploy": "chmod +x scripts/deploy.sh && ./scripts/deploy.sh",
+    "deploy:frontend": "vercel --prod",
+    "deploy:backend": "cd code-execution-backend && npm run deploy",
+    "deploy:socket": "cd socket-server && npm run deploy"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -54,6 +58,7 @@
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
     "date-fns": "^3.6.0",
+    "dotenv": "^17.2.3",
     "embla-carousel-react": "8.5.1",
     "input-otp": "1.4.1",
     "jszip": "^3.10.1",

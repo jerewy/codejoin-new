@@ -15,7 +15,7 @@ const { retryManagerFactory } = require('../ai/retry-manager');
 class HealthMonitor {
   constructor(name, options = {}) {
     this.name = name;
-    this.checkInterval = options.checkInterval || 30000; // 30 seconds
+    this.checkInterval = options.checkInterval || 300000; // 5 minutes instead of 30 seconds to prevent quota consumption
     this.timeout = options.timeout || 10000; // 10 seconds
     this.consecutiveFailures = 0;
     this.maxConsecutiveFailures = options.maxConsecutiveFailures || 5;

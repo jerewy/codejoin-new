@@ -73,6 +73,13 @@ export default async function ProjectPage({
   let collaborators: Collaborator[] = [];
   const params = await paramsPromise;
 
+  // Get current user
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+  if (userError) {
+    console.warn('Failed to get current user:', userError);
+  }
+
   // Fetch data needed for the header
   let project: { name: string | null } | null = null;
   let nodes;
@@ -156,29 +163,51 @@ export default async function ProjectPage({
       });
     }
 
+    // Try to get existing team chat conversation, or create one
     const { data: conversationData, error: conversationError } = await supabase
       .from("conversations")
       .select("id")
       .eq("project_id", params.id)
+      .eq("type", "team-chat")
       .maybeSingle();
 
     if (conversationError && conversationError.code !== "PGRST116") {
-      console.warn("Failed to load conversation", conversationError);
+      console.warn("Failed to load team chat conversation", conversationError);
     }
 
     if (conversationData?.id) {
       conversationId = conversationData.id;
+      console.log(`DEBUG: Found existing team chat conversation: ${conversationId}`);
     } else if (!conversationData) {
+      // Create a new team chat conversation using the database function
       const { data: createdConversation, error: createConversationError } = await supabase
-        .from("conversations")
-        .insert({ project_id: params.id })
-        .select("id")
-        .single();
+        .rpc('ensure_team_chat_conversation', {
+          project_uuid: params.id,
+          user_uuid: user?.id
+        });
 
       if (createConversationError) {
-        console.warn("Failed to create conversation", createConversationError);
-      } else if (createdConversation?.id) {
-        conversationId = createdConversation.id;
+        console.warn("Failed to create team chat conversation", createConversationError);
+        // Fallback to manual creation
+        const { data: fallbackConversation, error: fallbackError } = await supabase
+          .from("conversations")
+          .insert({
+            project_id: params.id,
+            type: 'team-chat',
+            created_by: user?.id
+          })
+          .select("id")
+          .single();
+
+        if (fallbackError) {
+          console.warn("Failed to create fallback team chat conversation", fallbackError);
+        } else if (fallbackConversation?.id) {
+          conversationId = fallbackConversation.id;
+          console.log(`DEBUG: Created fallback team chat conversation: ${conversationId}`);
+        }
+      } else if (createdConversation) {
+        conversationId = createdConversation;
+        console.log(`DEBUG: Created new team chat conversation: ${conversationId}`);
       }
     }
 

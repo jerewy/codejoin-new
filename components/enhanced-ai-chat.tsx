@@ -239,7 +239,6 @@ This uses async/await for better error handling.`,
             {msg.type === "ai" ? (
               <AIMessage
                 content={msg.content}
-                timestamp={msg.timestamp}
                 isAI={true}
                 authorName="AI Assistant"
                 onThumbsUp={() => handleThumbsUp(msg.id)}
@@ -249,9 +248,6 @@ This uses async/await for better error handling.`,
               <div className="flex gap-3 items-start justify-end">
                 <div className="flex-1 min-w-0 max-w-[80%]">
                   <div className="flex items-center gap-2 mb-1 justify-end">
-                    <span className="text-xs text-muted-foreground">
-                      {msg.timestamp}
-                    </span>
                     <span className="text-sm font-medium">You</span>
                   </div>
                   <div className="bg-primary text-primary-foreground rounded-lg p-3">

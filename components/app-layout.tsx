@@ -37,7 +37,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     "settings",
     "new-project",
     "ai-assistant",
-  ];
+    ];
   const isProtectedRoute = sidebarRoutes.includes(segment || "");
   const hasSidebar = isAuthConfigured && isLoggedIn && isProtectedRoute;
 

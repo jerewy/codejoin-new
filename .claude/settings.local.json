@@ -36,7 +36,9 @@
       "Bash(findstr:*)",
       "Bash(tskill:*)",
       "Bash(npm run type-check:*)",
-      "Bash(dir \"C:\\dev\\codejoin-new\\code-execution-backend\\src\\ai\")"
+      "Bash(dir \"C:\\dev\\codejoin-new\\code-execution-backend\\src\\ai\")",
+      "Bash(wmic:*)",
+      "Bash(npm start)"
     ],
     "deny": [],
     "ask": []

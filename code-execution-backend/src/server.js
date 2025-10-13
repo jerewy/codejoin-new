@@ -14,6 +14,8 @@ const helmet = require('helmet');
 const logger = require('./utils/logger');
 const executeController = require('./controllers/executeController');
 const AIChatController = require('./controllers/aiChatController');
+const LocalAIChatController = require('./controllers/localAIChatController');
+const OpenRouterChatController = require('./controllers/openRouterChatController');
 const {
   createRateLimit,
   authenticateApiKey,
@@ -31,13 +33,30 @@ const DEFAULT_PORT = process.env.PORT || 3001;
 // Initialize health monitoring
 const { initializeHealthChecks } = require('./monitoring/health-checks');
 
-// Initialize AI Chat Controller
+// Initialize AI Chat Controllers
 let aiChatController;
+let localAIChatController;
+let openRouterChatController;
+
 try {
   aiChatController = new AIChatController();
   logger.info('AI Chat Controller initialized successfully');
 } catch (error) {
   logger.warn('AI Chat Controller initialization failed:', error.message);
+}
+
+try {
+  localAIChatController = new LocalAIChatController();
+  logger.info('Local AI Chat Controller initialized successfully');
+} catch (error) {
+  logger.warn('Local AI Chat Controller initialization failed:', error.message);
+}
+
+try {
+  openRouterChatController = new OpenRouterChatController();
+  logger.info('OpenRouter Chat Controller initialized successfully');
+} catch (error) {
+  logger.warn('OpenRouter Chat Controller initialization failed:', error.message);
 }
 
 // Initialize Socket.IO with CORS support
@@ -190,6 +209,34 @@ app.post('/api/ai/chat', aiRateLimit, (req, res) => {
   aiChatController.chat(req, res);
 });
 
+// Local AI Chat endpoint with rate limiting
+app.post('/api/local-ai/chat', aiRateLimit, (req, res) => {
+  if (!localAIChatController) {
+    return res.status(503).json({
+      success: false,
+      error: 'Local AI service is currently unavailable',
+      fallback: true
+    });
+  }
+  localAIChatController.chat(req, res);
+});
+
+// OpenRouter AI Chat endpoint with rate limiting
+app.post('/api/openrouter-ai/chat', aiRateLimit, async (req, res, next) => {
+  try {
+    if (!openRouterChatController) {
+      return res.status(503).json({
+        success: false,
+        error: 'OpenRouter AI service is currently unavailable',
+        fallback: true
+      });
+    }
+    await openRouterChatController.chat(req, res);
+  } catch (error) {
+    next(error); // Pass to enhanced error middleware
+  }
+});
+
 // AI health check endpoint
 app.get('/api/ai/health', (req, res) => {
   if (!aiChatController) {
@@ -202,6 +249,30 @@ app.get('/api/ai/health', (req, res) => {
   aiChatController.healthCheck(req, res);
 });
 
+// Local AI health check endpoint
+app.get('/api/local-ai/health', (req, res) => {
+  if (!localAIChatController) {
+    return res.status(503).json({
+      success: false,
+      status: 'unhealthy',
+      error: 'Local AI service is not initialized'
+    });
+  }
+  localAIChatController.healthCheck(req, res);
+});
+
+// OpenRouter AI health check endpoint
+app.get('/api/openrouter-ai/health', (req, res) => {
+  if (!openRouterChatController) {
+    return res.status(503).json({
+      success: false,
+      status: 'unhealthy',
+      error: 'OpenRouter AI service is not initialized'
+    });
+  }
+  openRouterChatController.healthCheck(req, res);
+});
+
 // AI metrics endpoint for monitoring
 app.get('/api/ai/metrics', (req, res) => {
   if (!aiChatController) {
@@ -211,6 +282,28 @@ app.get('/api/ai/metrics', (req, res) => {
     });
   }
   aiChatController.getMetrics(req, res);
+});
+
+// Local AI status endpoint for service information
+app.get('/api/local-ai/status', (req, res) => {
+  if (!localAIChatController) {
+    return res.status(503).json({
+      success: false,
+      error: 'Local AI service is not initialized'
+    });
+  }
+  localAIChatController.getStatus(req, res);
+});
+
+// OpenRouter AI status endpoint for service information
+app.get('/api/openrouter-ai/status', (req, res) => {
+  if (!openRouterChatController) {
+    return res.status(503).json({
+      success: false,
+      error: 'OpenRouter AI service is not initialized'
+    });
+  }
+  openRouterChatController.getStatus(req, res);
 });
 
 // AI status endpoint for service information
@@ -389,12 +482,25 @@ function registerShutdownHandlers(server) {
       try {
         // Cleanup terminal sessions
         await terminalService.cleanup();
-        
+
+        // Cleanup AI controllers
+        if (aiChatController && typeof aiChatController.shutdown === 'function') {
+          await aiChatController.shutdown();
+        }
+
+        if (localAIChatController && typeof localAIChatController.shutdown === 'function') {
+          await localAIChatController.shutdown();
+        }
+
+        if (openRouterChatController && typeof openRouterChatController.shutdown === 'function') {
+          await openRouterChatController.shutdown();
+        }
+
         // Cleanup Docker containers
         const DockerService = require('./services/dockerService');
         const dockerService = new DockerService();
         await dockerService.cleanupAll();
-        logger.info('All containers and sessions cleaned up');
+        logger.info('All containers, sessions, and AI services cleaned up');
       } catch (error) {
         logger.error('Error during cleanup:', error);
       } finally {
@@ -423,8 +529,15 @@ function startServer(port = DEFAULT_PORT) {
     logger.info(`Detailed health: http://localhost:${port}/api/health/detailed`);
     logger.info(`Docker health: http://localhost:${port}/api/health/docker`);
     logger.info(`AI health: http://localhost:${port}/api/health/ai`);
+    logger.info(`Local AI health: http://localhost:${port}/api/local-ai/health`);
+    logger.info(`Local AI status: http://localhost:${port}/api/local-ai/status`);
+    logger.info(`OpenRouter AI health: http://localhost:${port}/api/openrouter-ai/health`);
+    logger.info(`OpenRouter AI status: http://localhost:${port}/api/openrouter-ai/status`);
+    logger.info(`AI metrics: http://localhost:${port}/api/ai/metrics`);
     logger.info(`Error metrics: http://localhost:${port}/api/metrics/errors`);
     logger.info(`Socket.IO enabled for interactive terminals`);
+    logger.info(`Local AI Chat endpoint: POST http://localhost:${port}/api/local-ai/chat`);
+    logger.info(`OpenRouter AI Chat endpoint: POST http://localhost:${port}/api/openrouter-ai/chat`);
   });
 
   server_instance.on('error', (error) => {

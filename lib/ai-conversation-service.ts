@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import type { Database, Message, Conversation } from '@/types/database';
 import { LocalStorageFallback } from '@/lib/local-storage-fallback';
+import { validateMessageTimestamps } from '@/lib/timestamp-utils';
 
 export interface AIMessage extends Message {
   ai_model?: string;
@@ -40,6 +41,15 @@ export class AIConversationService {
 
   constructor() {
     this.supabase = getSupabaseClient();
+
+    // Validate and clean localStorage data on service initialization
+    if (typeof window !== 'undefined') {
+      try {
+        LocalStorageFallback.validateAndCleanData();
+      } catch (error) {
+        console.warn('Failed to validate localStorage data on initialization:', error);
+      }
+    }
   }
 
   // Enhanced authentication check
@@ -57,7 +67,11 @@ export class AIConversationService {
         return null;
       }
 
-      console.log('DEBUG: Current user:', user ? { id: user.id } : null);
+      console.log('DEBUG: Current user:', user ? {
+        id: user.id,
+        email: user.email,
+        isAuthenticated: !!user.id && !!user.email
+      } : null);
       return user;
     } catch (error) {
       console.error('DEBUG: Error getting current user:', error);
@@ -263,6 +277,7 @@ export class AIConversationService {
 
       // Fallback to local storage
       try {
+        const now = new Date().toISOString();
         const fallbackConversation: AIConversation = {
           id: `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           project_id: projectId,
@@ -270,8 +285,8 @@ export class AIConversationService {
           created_by: userId,
           type,
           metadata: { type, auto_generated: true },
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          created_at: now,
+          updated_at: now,
         };
 
         // Save to local storage
@@ -376,9 +391,12 @@ export class AIConversationService {
           return null;
         }
 
+        // Validate and fix timestamps in messages using utility function
+        const validatedMessages = validateMessageTimestamps(messages || []);
+
         return {
           ...conversation,
-          messages: messages || []
+          messages: validatedMessages
         };
       }
 
@@ -553,6 +571,7 @@ export class AIConversationService {
       // Fallback to local storage
       try {
         const currentUser = await this.getCurrentUser();
+        const now = new Date().toISOString();
 
         const fallbackMessage: AIMessage = {
           id: `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -560,7 +579,7 @@ export class AIConversationService {
           role: message.role,
           content: message.content,
           metadata: message.metadata || {},
-          created_at: new Date().toISOString(),
+          created_at: now,
           ai_model: message.ai_model,
           ai_response_time_ms: message.ai_response_time_ms,
           ai_tokens_used: message.ai_tokens_used,

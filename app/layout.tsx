@@ -41,9 +41,8 @@ export default function RootLayout({
         {/* Preload critical resources */}
         <link rel="preload" href="/_next/static/css/app/globals.css" as="style" />
 
-        {/* Security headers */}
+        {/* Security headers - Note: X-Frame-Options should be set via HTTP headers, not meta tags */}
         <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
-        <meta httpEquiv="X-Frame-Options" content="DENY" />
         <meta httpEquiv="X-XSS-Protection" content="1; mode=block" />
 
         {/* Cache control */}

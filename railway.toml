@@ -1,0 +1,28 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 100
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
+
+[[services]]
+name = "code-execution-service"
+
+[services.variables]
+NODE_ENV = "production"
+PORT = "3001"
+
+[services.health_checks]
+[services.health_checks.grace_period]
+seconds = 10
+
+[services.health_checks.interval]
+seconds = 30
+
+[services.health_checks.timeout]
+seconds = 5
+
+[services.health_checks.retries]
+count = 3

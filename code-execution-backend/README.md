@@ -275,14 +275,134 @@ Logs are written to:
 - Files in `logs/` directory
 - Structured JSON format for easy parsing
 
-## Development
+## Testing
+
+This project includes a comprehensive test suite covering all aspects of the terminal execution system with PTY support, interactive sessions, and error recovery.
+
+### Test Categories
+
+#### Unit Tests
+- **Terminal Service**: Session lifecycle, PTY data processing, input handling
+- **Docker Service**: Container management, connection handling, resource limits
+- **Socket.IO Events**: Connection management, error handling, retry logic
+- **Input Processing**: Binary data, ANSI sequences, language-specific handling
+
+#### Integration Tests
+- **Complete Session Lifecycle**: From start to stop with full workflow validation
+- **Interactive Sessions**: Python REPL, Node.js shell, Java JShell, Bash terminal
+- **PTY Data Processing**: ANSI sequence preservation, control characters, Unicode
+- **Error Recovery**: Docker failures, container crashes, network issues
+
+#### Performance Tests
+- **Concurrent Sessions**: 50+ simultaneous terminal sessions
+- **Memory Management**: Leak detection, resource cleanup
+- **Load Testing**: High-frequency I/O, stress testing
+- **Scalability**: System behavior under extreme load
 
 ### Running Tests
+
 ```bash
+# Run all tests
 npm test
+
+# Run specific test types
+npm run test:unit          # Unit tests only
+npm run test:integration   # Integration tests only
+npm run test:performance  # Performance tests only
+
+# Run with coverage
+npm run test:coverage
+
+# Run in watch mode for development
+npm run test:watch
+
+# Run for CI environments (JUnit format, coverage, bail on failure)
+npm run test:ci
+```
+
+### Test Structure
+
+```
+test/
+├── unit/                          # Unit tests (10s timeout)
+│   ├── terminalService.test.js     # Terminal service functionality
+│   ├── dockerService.test.js       # Docker operations
+│   └── socketEvents.test.js        # Socket.IO handling
+├── integration/                   # Integration tests (60s timeout)
+│   ├── terminalLifecycle.test.js   # Full session workflows
+│   ├── interactiveSessions.test.js # REPL and interactive shells
+│   └── errorRecovery.test.js       # Error scenarios and recovery
+├── performance/                   # Performance tests (120s timeout)
+│   └── concurrentSessions.test.js # Load and stress testing
+├── fixtures/                      # Test data and mocks
+│   ├── mockData.js                # Test fixtures
+│   └── mockServices.js            # Service mocks
+├── utils/                         # Test utilities
+│   └── testHelpers.js             # Helper functions
+├── scripts/                       # Test runners
+│   └── run-tests.js               # Custom test runner
+└── setup.js                      # Global test setup
+```
+
+### Key Test Features
+
+#### PTY and Terminal Testing
+- **ANSI Sequence Preservation**: Full color and formatting support
+- **Control Character Handling**: Ctrl+C, Ctrl+D, arrow keys, etc.
+- **Multi-line Code**: Function definitions, loops, complex structures
+- **Unicode Support**: International characters and emoji
+- **Binary Data**: Raw byte stream processing
+
+#### Interactive Session Testing
+- **Python REPL**: `input()` function, multi-line code, exceptions
+- **Node.js Shell**: Async/await, callbacks, console output
+- **Java JShell**: Method definitions, variable handling, errors
+- **Bash Terminal**: Pipes, redirection, job control
+
+#### Error Recovery Testing
+- **Docker Failures**: Connection issues, image missing, permission errors
+- **Container Crashes**: Runtime failures, timeouts, resource exhaustion
+- **Network Issues**: Socket disconnections, emit failures
+- **Resource Limits**: Memory pressure, file descriptor exhaustion
+
+#### Performance Validation
+- **Concurrent Sessions**: 50+ simultaneous terminals
+- **Memory Leaks**: Long-running session monitoring
+- **I/O Throughput**: High-frequency input/output operations
+- **Graceful Degradation**: System behavior under overload
+
+### Coverage Requirements
+
+- **Lines**: 80%
+- **Functions**: 80%
+- **Branches**: 70%
+- **Statements**: 80%
+
+### Mock Services
+
+Comprehensive mock services for reliable testing:
+
+- **MockDockerService**: Simulates containers, PTY streams, failures
+- **MockSocketIO**: Controlled Socket.IO testing with event tracking
+- **MockLogger**: Log capture and validation
+- **MockInputHandler**: Input processing with validation
+
+### Advanced Test Runner
+
+Custom test runner with enhanced features:
+
+```bash
+# Custom test runner options
+node test/scripts/run-tests.js --help
+
+# Examples
+node test/scripts/run-tests.js --type unit --format junit --coverage
+node test/scripts/run-tests.js --type integration --timeout 60000
+node test/scripts/run-tests.js --type performance --verbose
 ```
 
 ### Development Mode
+
 ```bash
 npm run dev
 ```

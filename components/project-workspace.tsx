@@ -55,6 +55,7 @@ import {
   PanelLeft,
   Square,
   Plus,
+  Timer,
 } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import CodeEditor from "@/components/code-editor";
@@ -65,6 +66,7 @@ import ExecutionHistory from "@/components/execution-history";
 import FileExplorer from "@/components/file-explorer";
 import ConsoleOutput from "@/components/console-output";
 import BackendStatus from "@/components/backend-status";
+import AIModelSelector from "@/components/ai-model-selector";
 import {
   Tooltip,
   TooltipContent,
@@ -1706,8 +1708,27 @@ export default function ProjectWorkspace({
     collaborators: liveCollaborators,
   } = useSocket();
   const { toast } = useToast();
-  const { user } = useUser();
-  const userId = user?.id;
+  const { user, loading: userLoading } = useUser();
+
+  // Only initialize AI conversations when user is authenticated
+  const [isUserAuthenticated, setIsUserAuthenticated] = useState(false);
+
+  useEffect(() => {
+    // More robust authentication check - only require user.id
+    // Email might not always be available during auth state changes or with certain providers
+    const isAuthenticated = !userLoading && !!user?.id;
+    setIsUserAuthenticated(isAuthenticated);
+
+    // Debug authentication state
+    console.log('Authentication state:', {
+      userLoading,
+      hasUserId: !!user?.id,
+      hasUserEmail: !!user?.email,
+      isAuthenticated,
+      userId: user?.id,
+      userEmail: user?.email
+    });
+  }, [user, userLoading]);
 
   const [isVideoCallActive, setIsVideoCallActive] = useState(false);
   const [isMicOn, setIsMicOn] = useState(true);
@@ -1719,6 +1740,18 @@ export default function ProjectWorkspace({
   const [isAIVoiceActive, setIsAIVoiceActive] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
   const [isAIThinking, setIsAIThinking] = useState(false);
+  const [selectedAIModel, setSelectedAIModel] = useState<string>("hybrid-smart");
+
+  // Rate limit tracking
+  const [rateLimitInfo, setRateLimitInfo] = useState<{
+    isRateLimited: boolean;
+    retryAfter: number;
+    errorType?: string;
+    resetTime?: Date;
+  }>({
+    isRateLimited: false,
+    retryAfter: 0
+  });
 
   // AI Conversation hook for Supabase-backed persistence
   const {
@@ -1734,8 +1767,8 @@ export default function ProjectWorkspace({
     createConversation,
   } = useAIConversations({
     projectId,
-    userId,
-    autoLoad: true,
+    userId: user?.id, // Pass userId directly, this will update when user changes
+    autoLoad: isUserAuthenticated,
   });
   const [viewMode, setViewMode] = useState("code");
 
@@ -1747,6 +1780,8 @@ export default function ProjectWorkspace({
     ((file: ProjectNodeFromDB) => Promise<boolean>) | null
   >(null);
   const terminalExecutorWaitTimeoutRef = useRef<number | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const hasLoadedInitialMessages = useRef(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [inputBuffer, setInputBuffer] = useState("");
   const terminalSurfaceRef = useRef<TerminalSurfaceHandle | null>(null);
@@ -2507,6 +2542,15 @@ export default function ProjectWorkspace({
   const handleSendAIMessage = async () => {
     if (!aiMessage.trim()) return;
 
+    if (!isUserAuthenticated) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to send messages to the AI Assistant.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const userMessage = aiMessage.trim();
     setAiMessage("");
     setIsAIThinking(true); // Start thinking animation
@@ -2533,7 +2577,7 @@ export default function ProjectWorkspace({
           role: "user",
           content: userMessage,
           metadata: {},
-          author_id: userId || null,
+          author_id: user?.id || null,
         });
       } catch (messageError) {
         console.error("Failed to save user message:", messageError);
@@ -2547,16 +2591,34 @@ export default function ProjectWorkspace({
           }\n\n${currentFile.content?.substring(0, 2000) || ""}`
         : "No file selected";
 
+      // Determine which API endpoint to use based on selected model
+      let endpoint = '/api/ai/chat'; // Default cloud endpoint
+      if (selectedAIModel === 'deepseek-coder-6.7b') {
+        endpoint = '/api/local-ai/chat';
+      } else if (selectedAIModel === 'qwen-coder-free') {
+        endpoint = '/api/openrouter-ai/chat';
+      } else if (selectedAIModel === 'hybrid-smart') {
+        // Use default cloud endpoint for hybrid mode (it will handle routing)
+        endpoint = '/api/ai/chat';
+      }
+
       // Call the AI backend API
       const startTime = Date.now();
-      const response = await fetch("/api/ai/chat", {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-api-key": "test123", // API key for backend authentication
         },
         body: JSON.stringify({
           message: userMessage,
-          context: context,
+          context: {
+            fileContext: context,
+            selectedModel: selectedAIModel,
+            projectId: project?.id,
+            conversationId: conversation.id,
+            timestamp: new Date().toISOString()
+          },
         }),
       });
 
@@ -2564,6 +2626,16 @@ export default function ProjectWorkspace({
       const responseTime = Date.now() - startTime;
 
       if (data.success) {
+        // Clear rate limit state on successful response
+        if (rateLimitInfo.isRateLimited) {
+          setRateLimitInfo({
+            isRateLimited: false,
+            retryAfter: 0,
+            errorType: undefined,
+            resetTime: undefined
+          });
+        }
+
         // Add AI response to database with metadata
         try {
           await addMessage(conversation.id, {
@@ -2585,20 +2657,202 @@ export default function ProjectWorkspace({
           });
         }
       } else {
-        // Add error message to database
+        // Enhanced error handling with specific, actionable messages
+        let errorMessage = data.error || "Failed to get AI response";
+        let errorTitle = "AI Error";
+        let userFriendlyMessage = errorMessage;
+        let shouldRetry = false;
+        let retryAfter = 0;
+
+        // Handle specific error types with user-friendly messages
+        switch (data.errorType) {
+          case 'rate_limit':
+            errorTitle = "Rate Limit Exceeded";
+            userFriendlyMessage = "The AI service is temporarily busy. Please wait a moment before trying again.";
+            shouldRetry = true;
+            retryAfter = data.retryAfter || 60; // Default to 60 seconds if not provided
+            // Set rate limit info for countdown timer
+            setRateLimitInfo({
+              isRateLimited: true,
+              retryAfter,
+              errorType: data.errorType,
+              resetTime: new Date(Date.now() + retryAfter * 1000)
+            });
+            break;
+
+          case 'quota_exceeded':
+            errorTitle = "API Quota Exceeded";
+            userFriendlyMessage = "The free AI service quota has been reached. You can try again later or switch to a different model.";
+            shouldRetry = true;
+            retryAfter = data.retryAfter || 300; // Default to 5 minutes
+            // Set rate limit info for countdown timer
+            setRateLimitInfo({
+              isRateLimited: true,
+              retryAfter,
+              errorType: data.errorType,
+              resetTime: new Date(Date.now() + retryAfter * 1000)
+            });
+            break;
+
+          case 'authentication':
+            errorTitle = "Authentication Error";
+            userFriendlyMessage = "There's an issue with the AI service configuration. Please try again or contact support.";
+            shouldRetry = false;
+            break;
+
+          case 'credits_insufficient':
+            errorTitle = "Insufficient Credits";
+            userFriendlyMessage = "The AI service has run out of credits. Please try again later or switch to a different model.";
+            shouldRetry = true;
+            retryAfter = data.retryAfter || 300;
+            // Set rate limit info for countdown timer
+            setRateLimitInfo({
+              isRateLimited: true,
+              retryAfter,
+              errorType: data.errorType,
+              resetTime: new Date(Date.now() + retryAfter * 1000)
+            });
+            break;
+
+          case 'service_unavailable':
+            errorTitle = "Service Temporarily Unavailable";
+            userFriendlyMessage = "The AI service is temporarily down. Please try again in a few moments.";
+            shouldRetry = true;
+            retryAfter = data.retryAfter || 30;
+            // Set rate limit info for countdown timer
+            setRateLimitInfo({
+              isRateLimited: true,
+              retryAfter,
+              errorType: data.errorType,
+              resetTime: new Date(Date.now() + retryAfter * 1000)
+            });
+            break;
+
+          case 'model_not_found':
+            errorTitle = "Model Not Available";
+            userFriendlyMessage = "The selected AI model is not currently available. Please try a different model.";
+            shouldRetry = false;
+            break;
+
+          default:
+            if (data.statusCode === 429) {
+              errorTitle = "Too Many Requests";
+              userFriendlyMessage = "You're sending requests too quickly. Please wait a moment before trying again.";
+              shouldRetry = true;
+              retryAfter = 60;
+            } else if (data.statusCode >= 500) {
+              errorTitle = "Service Error";
+              userFriendlyMessage = "The AI service is experiencing issues. Please try again in a few moments.";
+              shouldRetry = true;
+              retryAfter = 30;
+            } else if (data.statusCode >= 400) {
+              errorTitle = "Request Error";
+              userFriendlyMessage = "There was an issue with your request. Please try again or rephrase your message.";
+              shouldRetry = true;
+              retryAfter = 10;
+            }
+            break;
+        }
+
+        // Create enhanced error message with retry guidance and smart model suggestions
+        let enhancedErrorMessage = `Error: ${userFriendlyMessage}`;
+        if (shouldRetry && retryAfter > 0) {
+          enhancedErrorMessage += `\n\nYou can try again in ${retryAfter} seconds.`;
+        }
+
+        // Smart model switching suggestions based on current model and error type
+        const modelSuggestions = [];
+
+        if (selectedAIModel === 'qwen-coder-free') {
+          if (data.errorType === 'rate_limit' || data.errorType === 'quota_exceeded') {
+            modelSuggestions.push('"Gemini Pro" (Google AI)');
+            modelSuggestions.push('"Smart Hybrid Mode" (automatic fallback)');
+          } else if (data.errorType === 'service_unavailable') {
+            modelSuggestions.push('"Deepseek Coder" (local model)');
+            modelSuggestions.push('"Smart Hybrid Mode" (automatic fallback)');
+          }
+        } else if (selectedAIModel === 'gemini-pro') {
+          if (data.errorType === 'rate_limit' || data.errorType === 'quota_exceeded') {
+            modelSuggestions.push('"Qwen Coder Free" (OpenRouter)');
+            modelSuggestions.push('"Smart Hybrid Mode" (automatic fallback)');
+          } else if (data.errorType === 'service_unavailable') {
+            modelSuggestions.push('"Deepseek Coder" (local model)');
+            modelSuggestions.push('"Smart Hybrid Mode" (automatic fallback)');
+          }
+        } else if (selectedAIModel === 'deepseek-coder-6.7b') {
+          if (data.errorType === 'service_unavailable' || data.errorType === 'model_not_found') {
+            modelSuggestions.push('"Qwen Coder Free" (cloud model)');
+            modelSuggestions.push('"Gemini Pro" (Google AI)');
+            modelSuggestions.push('"Smart Hybrid Mode" (automatic fallback)');
+          }
+        } else if (selectedAIModel === 'hybrid-smart') {
+          if (data.errorType === 'rate_limit' || data.errorType === 'quota_exceeded') {
+            modelSuggestions.push('"Deepseek Coder" (local model - no rate limits)');
+          }
+        }
+
+        if (modelSuggestions.length > 0) {
+          enhancedErrorMessage += `\n\n🔄 Suggested alternatives:\n${modelSuggestions.map(suggestion => `• ${suggestion}`).join('\n')}`;
+        } else if (selectedAIModel !== 'hybrid-smart') {
+          enhancedErrorMessage += `\n\n💡 Tip: Try "Smart Hybrid Mode" for automatic fallback to available models.`;
+        }
+
+        // Add enhanced error message to database
         try {
           await addMessage(conversation.id, {
             role: "assistant",
-            content: `Error: ${data.error || "Failed to get AI response"}`,
-            metadata: { type: 'error' },
+            content: enhancedErrorMessage,
+            metadata: {
+              type: 'error',
+              errorType: data.errorType,
+              statusCode: data.statusCode,
+              shouldRetry,
+              retryAfter,
+              originalError: errorMessage
+            },
             author_id: null,
           });
         } catch (messageError) {
           console.error("Failed to save error message:", messageError);
           // Show error in toast as fallback
           toast({
-            title: "AI Error",
-            description: data.error || "Failed to get AI response",
+            title: errorTitle,
+            description: userFriendlyMessage,
+            variant: "destructive",
+          });
+        }
+
+        // Also show toast notification for immediate feedback with quick action
+        const shouldSuggestHybrid = selectedAIModel !== 'hybrid-smart' &&
+          (data.errorType === 'rate_limit' || data.errorType === 'quota_exceeded' || data.errorType === 'service_unavailable');
+
+        if (shouldSuggestHybrid) {
+          toast({
+            title: errorTitle,
+            description: `${userFriendlyMessage}\n\nWould you like to switch to Smart Hybrid Mode for automatic fallback?`,
+            action: (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSelectedAIModel('hybrid-smart');
+                  toast({
+                    title: "Model Switched",
+                    description: "Switched to Smart Hybrid Mode. It will automatically try alternative models if one fails.",
+                    variant: "default",
+                  });
+                }}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                Switch to Hybrid
+              </Button>
+            ),
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: errorTitle,
+            description: userFriendlyMessage,
             variant: "destructive",
           });
         }
@@ -2848,7 +3102,8 @@ export default function ProjectWorkspace({
       isAIAssistantOpen &&
       projectId &&
       !currentConversation &&
-      !isAIThinking
+      !isAIThinking &&
+      isUserAuthenticated
     ) {
       getOrCreateConversation("AI Chat");
     }
@@ -2858,7 +3113,33 @@ export default function ProjectWorkspace({
     currentConversation,
     isAIThinking,
     getOrCreateConversation,
+    isUserAuthenticated,
   ]);
+
+  // Chat scroll behavior - only scroll to bottom on new messages, not initial load
+  useEffect(() => {
+    if (!chatScrollRef.current) return;
+
+    // Mark initial messages as loaded
+    if (!hasLoadedInitialMessages.current && aiMessages.length > 0) {
+      hasLoadedInitialMessages.current = true;
+      return;
+    }
+
+    // Only scroll to bottom on new messages after initial load
+    if (hasLoadedInitialMessages.current && aiMessages.length > 0) {
+      const scrollContainer = chatScrollRef.current;
+      const isNearBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop <= scrollContainer.clientHeight + 100;
+
+      // Only auto-scroll if user is already near bottom or it's a new user message
+      const lastMessage = aiMessages[aiMessages.length - 1];
+      if (isNearBottom || lastMessage?.role === 'user') {
+        setTimeout(() => {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        }, 100);
+      }
+    }
+  }, [aiMessages]);
 
   // Synchronize activeBottomTab with isAIAssistantOpen state
   useEffect(() => {
@@ -2868,6 +3149,36 @@ export default function ProjectWorkspace({
       setIsAIAssistantOpen(false);
     }
   }, [activeBottomTab]);
+
+  // Rate limit countdown timer
+  useEffect(() => {
+    if (!rateLimitInfo.isRateLimited || rateLimitInfo.retryAfter <= 0) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setRateLimitInfo(prev => {
+        const newRetryAfter = Math.max(0, prev.retryAfter - 1);
+
+        // Reset rate limit when countdown reaches zero
+        if (newRetryAfter === 0) {
+          return {
+            isRateLimited: false,
+            retryAfter: 0,
+            errorType: undefined,
+            resetTime: undefined
+          };
+        }
+
+        return {
+          ...prev,
+          retryAfter: newRetryAfter
+        };
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [rateLimitInfo.isRateLimited, rateLimitInfo.retryAfter]);
 
   if (localPersistenceEnabled && !storageReady) {
     return (
@@ -3183,9 +3494,9 @@ export default function ProjectWorkspace({
                       style={{ contain: 'strict' }}
                     >
                       <div className="flex-1 flex flex-col h-full">
-                        {/* Chat Header with New Chat Button */}
+                        {/* Chat Header with Model Selector and New Chat Button */}
                         <div className="flex-shrink-0 border-b p-4 bg-muted/30">
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
                               <Brain className="h-5 w-5 text-primary" />
                               <h3 className="text-sm font-medium">AI Assistant</h3>
@@ -3194,19 +3505,46 @@ export default function ProjectWorkspace({
                               size="sm"
                               variant="outline"
                               onClick={() => {
+                                if (!isUserAuthenticated) {
+                                  toast({
+                                    title: "Authentication Required",
+                                    description: userLoading
+                                      ? "Please wait while we verify your authentication..."
+                                      : "Please sign in to create AI conversations.",
+                                    variant: "destructive",
+                                  });
+                                  return;
+                                }
                                 clearCurrentConversation();
                                 createConversation("New AI Chat");
                               }}
+                              disabled={userLoading}
                               className="h-8 px-3 text-xs"
                             >
                               <Plus className="h-3 w-3 mr-1" />
-                              New Chat
+                              {userLoading ? "Loading..." : "New Chat"}
                             </Button>
                           </div>
+
+                          {/* AI Model Selector */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>Model:</span>
+                            </div>
+                            <AIModelSelector
+                              currentModel={selectedAIModel}
+                              onModelChange={setSelectedAIModel}
+                              compact={true}
+                              showStatus={true}
+                              className="text-xs"
+                            />
+                          </div>
                         </div>
-                        <div className="flex-1 overflow-auto">
+                        <div ref={chatScrollRef} className="flex-1 overflow-auto">
                             <div className="p-6 space-y-4">
-                              {aiMessages.length === 0 ? (
+                              {(() => {
+                                const validMessages = aiMessages.filter(message => message.content && message.content.trim() !== '');
+                                return validMessages.length === 0 ? (
                                 <div className="text-center py-12">
                                   <div className="relative mb-6">
                                     <div className="w-16 h-16 mx-auto bg-gradient-to-r from-primary/20 to-primary/10 rounded-full flex items-center justify-center border border-primary/20">
@@ -3246,9 +3584,9 @@ export default function ProjectWorkspace({
                                   </div>
                                 </div>
                               ) : (
-                                aiMessages.map((message, index) => (
+                                validMessages.map((message, index) => (
                                   <div
-                                    key={message.id}
+                                    key={message.id || `${message.role}-message-${index}`}
                                     className={`flex gap-3 animate-in slide-in-from-bottom-2 duration-300 ${
                                       message.role === "user"
                                         ? "justify-end"
@@ -3265,7 +3603,7 @@ export default function ProjectWorkspace({
                                       className={`max-w-[85%] rounded-lg px-4 py-3 shadow-sm transition-all hover:shadow-md ${
                                         message.role === "user"
                                           ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                                          : message.content.includes("Error:")
+                                          : message.content?.includes("Error:")
                                           ? "bg-destructive/10 text-destructive border border-destructive/20"
                                           : "bg-muted hover:bg-muted/80"
                                       }`}
@@ -3273,15 +3611,7 @@ export default function ProjectWorkspace({
                                       <div className="text-sm whitespace-pre-wrap leading-relaxed">
                                         {message.content}
                                       </div>
-                                      <div className="text-xs opacity-70 mt-2 font-medium">
-                                        {new Date(
-                                          message.created_at
-                                        ).toLocaleTimeString([], {
-                                          hour: "2-digit",
-                                          minute: "2-digit",
-                                        })}
                                       </div>
-                                    </div>
                                     {message.role === "user" && (
                                       <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center flex-shrink-0 shadow-sm">
                                         <span className="text-primary-foreground text-sm font-medium">
@@ -3291,7 +3621,7 @@ export default function ProjectWorkspace({
                                     )}
                                   </div>
                                 ))
-                              )}
+                                )})()}
 
                               {/* Enhanced Loading indicator */}
                               {isAIThinking && (
@@ -3332,41 +3662,77 @@ export default function ProjectWorkspace({
                               <Input
                                 value={aiMessage}
                                 onChange={(e) => setAiMessage(e.target.value)}
-                                placeholder={isAIThinking ? "AI is processing your request..." : "Ask AI assistant..."}
+                                placeholder={
+                                  isAIThinking
+                                    ? "AI is processing your request..."
+                                    : rateLimitInfo.isRateLimited
+                                      ? `Rate limited. Try again in ${rateLimitInfo.retryAfter}s...`
+                                      : "Ask AI assistant..."
+                                }
                                 onKeyDown={(e) => {
-                                  if (e.key === "Enter" && !e.shiftKey) {
+                                  if (e.key === "Enter" && !e.shiftKey && !rateLimitInfo.isRateLimited) {
                                     e.preventDefault();
                                     handleSendAIMessage();
                                   }
                                 }}
-                                disabled={isAIThinking}
+                                disabled={isAIThinking || rateLimitInfo.isRateLimited}
                                 className={`pr-10 ${
-                                  isAIThinking ? 'bg-muted/50 border-primary/30' : ''
+                                  isAIThinking
+                                    ? 'bg-muted/50 border-primary/30'
+                                    : rateLimitInfo.isRateLimited
+                                      ? 'bg-orange-50 border-orange-200 text-orange-900 dark:bg-orange-950/20 dark:border-orange-800 dark:text-orange-200'
+                                      : ''
                                 }`}
                               />
-                              {isAIThinking && (
+                              {(isAIThinking || rateLimitInfo.isRateLimited) && (
                                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                  <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+                                  {isAIThinking ? (
+                                    <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+                                  ) : (
+                                    <div className="flex items-center gap-1 text-orange-600 dark:text-orange-400">
+                                      <Timer className="h-4 w-4" />
+                                      <span className="text-xs font-mono">{rateLimitInfo.retryAfter}s</span>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
                             <Button
                               onClick={handleSendAIMessage}
                               size="sm"
-                              disabled={!aiMessage.trim() || isAIThinking}
-                              className={isAIThinking ? 'bg-primary/20 border-primary/30 text-primary' : ''}
+                              disabled={!aiMessage.trim() || isAIThinking || rateLimitInfo.isRateLimited}
+                              className={
+                                isAIThinking
+                                  ? 'bg-primary/20 border-primary/30 text-primary'
+                                  : rateLimitInfo.isRateLimited
+                                    ? 'bg-orange-100 border-orange-200 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:border-orange-700 dark:text-orange-300'
+                                    : ''
+                              }
                             >
                               {isAIThinking ? (
                                 <RefreshCw className="h-4 w-4 animate-spin" />
+                              ) : rateLimitInfo.isRateLimited ? (
+                                <Timer className="h-4 w-4" />
                               ) : (
                                 <Send className="h-4 w-4" />
                               )}
                             </Button>
                           </div>
-                          {isAIThinking && (
+                          {(isAIThinking || rateLimitInfo.isRateLimited) && (
                             <div className="mt-2 text-xs text-muted-foreground flex items-center gap-2">
-                              <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
-                              <span>Generating response...</span>
+                              {isAIThinking ? (
+                                <>
+                                  <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+                                  <span>Generating response...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Timer className="h-3 w-3 text-orange-500" />
+                                  <span className="text-orange-600 dark:text-orange-400">
+                                    Rate limited. You can send another message in {rateLimitInfo.retryAfter} seconds.
+                                  </span>
+                                </>
+                              )}
                             </div>
                           )}
                         </div>
@@ -3404,14 +3770,17 @@ export default function ProjectWorkspace({
                       {membersCount} members
                     </Badge>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 hover:bg-muted"
-                    onClick={() => setShowChat(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {/* Connection status will be handled by ChatPanel internally */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 hover:bg-muted"
+                      onClick={() => setShowChat(false)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Chat Panel Component */}

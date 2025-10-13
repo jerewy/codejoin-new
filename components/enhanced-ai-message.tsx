@@ -17,17 +17,19 @@ export default function EnhancedAIMessage({ message, isTyping = false }: Enhance
   const [displayedContent, setDisplayedContent] = useState("");
   const [isAnimating, setIsAnimating] = useState(false);
 
-  const isAI = message.role === "assistant";
-  const isUser = message.role === "user";
+  // Ensure message has valid timestamp
+  const validatedMessage = validateMessageTimestamp(message);
+  const isAI = validatedMessage.role === "assistant";
+  const isUser = validatedMessage.role === "user";
 
   // Typing animation effect for AI messages
   useEffect(() => {
-    if (isAI && !isTyping && message.content) {
+    if (isAI && !isTyping && validatedMessage.content) {
       setIsAnimating(true);
       setDisplayedContent("");
 
       let currentIndex = 0;
-      const content = message.content;
+      const content = validatedMessage.content;
 
       const typeWriter = () => {
         if (currentIndex < content.length) {
@@ -41,25 +43,18 @@ export default function EnhancedAIMessage({ message, isTyping = false }: Enhance
 
       typeWriter();
     } else if (!isAI) {
-      setDisplayedContent(message.content);
+      setDisplayedContent(validatedMessage.content);
     }
-  }, [isAI, isTyping, message.content]);
+  }, [isAI, isTyping, validatedMessage.content]);
 
   const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(message.content);
+      await navigator.clipboard.writeText(validatedMessage.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error("Failed to copy text:", err);
     }
-  };
-
-  const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
   };
 
   const formatContent = (content: string) => {
@@ -141,10 +136,7 @@ export default function EnhancedAIMessage({ message, isTyping = false }: Enhance
               <Brain className="h-3 w-3 mr-1" />
               Gemini
             </Badge>
-            <span className="text-xs text-muted-foreground">
-              {formatTime(new Date().toISOString())}
-            </span>
-          </div>
+            </div>
 
           <Card className="p-4 bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
             <ThinkingIndicator />
@@ -187,10 +179,7 @@ export default function EnhancedAIMessage({ message, isTyping = false }: Enhance
             </Badge>
           )}
 
-          <span className="text-xs text-muted-foreground">
-            {formatTime(message.created_at)}
-          </span>
-
+  
           {message.metadata?.ai_response_time_ms && (
             <Badge variant="secondary" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800">
               <Clock className="h-3 w-3 mr-1" />

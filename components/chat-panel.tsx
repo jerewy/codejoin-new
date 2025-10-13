@@ -16,7 +16,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getSupabaseClient, createRealtimeChannel, checkAuthentication, verifyProjectAccess, cleanupChannel as cleanupSupabaseChannel, isChannelActive } from "@/lib/supabaseClient";
+import { SafeImage } from "@/components/ui/safe-image";
 import type { Collaborator, ProjectChatMessageWithAuthor } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { useSocket } from "@/lib/socket";
@@ -143,7 +144,32 @@ export default function ChatPanel({
   const [isRecording, setIsRecording] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [hasProjectAccess, setHasProjectAccess] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const channelRef = useRef<any>(null);
+  const channelNameRef = useRef<string | null>(null);
+  const isSubscribingRef = useRef<boolean>(false);
+
+  // Helper function to properly cleanup existing channels
+  const cleanupChannel = useCallback(async () => {
+    if (channelNameRef.current) {
+      try {
+        console.log(`DEBUG: Cleaning up channel: ${channelNameRef.current}`);
+        await cleanupSupabaseChannel(channelNameRef.current);
+        channelRef.current = null;
+        channelNameRef.current = null;
+        isSubscribingRef.current = false;
+        console.log('DEBUG: Channel cleaned up successfully');
+      } catch (error) {
+        console.warn('DEBUG: Error cleaning up channel:', error);
+        channelRef.current = null;
+        channelNameRef.current = null;
+        isSubscribingRef.current = false;
+      }
+    }
+  }, [cleanupSupabaseChannel]);
 
   const teamMemberMap = useMemo(() => {
     const map = new Map<string, Collaborator>();
@@ -398,22 +424,116 @@ export default function ChatPanel({
     };
   }, [socket, projectId, conversationId, formatMessage]);
 
-  useEffect(() => {
-    if (!supabase || !conversationId) {
-      return;
-    }
+  // Removed duplicate channel creation useEffect - now handled by the unified realtime subscription effect
 
-    const channel = supabase
-      .channel(`project-chat-${conversationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload) => {
+  // Authentication and access verification
+  useEffect(() => {
+    const initializeConnection = async () => {
+      if (!supabase) {
+        setConnectionStatus('error');
+        return;
+      }
+
+      setConnectionStatus('connecting');
+
+      // Check authentication
+      const authenticated = await checkAuthentication(supabase);
+      setIsAuthenticated(authenticated);
+
+      if (!authenticated) {
+        setConnectionStatus('error');
+        toast({
+          variant: "destructive",
+          title: "Authentication Required",
+          description: "Please sign in to access team chat.",
+        });
+        return;
+      }
+
+      // Verify project access
+      const access = await verifyProjectAccess(supabase, projectId);
+      setHasProjectAccess(access);
+
+      if (!access) {
+        setConnectionStatus('error');
+        toast({
+          variant: "destructive",
+          title: "Access Denied",
+          description: "You don't have permission to access this team chat.",
+        });
+        return;
+      }
+
+      setConnectionStatus('connected');
+    };
+
+    initializeConnection();
+  }, [supabase, projectId, toast]);
+
+  // Unified real-time subscription with robust channel management
+  useEffect(() => {
+    let isMounted = true;
+    let retryTimeout: NodeJS.Timeout | null = null;
+
+    const setupChannel = async () => {
+      // Prevent multiple simultaneous subscriptions
+      if (isSubscribingRef.current || !supabase || !conversationId || connectionStatus !== 'connected') {
+        return;
+      }
+
+      const channelName = `project-chat-${conversationId}`;
+
+      // Check if channel is already active globally
+      if (isChannelActive(channelName)) {
+        console.log(`DEBUG: Channel ${channelName} is already active globally, skipping creation`);
+        return;
+      }
+
+      // Check if we already have a channel for this conversation locally
+      if (channelRef.current && channelNameRef.current === channelName) {
+        console.log(`DEBUG: Channel ${channelName} already exists locally, skipping creation`);
+        return;
+      }
+
+      // Clean up any existing channel before creating a new one
+      await cleanupChannel();
+
+      // Prevent subscription if component unmounted during cleanup
+      if (!isMounted) return;
+
+      isSubscribingRef.current = true;
+      console.log(`DEBUG: Setting up realtime subscription for conversation: ${conversationId}`);
+
+      try {
+        const channel = createRealtimeChannel(
+          supabase,
+          channelName,
+          {
+            table: 'messages',
+            filter: `conversation_id=eq.${conversationId}`,
+            event: 'INSERT'
+          }
+        );
+
+        if (!channel) {
+          console.error('DEBUG: Failed to create realtime channel');
+          if (isMounted) {
+            setConnectionStatus('error');
+            isSubscribingRef.current = false;
+          }
+          return;
+        }
+
+        // Store channel reference
+        channelRef.current = channel;
+        channelNameRef.current = channelName;
+
+        // Set up the message handler
+        const messageHandler = (payload: any) => {
+          console.log('DEBUG: Received realtime message:', payload);
+
+          if (!isMounted) return;
+
           const record = payload.new as MessageRecord;
           setMessages((prev) => {
             const formatted = formatMessage(record);
@@ -432,18 +552,75 @@ export default function ChatPanel({
 
             return [...prev, formatted];
           });
+        };
+
+        // Subscribe to the channel with our custom handler
+        channel.on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        }, messageHandler);
+
+        // Subscribe and handle status
+        channel.subscribe((status) => {
+          console.log(`DEBUG: Channel ${channelName} subscription status: ${status}`);
+
+          if (!isMounted) return;
+
+          if (status === 'SUBSCRIBED') {
+            console.log(`DEBUG: Successfully subscribed to channel: ${channelName}`);
+            setConnectionStatus('connected');
+            isSubscribingRef.current = false;
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error(`DEBUG: Channel error for ${channelName}`);
+            setConnectionStatus('error');
+            isSubscribingRef.current = false;
+            toast({
+              variant: "destructive",
+              title: "Connection Error",
+              description: "Failed to connect to team chat. Messages may not update in real-time.",
+            });
+          } else if (status === 'TIMED_OUT') {
+            console.warn(`DEBUG: Channel subscription timed out for ${channelName}`);
+            setConnectionStatus('error');
+            isSubscribingRef.current = false;
+            toast({
+              variant: "destructive",
+              title: "Connection Timeout",
+              description: "Team chat connection timed out. Retrying...",
+            });
+
+            // Implement retry logic for timeouts
+            if (isMounted && retryTimeout === null) {
+              retryTimeout = setTimeout(() => {
+                retryTimeout = null;
+                setupChannel();
+              }, 3000);
+            }
+          }
+        });
+
+      } catch (error) {
+        console.error(`DEBUG: Error setting up channel ${channelName}:`, error);
+        if (isMounted) {
+          setConnectionStatus('error');
+          isSubscribingRef.current = false;
         }
-      )
-      .subscribe();
+      }
+    };
+
+    setupChannel();
 
     return () => {
-      channel
-        .unsubscribe()
-        .catch((error) =>
-          console.warn("Failed to unsubscribe chat channel", error)
-        );
+      isMounted = false;
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+        retryTimeout = null;
+      }
+      cleanupChannel();
     };
-  }, [supabase, conversationId, formatMessage]);
+  }, [supabase, conversationId, connectionStatus, formatMessage, toast, cleanupChannel]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -694,6 +871,7 @@ export default function ChatPanel({
 
   return (
     <div className="flex flex-col h-full">
+
       <div className="flex-1 overflow-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
@@ -716,10 +894,12 @@ export default function ChatPanel({
                   <Brain className="h-4 w-4 text-primary" />
                 </div>
               ) : (
-                <img
-                  src={msg.authorAvatar || "/placeholder.svg"}
+                <SafeImage
+                  src={msg.authorAvatar}
                   alt={msg.authorName}
                   className="w-8 h-8 rounded-full object-cover"
+                  width={32}
+                  height={32}
                 />
               )}
               <div className="flex-1 min-w-0">

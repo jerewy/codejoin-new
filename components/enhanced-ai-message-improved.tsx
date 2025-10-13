@@ -26,17 +26,19 @@ export default function EnhancedAIMessageImproved({
   const [isAnimating, setIsAnimating] = useState(false);
   const [feedback, setFeedback] = useState<'positive' | 'negative' | null>(null);
 
-  const isAI = message.role === "assistant";
-  const isUser = message.role === "user";
+  // Ensure message has valid timestamp
+  const validatedMessage = validateMessageTimestamp(message);
+  const isAI = validatedMessage.role === "assistant";
+  const isUser = validatedMessage.role === "user";
 
   // Typing animation effect for AI messages
   useEffect(() => {
-    if (isAI && !isTyping && message.content) {
+    if (isAI && !isTyping && validatedMessage.content) {
       setIsAnimating(true);
       setDisplayedContent("");
 
       let currentIndex = 0;
-      const content = message.content;
+      const content = validatedMessage.content;
 
       const typeWriter = () => {
         if (currentIndex < content.length) {
@@ -50,13 +52,13 @@ export default function EnhancedAIMessageImproved({
 
       typeWriter();
     } else if (!isAI) {
-      setDisplayedContent(message.content);
+      setDisplayedContent(validatedMessage.content);
     }
-  }, [isAI, isTyping, message.content]);
+  }, [isAI, isTyping, validatedMessage.content]);
 
   const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(message.content);
+      await navigator.clipboard.writeText(validatedMessage.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -67,13 +69,6 @@ export default function EnhancedAIMessageImproved({
   const handleFeedback = (type: 'positive' | 'negative') => {
     setFeedback(type);
     onFeedback?.(type);
-  };
-
-  const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
   };
 
   const formatContent = (content: string) => {
@@ -155,10 +150,7 @@ export default function EnhancedAIMessageImproved({
               <Brain className="h-3 w-3 mr-1" />
               Gemini
             </Badge>
-            <span className="text-xs text-muted-foreground">
-              {formatTime(new Date().toISOString())}
-            </span>
-          </div>
+            </div>
 
           <Card className="p-4 bg-muted/30 border-border">
             <ThinkingIndicator />
@@ -201,10 +193,7 @@ export default function EnhancedAIMessageImproved({
             </Badge>
           )}
 
-          <span className="text-xs text-muted-foreground">
-            {formatTime(message.created_at)}
-          </span>
-
+  
           {message.metadata?.ai_response_time_ms && (
             <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-400 border-green-500/20">
               <Clock className="h-3 w-3 mr-1" />

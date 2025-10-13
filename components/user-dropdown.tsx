@@ -14,6 +14,16 @@ import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import Link from "next/link";
 
+// Helper function to validate URLs
+function isValidUrl(url: string): boolean {
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default function UserDropdown() {
   const router = useRouter();
   const supabase = getSupabaseClient();
@@ -64,7 +74,13 @@ export default function UserDropdown() {
         ) ?? null;
 
         if (isMounted) {
-          setAvatarUrl(profileRow?.user_avatar ?? metadataAvatar ?? null);
+          const avatar = profileRow?.user_avatar ?? metadataAvatar ?? null;
+          // Validate avatar URL to prevent malformed URLs
+          if (avatar && avatar.trim() && (avatar.startsWith('/') || isValidUrl(avatar))) {
+            setAvatarUrl(avatar);
+          } else {
+            setAvatarUrl(null);
+          }
         }
       } catch (error) {
         console.error("Unexpected error loading avatar", error);

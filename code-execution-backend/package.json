@@ -6,8 +6,18 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "jest",
-    "docker:build": "node scripts/build-images.js"
+    "test": "node test/scripts/run-tests.js",
+    "test:unit": "node test/scripts/run-tests.js --type unit",
+    "test:integration": "node test/scripts/run-tests.js --type integration",
+    "test:performance": "node test/scripts/run-tests.js --type performance",
+    "test:watch": "node test/scripts/run-tests.js --watch",
+    "test:coverage": "node test/scripts/run-tests.js --coverage",
+    "test:ci": "node test/scripts/run-tests.js --format junit --coverage --bail",
+    "docker:build": "node scripts/build-images.js",
+    "lint": "eslint src/ test/",
+    "lint:fix": "eslint src/ test/ --fix",
+    "security:audit": "npm audit --audit-level=moderate",
+    "validate": "npm run lint && npm run security:audit && npm run test:unit"
   },
   "keywords": ["code-execution", "docker", "security", "api", "ai", "resilience", "multi-provider"],
   "author": "",
@@ -27,9 +37,40 @@
   "devDependencies": {
     "nodemon": "^3.0.2",
     "jest": "^29.7.0",
-    "supertest": "^6.3.3"
+    "supertest": "^6.3.3",
+    "socket.io-client": "^4.7.2",
+    "eslint": "^8.54.0",
+    "eslint-config-standard": "^17.1.0",
+    "eslint-plugin-import": "^2.29.0",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-promise": "^6.1.1",
+    "eslint-plugin-security": "^1.7.1",
+    "jest-junit": "^16.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "roots": ["<rootDir>/test"],
+    "testMatch": [
+      "**/__tests__/**/*.test.js",
+      "**/?(*.)+(spec|test).js"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "!src/**/*.test.js",
+      "!src/config/**",
+      "!src/utils/logger.js"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageReporters": ["text", "lcov", "html"],
+    "testTimeout": 30000,
+    "setupFilesAfterEnv": ["<rootDir>/test/setup.js"],
+    "testPathIgnorePatterns": [
+      "/node_modules/"
+    ],
+    "moduleFileExtensions": ["js", "json"],
+    "verbose": true
   }
 }
